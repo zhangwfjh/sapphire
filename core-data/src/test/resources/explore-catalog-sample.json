@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "domains": [
+    {
+      "id": "tech",
+      "name": "Technology",
+      "feeds": [
+        { "title": "Hacker News", "url": "https://hnrss.org/frontpage", "kind": "rss", "description": "Social news.", "language": "en" },
+        { "title": "Atom Feed", "url": "https://example.com/atom", "kind": "atom" }
+      ]
+    },
+    { "id": "science", "name": "Science", "feeds": [] }
+  ]
+}
