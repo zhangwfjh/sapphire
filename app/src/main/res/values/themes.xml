@@ -1,0 +1,12 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Dark-first bootstrap. Compose (SapphireTheme) owns the real palette; this XML
+         theme only needs to paint the window + system bars so the cold-start window
+         matches the Compose surface (no white flash). -->
+    <style name="Theme.Sapphire" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/sapphire_ink</item>
+        <item name="android:navigationBarColor">@color/sapphire_ink</item>
+        <item name="android:windowBackground">@color/sapphire_ink</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="O_MR1">false</item>
+    </style>
+</resources>

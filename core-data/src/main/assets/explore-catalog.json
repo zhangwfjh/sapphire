@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "domains": [
+    {
+      "id": "tech",
+      "name": "Technology",
+      "feeds": [
+        { "title": "Hacker News", "url": "https://hnrss.org/frontpage", "kind": "rss", "description": "Social news for hackers, makers, and founders.", "language": "en" },
+        { "title": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "kind": "rss", "description": "Technology, science, and culture news.", "language": "en" },
+        { "title": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "kind": "rss", "description": "Deep tech and science reporting.", "language": "en" }
+      ]
+    },
+    {
+      "id": "science",
+      "name": "Science",
+      "feeds": [
+        { "title": "Nature", "url": "https://www.nature.com/nature.rss", "kind": "rss", "description": "International weekly journal of science.", "language": "en" },
+        { "title": "Quanta Magazine", "url": "https://api.quantamagazine.org/feed", "kind": "rss", "description": "Math, physics, biology, and computer science.", "language": "en" }
+      ]
+    },
+    {
+      "id": "world",
+      "name": "World News",
+      "feeds": [
+        { "title": "BBC News - World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml", "kind": "rss", "description": "Latest world news from the BBC.", "language": "en" },
+        { "title": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "kind": "rss", "description": "Global news coverage.", "language": "en" }
+      ]
+    },
+    {
+      "id": "business",
+      "name": "Business & Finance",
+      "feeds": [
+        { "title": "FT Markets News", "url": "https://www.ft.com/markets?format=rss", "kind": "rss", "description": "Financial markets news.", "language": "en" }
+      ]
+    },
+    {
+      "id": "design",
+      "name": "Design",
+      "feeds": [
+        { "title": "Smashing Magazine", "url": "https://www.smashingmagazine.com/feed", "kind": "rss", "description": "Web design and development.", "language": "en" },
+        { "title": "A List Apart", "url": "https://alistapart.com/main/feed/", "kind": "rss", "description": "Web design, content, and code.", "language": "en" }
+      ]
+    },
+    {
+      "id": "culture",
+      "name": "Culture & Arts",
+      "feeds": [
+        { "title": "Brain Pickings", "url": "https://www.themarginalian.org/feed/", "kind": "rss", "description": "Literature, art, science, and philosophy.", "language": "en" }
+      ]
+    }
+  ]
+}

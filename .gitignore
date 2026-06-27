@@ -1,0 +1,23 @@
+# Build outputs
+build/
+**/build/
+
+# Gradle
+.gradle/
+local.properties
+
+# Kotlin
+.kotlin/
+
+# IDE
+.idea/
+
+# Harness / local tooling
+_gw.bat
+.superpowers/
+
+# Local plan/design/docs (kept in-tree, never committed)
+/docs/
+
+# Room schema export (keep tracked)
+!**/schemas/*.json

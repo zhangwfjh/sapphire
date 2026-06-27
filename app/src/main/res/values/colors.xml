@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sapphire dark-first palette. Mirrors SapphireTheme.kt so the Activity bootstrap
+         (window background, system bars) matches the Compose surface before first frame. -->
+    <color name="sapphire_ink">#FF0B0F14</color>
+    <color name="sapphire_ink_elevated">#FF11161D</color>
+    <color name="sapphire_accent">#FF3B82F6</color>
+    <color name="sapphire_accent_deep">#FF1D4ED8</color>
+    <color name="sapphire_launcher_bg">#FF0B0F14</color>
+    <color name="sapphire_launcher_accent">#FF3B82F6</color>
+</resources>
