@@ -19,8 +19,9 @@ import androidx.room.TypeConverters
         LlmCacheEntity::class,
         SavedItemEntity::class,
         DiscoveredFeedEntity::class,
+        ArticleBodyEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 @TypeConverters(EnumTypeConverter::class)
@@ -31,4 +32,5 @@ abstract class SapphireDatabase : RoomDatabase() {
     abstract fun llmCacheDao(): LlmCacheDao
     abstract fun savedItemDao(): SavedItemDao
     abstract fun discoveredFeedDao(): DiscoveredFeedDao
+    abstract fun articleBodyDao(): ArticleBodyDao
 }
