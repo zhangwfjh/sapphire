@@ -65,7 +65,7 @@ class ReaderOpsUseCase(
      * persisted classification, return it (no call). Else check the cache, then call.
      * Persists the result onto the item row so subsequent opens skip entirely.
      */
-    suspend fun classify(itemId: String): LlmOutcome<ClassificationResponse> {
+    suspend fun classify(itemId: String, paragraphs: List<String>? = null): LlmOutcome<ClassificationResponse> {
         val item = items.item(itemId)
             ?: return LlmOutcome.Err(com.sapphire.domain.llm.LlmError.Empty("Item not found."))
 
@@ -78,7 +78,7 @@ class ReaderOpsUseCase(
             return decode(cached, ClassificationResponse.serializer())
         }
 
-        val body = BodyParagraphParser.parse(item.bodyRaw ?: item.summary ?: item.title)
+        val body = (paragraphs ?: BodyParagraphParser.parse(item.bodyRaw ?: item.summary ?: item.title))
             .joinToString("\n\n")
             .ifBlank { item.title }
 
@@ -100,11 +100,15 @@ class ReaderOpsUseCase(
     }
 
     /** Tier-2 summary (PRD §3.4 [✨ Summary]). Cache-first; exactly three bullets. */
-    suspend fun summarize(itemId: String): LlmOutcome<SummaryResponse> {
+    suspend fun summarize(itemId: String, paragraphs: List<String>? = null): LlmOutcome<SummaryResponse> {
         val key = LlmCacheKey.compute(itemId, OP_SUMMARY, tier2ModelVersion)
         cache.get(key)?.let { return decode(it, SummaryResponse.serializer()) }
 
-        val body = readerBody(itemId) ?: return missingItem()
+        val body = if (paragraphs != null) {
+            paragraphs.joinToString("\n\n")
+        } else {
+            readerBody(itemId) ?: return missingItem()
+        }
         return when (val outcome = llm.completeStructured(
             tier = LlmTier.TIER2_DEEP,
             systemPrompt = SummaryResponse.SYSTEM_PROMPT,
@@ -125,16 +129,16 @@ class ReaderOpsUseCase(
      * the instruction to preserve boundaries; the returned [TranslateResponse] is the
      * interleaved-original/target stream the UI renders.
      */
-    suspend fun translate(itemId: String, targetLanguage: String): LlmOutcome<TranslateResponse> {
+    suspend fun translate(itemId: String, targetLanguage: String, paragraphs: List<String>? = null): LlmOutcome<TranslateResponse> {
         val op = "$OP_TRANSLATE:$targetLanguage"
         val key = LlmCacheKey.compute(itemId, op, tier2ModelVersion)
         cache.get(key)?.let { return decode(it, TranslateResponse.serializer()) }
 
         val item = items.item(itemId) ?: return missingItem()
-        val paragraphs = BodyParagraphParser.parse(item.bodyRaw ?: item.summary ?: item.title)
-        if (paragraphs.isEmpty()) return LlmOutcome.Ok(TranslateResponse(emptyList()))
+        val paras = paragraphs ?: BodyParagraphParser.parse(item.bodyRaw ?: item.summary ?: item.title)
+        if (paras.isEmpty()) return LlmOutcome.Ok(TranslateResponse(emptyList()))
 
-        val userPrompt = paragraphs.joinToString("\n\n") { it }
+        val userPrompt = paras.joinToString("\n\n") { it }
         return when (val outcome = llm.completeStructured(
             tier = LlmTier.TIER2_DEEP,
             systemPrompt = TranslatedParagraph.systemPrompt(translateLanguageName(targetLanguage)),

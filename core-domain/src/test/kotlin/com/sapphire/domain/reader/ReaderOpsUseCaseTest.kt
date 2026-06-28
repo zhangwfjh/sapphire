@@ -99,6 +99,33 @@ class ReaderOpsUseCaseTest {
     }
 
     @Test
+    fun `classify with supplied paragraphs uses them instead of the item body`() = runTest {
+        val llm = StubLlm(classification = ClassificationResponse("Tech Blog", 0.9))
+        val items = StubItems()  // default item: bodyRaw = "<p>Body one</p><p>Body two</p>"
+        val useCase = useCase(llm, MemCache(), items)
+
+        useCase.classify("item-1", paragraphs = listOf("EXTRACTED FULL BODY"))
+
+        assertEquals(1, llm.classifyCalls)
+        val captured = llm.userPrompts.single()
+        assertTrue("supplied paragraphs should be used", captured.contains("EXTRACTED FULL BODY"))
+        assertTrue("feed body should NOT be used", !captured.contains("Body one"))
+    }
+
+    @Test
+    fun `classify with null paragraphs falls back to the item body`() = runTest {
+        val llm = StubLlm(classification = ClassificationResponse("Tech Blog", 0.9))
+        val items = StubItems()  // bodyRaw = "<p>Body one</p><p>Body two</p>"
+        val useCase = useCase(llm, MemCache(), items)
+
+        useCase.classify("item-1", paragraphs = null)
+
+        assertEquals(1, llm.classifyCalls)
+        val captured = llm.userPrompts.single()
+        assertTrue("feed body should be used on null", captured.contains("Body one"))
+    }
+
+    @Test
     fun `summary cache hit skips LLM`() = runTest {
         val llm = StubLlm(summary = SummaryResponse(listOf("a", "b", "c")))
         val cache = MemCache()
@@ -204,6 +231,7 @@ class ReaderOpsUseCaseTest {
         var classifyCalls = 0; private set
         var summaryCalls = 0; private set
         var translateCalls = 0; private set
+        val userPrompts = mutableListOf<String>()
 
         @Suppress("UNCHECKED_CAST")
         override suspend fun <T> completeStructured(
@@ -212,6 +240,7 @@ class ReaderOpsUseCaseTest {
             userPrompt: String,
             outputSerializer: kotlinx.serialization.KSerializer<T>,
         ): LlmOutcome<T> {
+            userPrompts.add(userPrompt)
             if (error != null) return LlmOutcome.Err(error)
             val raw: Any = when (outputSerializer) {
                 ClassificationResponse.serializer() -> { classifyCalls++; classification }
