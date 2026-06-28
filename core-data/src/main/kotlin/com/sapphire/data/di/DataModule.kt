@@ -66,7 +66,7 @@ object DatabaseModule {
     @Provides fun provideSourceDao(db: SapphireDatabase): SourceDao = db.sourceDao()
     @Provides fun provideLlmCacheDao(db: SapphireDatabase): LlmCacheDao = db.llmCacheDao()
     @Provides fun provideSavedItemDao(db: SapphireDatabase): SavedItemDao = db.savedItemDao()
-    @Provides fun provideDiscoveredFeedDao(db: SapphireDatabase): DiscoveredFeedDao = db.discoveredFeedDao()
+    @Provides fun provideArticleBodyDao(db: SapphireDatabase): com.sapphire.data.db.ArticleBodyDao = db.articleBodyDao()
 }
 
 @Module
@@ -173,6 +173,10 @@ abstract class RepositoryBindingsModule {
     abstract fun bindDiscoveredFeedRepository(impl: com.sapphire.data.explore.RoomDiscoveredFeedRepository): com.sapphire.domain.explore.DiscoveredFeedRepository
     @Binds
     abstract fun bindFeedPreview(impl: com.sapphire.data.explore.FetcherFeedPreview): com.sapphire.domain.explore.FeedPreview
+    @Binds
+    abstract fun bindArticleExtractor(impl: com.sapphire.data.reader.ReadabilityArticleExtractor): com.sapphire.domain.reader.ArticleExtractor
+    @Binds
+    abstract fun bindArticleBodyStore(impl: com.sapphire.data.reader.RoomArticleBodyStore): com.sapphire.domain.reader.ArticleBodyStore
 }
 
 /**
