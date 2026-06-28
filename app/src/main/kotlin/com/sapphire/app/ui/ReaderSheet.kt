@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -300,7 +301,7 @@ private fun BodyBlock(state: ReaderUiState.Open) {
 
 @Composable
 private fun ActionRow(state: ReaderUiState.Open, viewModel: ReaderViewModel) {
-    val palette = LocalSapphirePalette.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ToolButton(
             onClick = viewModel::summarize,
@@ -320,8 +321,18 @@ private fun ActionRow(state: ReaderUiState.Open, viewModel: ReaderViewModel) {
             icon = if (state.savedLater) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
             label = if (state.savedLater) "Saved" else "Save",
         )
+        val url = state.item.url
+        if (!url.isNullOrBlank()) {
+            ToolButton(
+                onClick = { openInAppBrowser(context, url) },
+                enabled = true,
+                icon = Icons.Filled.OpenInNew,
+                label = "Open",
+            )
+        }
     }
 }
+
 
 @Composable
 private fun ToolButton(
@@ -406,5 +417,19 @@ private fun CustomPromptField() {
                 )
             }
         }
+    }
+}
+
+/**
+ * Launches the article's canonical URL in an in-app browser (Chrome Custom Tabs) — overlays
+ * the app with a themed, dismissible browser session so the user stays in-task. Falls back
+ * silently if no browser is available to handle the intent.
+ */
+private fun openInAppBrowser(context: android.content.Context, url: String) {
+    val customTabsIntent = androidx.browser.customtabs.CustomTabsIntent.Builder()
+        .setShowTitle(true)
+        .build()
+    runCatching {
+        customTabsIntent.launchUrl(context, android.net.Uri.parse(url))
     }
 }

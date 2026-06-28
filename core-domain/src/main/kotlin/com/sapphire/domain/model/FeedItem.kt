@@ -27,4 +27,7 @@ data class FeedItem(
     val densityScore: Double? = null,
     /** Agent/synth items only — surfaces the `[✨ AI Search Agent]` badge (S04/S05). */
     val agentTag: String? = null,
+    /** Canonical URL of the original article; null for synth items. Tapped in the reader
+     *  to open the source externally (Intent.ACTION_VIEW). */
+    val url: String? = null,
 )

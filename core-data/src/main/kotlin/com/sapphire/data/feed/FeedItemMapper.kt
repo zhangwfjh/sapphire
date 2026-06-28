@@ -24,4 +24,5 @@ internal fun FeedItemEntity.toDomain(): FeedItem = FeedItem(
     classification = classification,
     densityScore = densityScore,
     agentTag = agentTag,
+    url = url,
 )
