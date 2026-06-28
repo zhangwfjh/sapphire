@@ -64,6 +64,10 @@ class ReaderOpsUseCase(
      * Tier-1 classification (PRD §3.5). On reader open: if the item already has a
      * persisted classification, return it (no call). Else check the cache, then call.
      * Persists the result onto the item row so subsequent opens skip entirely.
+     *
+     * @param paragraphs resolved article body to classify. `null` (default) parses the
+     *  item's feed body (`bodyRaw ?: summary ?: title`); non-null uses the supplied
+     *  paragraphs verbatim (the reader forwards the full extracted body when available).
      */
     suspend fun classify(itemId: String, paragraphs: List<String>? = null): LlmOutcome<ClassificationResponse> {
         val item = items.item(itemId)
@@ -99,7 +103,13 @@ class ReaderOpsUseCase(
         }
     }
 
-    /** Tier-2 summary (PRD §3.4 [✨ Summary]). Cache-first; exactly three bullets. */
+    /**
+     * Tier-2 summary (PRD §3.4 [✨ Summary]). Cache-first; exactly three bullets.
+     *
+     * @param paragraphs resolved article body to summarize. `null` (default) parses the
+     *  item's feed body; non-null uses the supplied paragraphs verbatim (the reader
+     *  forwards the full extracted body when available).
+     */
     suspend fun summarize(itemId: String, paragraphs: List<String>? = null): LlmOutcome<SummaryResponse> {
         val key = LlmCacheKey.compute(itemId, OP_SUMMARY, tier2ModelVersion)
         cache.get(key)?.let { return decode(it, SummaryResponse.serializer()) }
@@ -128,6 +138,11 @@ class ReaderOpsUseCase(
      * per target language. The body is split into paragraphs and handed to the model with
      * the instruction to preserve boundaries; the returned [TranslateResponse] is the
      * interleaved-original/target stream the UI renders.
+     *
+     * @param paragraphs resolved article paragraphs to translate. `null` (default) parses
+     *  the item's feed body; non-null uses the supplied paragraphs verbatim, preserving
+     *  paragraph boundaries for the aligned output (the reader forwards the full extracted
+     *  body when available).
      */
     suspend fun translate(itemId: String, targetLanguage: String, paragraphs: List<String>? = null): LlmOutcome<TranslateResponse> {
         val op = "$OP_TRANSLATE:$targetLanguage"

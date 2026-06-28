@@ -104,11 +104,12 @@ class ReaderOpsUseCaseTest {
         val items = StubItems()  // default item: bodyRaw = "<p>Body one</p><p>Body two</p>"
         val useCase = useCase(llm, MemCache(), items)
 
-        useCase.classify("item-1", paragraphs = listOf("EXTRACTED FULL BODY"))
+        useCase.classify("item-1", paragraphs = listOf("FIRST EXTRACTED PARA", "SECOND EXTRACTED PARA"))
 
         assertEquals(1, llm.classifyCalls)
         val captured = llm.userPrompts.single()
-        assertTrue("supplied paragraphs should be used", captured.contains("EXTRACTED FULL BODY"))
+        assertTrue("supplied paragraphs should be used", captured.contains("FIRST EXTRACTED PARA") && captured.contains("SECOND EXTRACTED PARA"))
+        assertTrue("paragraphs should be joined with blank-line separator", captured.contains("\n\n"))
         assertTrue("feed body should NOT be used", !captured.contains("Body one"))
     }
 
