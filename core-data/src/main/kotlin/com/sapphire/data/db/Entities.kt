@@ -134,6 +134,7 @@ data class FeedItemEntity(
     @ColumnInfo(name = "classification") val classification: String? = null,
     @ColumnInfo(name = "density_score") val densityScore: Double? = null,
     @ColumnInfo(name = "agent_tag") val agentTag: String? = null,
+    @ColumnInfo(name = "url") val url: String? = null,
 )
 
 @Entity(

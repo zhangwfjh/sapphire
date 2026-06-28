@@ -20,7 +20,7 @@ import androidx.room.TypeConverters
         SavedItemEntity::class,
         DiscoveredFeedEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 @TypeConverters(EnumTypeConverter::class)

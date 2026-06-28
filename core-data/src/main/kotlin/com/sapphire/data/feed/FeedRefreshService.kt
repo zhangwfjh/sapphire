@@ -224,6 +224,7 @@ class FeedRefreshService @Inject constructor(
                 fetchedAt = now,
                 platformTag = c.platformTag,
                 mediaUrl = c.mediaUrl,
+                url = c.canonicalUrl,
             )
         }
         val rowIds = feedDao.insertItems(entities)
