@@ -116,13 +116,12 @@ class RoomSourceRepository @Inject constructor(
         title: String,
         url: String,
         kind: SourceKind,
-        enabled: Boolean,
     ): Outcome = withContext(Dispatchers.IO) {
         val cat = dao.sourceCategoryId(id) ?: ""
         if (dao.urlTakenInCategory(cat, url, id)) {
             Outcome.Conflict(cat)
         } else {
-            dao.updateSource(id, title, url, kind, enabled)
+            dao.updateSource(id, title, url, kind)
             Outcome.Ok
         }
     }
@@ -190,7 +189,6 @@ class RoomSourceRepository @Inject constructor(
                         kind = SourceKind.RSS,
                         url = s.url,
                         title = s.title,
-                        enabled = true,
                         healthState = HealthState.OK,
                     )
                 )
@@ -239,7 +237,6 @@ class RoomSourceRepository @Inject constructor(
             kind = kind,
             url = url,
             title = title,
-            enabled = true,
             healthState = HealthState.OK,
         )
 }
@@ -285,7 +282,6 @@ private fun SourceEntity.toDomain() = Source(
     url = url,
     title = title,
     configJson = configJson,
-    enabled = enabled,
     healthState = healthState,
     lastFetchedAt = lastFetchedAt,
     lastErrorAt = lastErrorAt,

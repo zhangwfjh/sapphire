@@ -13,7 +13,6 @@ data class Source(
     val url: String,
     val title: String?,
     val configJson: String? = null,
-    val enabled: Boolean = true,
     val healthState: HealthState = HealthState.OK,
     val lastFetchedAt: Long? = null,
     val lastErrorAt: Long? = null,

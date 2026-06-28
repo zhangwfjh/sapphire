@@ -6,7 +6,6 @@ import com.sapphire.domain.model.SourceKind
 sealed interface ReviewEdit {
     data class RenameFolder(val folderId: String, val name: String) : ReviewEdit
     data class DeleteFolder(val folderId: String) : ReviewEdit
-    data class ToggleFeed(val feedId: String, val enabled: Boolean) : ReviewEdit
     data class AddKeyword(val folderId: String, val text: String) : ReviewEdit
     data class RemoveKeyword(val keywordId: String) : ReviewEdit
     data class AddManualFeed(
@@ -34,16 +33,6 @@ object ReviewEditApplier {
 
             is ReviewEdit.DeleteFolder -> model.copy(
                 folders = model.folders.filter { it.id != edit.folderId },
-            )
-
-            is ReviewEdit.ToggleFeed -> model.copy(
-                folders = model.folders.map { f ->
-                    f.copy(
-                        feeds = f.feeds.map { feed ->
-                            if (feed.id == edit.feedId) feed.copy(enabled = edit.enabled) else feed
-                        }.toMutableList(),
-                    )
-                },
             )
 
             is ReviewEdit.AddKeyword -> {
@@ -78,7 +67,6 @@ object ReviewEditApplier {
                             title = edit.title.trim().ifBlank { edit.url },
                             url = edit.url.trim(),
                             kind = edit.kind,
-                            enabled = true,
                             userAdded = true,
                         )).toMutableList(),
                     )

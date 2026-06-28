@@ -7,7 +7,6 @@ import com.sapphire.domain.llm.TaxonomyResponse
 import com.sapphire.domain.model.SourceKind
 import com.sapphire.domain.util.IdGenerator
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,16 +22,6 @@ class ReviewEditApplierTest {
 
         assertEquals(1, edited.folders.size)
         assertEquals("Deep Tech", edited.folders[0].name)
-    }
-
-    @Test
-    fun `toggle feed flips enabled without touching siblings`() {
-        val model = sampleModel()
-        val feedId = model.folders[0].feeds[0].id
-        val edited = ReviewEditApplier.apply(model, ReviewEdit.ToggleFeed(feedId, enabled = false))
-
-        assertFalse(edited.folders[0].feeds[0].enabled)
-        assertTrue(edited.folders[1].feeds[0].enabled)
     }
 
     @Test
@@ -84,7 +73,7 @@ class ReviewEditApplierTest {
     }
 
     @Test
-    fun `add manual feed appends as userAdded and enabled`() {
+    fun `add manual feed appends as userAdded`() {
         val model = sampleModel()
         val folderId = model.folders[0].id
         val edited = ReviewEditApplier.apply(
@@ -98,7 +87,7 @@ class ReviewEditApplierTest {
         assertEquals("Mine", added.title)
         assertEquals("https://mine.com/rss", added.url)
         assertEquals(SourceKind.RSS, added.kind)
-        assertTrue(added.userAdded && added.enabled)
+        assertTrue(added.userAdded)
     }
 
     @Test

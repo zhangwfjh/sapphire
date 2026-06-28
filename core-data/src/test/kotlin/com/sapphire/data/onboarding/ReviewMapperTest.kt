@@ -9,7 +9,6 @@ import com.sapphire.domain.review.ReviewModel
 import com.sapphire.domain.util.IdGenerator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -26,7 +25,7 @@ class ReviewMapperTest {
                     name = "Tech",
                     keywords = mutableListOf(ReviewKeyword("kw-1", "llm", userAdded = false)),
                     feeds = mutableListOf(
-                        ReviewFeed("fd-1", "AI Blog", "https://ai.feed", SourceKind.RSS, enabled = true, userAdded = false),
+                        ReviewFeed("fd-1", "AI Blog", "https://ai.feed", SourceKind.RSS, userAdded = false),
                     ),
                 ),
             ),
@@ -58,32 +57,6 @@ class ReviewMapperTest {
         assertEquals(HealthState.OK, src.healthState)
         assertEquals(category.id, src.categoryId)
         assertEquals(batch.topic.id, src.topicId)
-        assertTrue(src.enabled)
-    }
-
-    @Test
-    fun `disabled feeds are persisted with enabled false`() {
-        val mapper = ReviewMapper(SequentialIds)
-        val review = ReviewModel(
-            topicPhrase = "AI",
-            folders = listOf(
-                ReviewFolder(
-                    id = "f1",
-                    name = "Tech",
-                    keywords = mutableListOf(),
-                    feeds = mutableListOf(
-                        ReviewFeed("fd-1", "On", "https://on.feed", SourceKind.RSS, enabled = true, userAdded = false),
-                        ReviewFeed("fd-2", "Off", "https://off.feed", SourceKind.RSS, enabled = false, userAdded = false),
-                    ),
-                ),
-            ),
-        )
-
-        val batch = mapper.map(review, now = 1_000L)
-
-        assertEquals(2, batch.sources.size)
-        assertTrue(batch.sources.first { it.title == "On" }.enabled)
-        assertFalse(batch.sources.first { it.title == "Off" }.enabled)
     }
 
     @Test
@@ -97,7 +70,7 @@ class ReviewMapperTest {
                     name = "Tech",
                     keywords = mutableListOf(ReviewKeyword("kw-1", "llm", userAdded = false)),
                     feeds = mutableListOf(
-                        ReviewFeed("fd-1", "AI Blog", "https://ai.feed", SourceKind.RSS, enabled = true, userAdded = false),
+                        ReviewFeed("fd-1", "AI Blog", "https://ai.feed", SourceKind.RSS, userAdded = false),
                     ),
                 ),
                 ReviewFolder(
@@ -105,7 +78,7 @@ class ReviewMapperTest {
                     name = "World",
                     keywords = mutableListOf(ReviewKeyword("kw-2", "geopolitics", userAdded = false)),
                     feeds = mutableListOf(
-                        ReviewFeed("fd-2", "BBC", "https://bbc.feed", SourceKind.RSS, enabled = true, userAdded = false),
+                        ReviewFeed("fd-2", "BBC", "https://bbc.feed", SourceKind.RSS, userAdded = false),
                     ),
                 ),
             ),

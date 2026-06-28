@@ -14,10 +14,6 @@ import com.sapphire.domain.util.IdGenerator
  * Single-level: each review folder becomes one Level-1 category (parent_id = null) with
  * its keywords and sources attached directly. IDs are minted via [IdGenerator] for
  * testability.
- *
- * Disabled feeds (user toggled off in the review wizard) are STILL inserted with
- * `enabled = false`. They're part of the user's curated world; the ingestion layer skips
- * them but they remain visible/editable in source management.
  */
 class ReviewMapper(private val ids: IdGenerator) {
 
@@ -55,7 +51,6 @@ class ReviewMapper(private val ids: IdGenerator) {
                     kind = feed.kind,
                     url = feed.url,
                     title = feed.title,
-                    enabled = feed.enabled,
                     healthState = HealthState.OK,
                 )
             }

@@ -229,7 +229,7 @@ private fun FolderPanel(folder: ReviewFolder, onEdit: (ReviewEdit) -> Unit) {
                 color = palette.OnInkFaint,
             )
         } else {
-            folder.feeds.forEach { feed -> FeedRow(feed, onEdit) }
+            folder.feeds.forEach { feed -> FeedRow(feed) }
         }
 
         // Keywords
@@ -354,27 +354,23 @@ private fun KeywordPill(text: String, userAdded: Boolean, onRemove: () -> Unit) 
 }
 
 @Composable
-private fun FeedRow(feed: ReviewFeed, onEdit: (ReviewEdit) -> Unit) {
+private fun FeedRow(feed: ReviewFeed) {
     val palette = LocalSapphirePalette.current
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(if (feed.enabled) palette.InkRaised.copy(alpha = 0.4f) else Color.Transparent)
+            .background(palette.InkRaised.copy(alpha = 0.4f))
             .border(1.dp, palette.InkStroke, RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        ToggleBox(
-            checked = feed.enabled,
-            onToggle = { onEdit(ReviewEdit.ToggleFeed(feed.id, it)) },
-        )
         Column(Modifier.weight(1f)) {
             Text(
                 feed.title,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (feed.enabled) palette.OnInk else palette.OnInkFaint,
+                color = palette.OnInk,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -385,28 +381,6 @@ private fun FeedRow(feed: ReviewFeed, onEdit: (ReviewEdit) -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-    }
-}
-
-@Composable
-private fun ToggleBox(checked: Boolean, onToggle: (Boolean) -> Unit) {
-    val palette = LocalSapphirePalette.current
-    Box(
-        Modifier
-            .size(18.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (checked) palette.Accent else Color.Transparent)
-            .border(
-                1.dp,
-                if (checked) palette.Accent else palette.InkStrokeStrong,
-                RoundedCornerShape(4.dp),
-            )
-            .clickable { onToggle(!checked) },
-        contentAlignment = Alignment.Center,
-    ) {
-        if (checked) {
-            Text("✓", color = Color.White, style = SapphireMono.Label, fontWeight = FontWeight.Bold)
         }
     }
 }

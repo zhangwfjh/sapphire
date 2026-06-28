@@ -96,11 +96,11 @@ class RoomFeedRepository @Inject constructor(
 }
 
 /**
- * Read access for enabled sources, used by [FeedRefreshService] to drive ingestion.
+ * Read access for all sources, used by [FeedRefreshService] to drive ingestion.
  * Kept narrow (only what ingest needs) rather than exposing the whole DAO.
  */
 interface SourceFeedQuery {
-    suspend fun enabledSources(): List<SourceEntity>
+    suspend fun allSources(): List<SourceEntity>
     suspend fun updateSourceFetchState(id: String, health: HealthState, now: Long, errorAt: Long?)
 }
 
@@ -109,8 +109,8 @@ class RoomSourceFeedQuery @Inject constructor(
     private val onboardingDao: OnboardingDao,
 ) : SourceFeedQuery {
 
-    override suspend fun enabledSources(): List<SourceEntity> = withContext(Dispatchers.IO) {
-        onboardingDao.enabledSources()
+    override suspend fun allSources(): List<SourceEntity> = withContext(Dispatchers.IO) {
+        onboardingDao.allSources()
     }
 
     override suspend fun updateSourceFetchState(

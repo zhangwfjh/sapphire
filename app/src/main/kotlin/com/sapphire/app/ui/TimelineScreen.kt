@@ -18,26 +18,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Markunread
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.ViewStream
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +41,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
@@ -86,10 +80,14 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.runtime.derivedStateOf
 
-private enum class FeedLayout { STREAM, MASONRY }
+private enum class FeedLayout(val label: String) {
+    LIST("List"),
+    MAGAZINE("Card"),
+}
 
 /**
- * Unified timeline. Two layout modes: single-column STREAM and two-column MASONRY.
+ * Unified timeline. Two view modes: LIST (dense one-line rows for high-density scanning)
+ * and MAGAZINE (thumbnail + title + summary). Switched via a dropdown in the top bar.
  *
  * Read model: an item becomes READ only on explicit action — opening the reader or the
  * manual mark button. Scrolling never marks read.
@@ -109,26 +107,22 @@ fun TimelineScreen(
 ) {
     val timeline by viewModel.visibleTimeline.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
-    val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     val filterLabel by viewModel.filterLabel.collectAsStateWithLifecycle()
     val hasAnyItems by viewModel.hasAnyItems.collectAsStateWithLifecycle()
+    val feedScope by viewModel.feedScope.collectAsStateWithLifecycle()
+    val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
 
     val listState = rememberLazyListState()
-    val gridState = rememberLazyStaggeredGridState()
     val snackbarHostState = remember { SnackbarHostState() }
     val sourcesDrawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val sourcesDrawerScope = rememberCoroutineScope()
-    var layout by rememberSaveable { mutableStateOf(FeedLayout.STREAM) }
+    var layout by rememberSaveable { mutableStateOf(FeedLayout.LIST) }
 
     // Show the jump-to-top FAB only once the user has scrolled below the first item.
     val showJumpToTop by remember {
         derivedStateOf {
-            when (layout) {
-                FeedLayout.STREAM -> listState.firstVisibleItemIndex > 0 ||
-                    listState.firstVisibleItemScrollOffset > 400
-                FeedLayout.MASONRY -> gridState.firstVisibleItemIndex > 0 ||
-                    gridState.firstVisibleItemScrollOffset > 400
-            }
+            listState.firstVisibleItemIndex > 0 ||
+                listState.firstVisibleItemScrollOffset > 400
         }
     }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
@@ -139,8 +133,22 @@ fun TimelineScreen(
     val selectedItems = remember { mutableStateMapOf<String, Boolean>() }
     val inSelection = selectedItems.any { it.value }
 
-    // Auto silent streaming refresh on first composition.
-    LaunchedEffect(Unit) { viewModel.refresh() }
+    // Shared per-item interaction handlers — identical across every layout variant, so the
+    // card plumbing is written once and passed to whichever card the active view renders.
+    fun itemToggleRead(item: com.sapphire.domain.model.FeedItem): () -> Unit = {
+        viewModel.toggleRead(item.hashUuid, item.readState == com.sapphire.domain.model.ReadState.READ)
+    }
+    fun itemOpen(item: com.sapphire.domain.model.FeedItem, isSelected: Boolean): () -> Unit = {
+        if (inSelection) {
+            selectedItems[item.hashUuid] = !isSelected
+        } else {
+            viewModel.markReadOnOpen(item.hashUuid)
+            openItemId = item.hashUuid
+        }
+    }
+    fun itemLongPress(item: com.sapphire.domain.model.FeedItem, isSelected: Boolean): () -> Unit = {
+        selectedItems[item.hashUuid] = !isSelected
+    }
 
     SourcesDrawer(
         drawerState = sourcesDrawerState,
@@ -180,17 +188,12 @@ fun TimelineScreen(
                 title = if (inSelection) "${selectedItems.count { it.value }} selected"
                     else filterLabel ?: "All Feeds",
                 inSelection = inSelection,
-                refreshing = refreshing,
-                layout = layout,
                 searchExpanded = searchExpanded,
                 onToggleSearch = {
                     searchExpanded = !searchExpanded
                     if (!searchExpanded) viewModel.setQuery("")
                 },
-                onToggleLayout = {
-                    layout = if (layout == FeedLayout.STREAM) FeedLayout.MASONRY else FeedLayout.STREAM
-                },
-                onRefresh = viewModel::refresh,
+                onMarkAllRead = viewModel::markAllVisibleRead,
                 onBuildFeed = onBuildFeed,
                 onOpenSources = { sourcesDrawerScope.launch { sourcesDrawerState.open() } },
                 onClearSelection = { selectedItems.clear() },
@@ -211,6 +214,12 @@ fun TimelineScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                ScopeChipsRow(
+                    scope = feedScope,
+                    onScopeChange = viewModel::setScope,
+                    layout = layout,
+                    onLayoutChange = { layout = it },
+                )
             if (searchExpanded && hasAnyItems && !inSelection) {
                 SearchRow(
                     query = query,
@@ -233,77 +242,32 @@ fun TimelineScreen(
                         onClear = { viewModel.setQuery(""); searchExpanded = false },
                     )
                     else -> PullToRefreshBox(
-                        // The pull gesture triggers a streaming refresh, but we do NOT bind
-                        // isRefreshing to the long-running pass — that would hold a blocking
-                        // spinner over the list and hide items as they stream in. The top-bar
-                        // refresh icon already signals progress; let the pull indicator
-                        // dismiss immediately so newly fetched items appear live.
-                        isRefreshing = false,
+                        // The pull gesture drives a silent streaming refresh; items appear
+                        // live as each source completes. Bind isRefreshing so the indicator
+                        // rotates for the duration of the pass and dismisses when it ends.
+                        isRefreshing = refreshing,
                         onRefresh = viewModel::refresh,
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        if (layout == FeedLayout.STREAM) {
-                            LazyColumn(
-                                state = listState,
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                items(items = timeline, key = { it.hashUuid }) { item ->
-                                    val isSelected = selectedItems[item.hashUuid] == true
-                                    FeedCard(
-                                        item = item,
-                                        selected = isSelected,
-                                        onToggleRead = {
-                                            viewModel.toggleRead(item.hashUuid, item.readState == com.sapphire.domain.model.ReadState.READ)
-                                        },
-                                        onOpen = {
-                                            if (inSelection) {
-                                                selectedItems[item.hashUuid] = !isSelected
-                                            } else {
-                                                viewModel.markReadOnOpen(item.hashUuid)
-                                                openItemId = item.hashUuid
-                                            }
-                                        },
-                                        onLongPress = {
-                                            selectedItems[item.hashUuid] = !isSelected
-                                        },
-                                    )
-                                }
-                                item { Spacer(Modifier.height(96.dp)) }
+                        // LIST / MAGAZINE — single column; only the card variant differs.
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(items = timeline, key = { it.hashUuid }) { item ->
+                                val isSelected = selectedItems[item.hashUuid] == true
+                                FeedCardFor(
+                                    layout = layout,
+                                    item = item,
+                                    selected = isSelected,
+                                    onToggleRead = itemToggleRead(item),
+                                    onOpen = itemOpen(item, isSelected),
+                                    onLongPress = itemLongPress(item, isSelected),
+                                )
                             }
-                        } else {
-                            LazyVerticalStaggeredGrid(
-                                columns = StaggeredGridCells.Fixed(2),
-                                state = gridState,
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(12.dp),
-                                verticalItemSpacing = 8.dp,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                items(items = timeline, key = { it.hashUuid }) { item ->
-                                    val isSelected = selectedItems[item.hashUuid] == true
-                                    MasonryFeedCard(
-                                        item = item,
-                                        selected = isSelected,
-                                        onToggleRead = {
-                                            viewModel.toggleRead(item.hashUuid, item.readState == com.sapphire.domain.model.ReadState.READ)
-                                        },
-                                        onOpen = {
-                                            if (inSelection) {
-                                                selectedItems[item.hashUuid] = !isSelected
-                                            } else {
-                                                viewModel.markReadOnOpen(item.hashUuid)
-                                                openItemId = item.hashUuid
-                                            }
-                                        },
-                                        onLongPress = {
-                                            selectedItems[item.hashUuid] = !isSelected
-                                        },
-                                    )
-                                }
-                                item { Spacer(Modifier.height(96.dp)) }
-                            }
+                            item { Spacer(Modifier.height(96.dp)) }
                         }
                     }
                 }
@@ -312,13 +276,7 @@ fun TimelineScreen(
                 JumpToTopFab(
                     visible = showJumpToTop,
                     onJump = {
-                        sourcesDrawerScope.launch {
-                            if (layout == FeedLayout.STREAM) {
-                                listState.animateScrollToItem(0)
-                            } else {
-                                gridState.animateScrollToItem(0)
-                            }
-                        }
+                        sourcesDrawerScope.launch { listState.animateScrollToItem(0) }
                     },
                 )
             }
@@ -366,12 +324,9 @@ private fun JumpToTopFab(
 private fun TimelineTopBar(
     title: String,
     inSelection: Boolean,
-    refreshing: Boolean,
-    layout: FeedLayout,
     searchExpanded: Boolean,
     onToggleSearch: () -> Unit,
-    onToggleLayout: () -> Unit,
-    onRefresh: () -> Unit,
+    onMarkAllRead: () -> Unit,
     onBuildFeed: () -> Unit,
     onOpenSources: () -> Unit,
     onClearSelection: () -> Unit,
@@ -417,24 +372,11 @@ private fun TimelineTopBar(
                     val desc = if (searchExpanded) "Close search" else "Search feed"
                     Icon(icon, contentDescription = desc, tint = palette.OnInkMuted)
                 }
-                IconButton(onClick = onToggleLayout) {
-                    val icon = if (layout == FeedLayout.STREAM) Icons.Outlined.ViewStream else Icons.Filled.Dashboard
-                    val desc = if (layout == FeedLayout.STREAM) "Masonry layout" else "Stream layout"
-                    Icon(icon, contentDescription = desc, tint = palette.OnInkMuted)
+                IconButton(onClick = onMarkAllRead) {
+                    Icon(Icons.Filled.DoneAll, contentDescription = "Mark all as read", tint = palette.OnInkMuted)
                 }
                 IconButton(onClick = onBuildFeed) {
                     Icon(Icons.Filled.Add, contentDescription = "Curate new topic", tint = palette.OnInkMuted)
-                }
-                IconButton(onClick = onRefresh, enabled = !refreshing) {
-                    if (refreshing) {
-                        CircularProgressIndicator(
-                            Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = palette.Accent,
-                        )
-                    } else {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = palette.OnInkMuted)
-                    }
                 }
             }
         },
@@ -608,5 +550,103 @@ private fun NoSearchMatches(
             )
             SecondaryActionButton(onClick = onClear, text = "Clear search")
         }
+    }
+}
+
+/**
+ * Control row beneath the top bar: scope chips (All / Unread / Saved) on the left, a
+ * layout toggle (List / Magazine) on the right. The layout toggle shares the row with
+ * the scope chips rather than living in the top bar, so the whole filter/surface surface
+ * is one glance. Custom pills (not Material FilterChip) to match the Sapphire identity.
+ */
+@Composable
+private fun ScopeChipsRow(
+    scope: FeedScope,
+    onScopeChange: (FeedScope) -> Unit,
+    layout: FeedLayout,
+    onLayoutChange: (FeedLayout) -> Unit,
+) {
+    val palette = LocalSapphirePalette.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val scopeOptions = listOf(
+            FeedScope.ALL to "All",
+            FeedScope.UNREAD to "Unread",
+            FeedScope.SAVED to "Saved",
+        )
+        // Scope button group — All / Unread / Saved as a compact connected pill row.
+        // Built custom (not Material3 SegmentedButton) so the horizontal padding stays
+        // tight across three short labels; SegmentedButton's baked ~24dp/side padding
+        // makes a 3-segment group run ~80% wider than the 2-segment layout group.
+        Row(
+            modifier = Modifier
+                .height(28.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .border(1.dp, palette.InkStroke, RoundedCornerShape(8.dp)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            scopeOptions.forEachIndexed { index, (value, label) ->
+                val active = scope == value
+                Text(
+                    label,
+                    style = SapphireMono.Label,
+                    color = if (active) Color.White else palette.OnInkMuted,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier
+                        .background(if (active) palette.Accent else Color.Transparent)
+                        .clickable { onScopeChange(value) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        // Layout button group — List / Card, same compact connected pill style as scope.
+        Row(
+            modifier = Modifier
+                .height(28.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .border(1.dp, palette.InkStroke, RoundedCornerShape(8.dp)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FeedLayout.entries.forEach { mode ->
+                val active = layout == mode
+                Text(
+                    mode.label,
+                    style = SapphireMono.Label,
+                    color = if (active) Color.White else palette.OnInkMuted,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier
+                        .background(if (active) palette.Accent else Color.Transparent)
+                        .clickable { onLayoutChange(mode) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+
+
+/**
+ * Card dispatcher for the single-column layouts (LIST / EXPANDED / MAGAZINE / NEWSPAPER).
+ * Mosaic renders its own grid cell elsewhere. Keeps the LazyColumn item lambda to one call.
+ */
+@Composable
+private fun FeedCardFor(
+    layout: FeedLayout,
+    item: com.sapphire.domain.model.FeedItem,
+    selected: Boolean,
+    onToggleRead: () -> Unit,
+    onOpen: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    when (layout) {
+        FeedLayout.LIST -> ListFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
+        FeedLayout.MAGAZINE -> MagazineFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
     }
 }

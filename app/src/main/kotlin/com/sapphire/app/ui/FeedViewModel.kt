@@ -38,6 +38,10 @@ class FeedViewModel @Inject constructor(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    /** Active read-state scope chip (All / Unread / Saved). Applied client-side. */
+    private val _scope = MutableStateFlow(FeedScope.ALL)
+    val feedScope: StateFlow<FeedScope> = _scope.asStateFlow()
+
     /** Active source/category filter; null = unified timeline (all sources). */
     private val _filter = MutableStateFlow<FeedFilter?>(null)
 
@@ -51,11 +55,15 @@ class FeedViewModel @Inject constructor(
             }
         },
         _query,
-    ) { items, q -> items.filterByQuery(q) }
+        _scope,
+    ) { items, q, scope -> items.filterByQuery(q).filterByScope(scope) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Update the in-feed search query. Blank restores the full (filtered) timeline. */
     fun setQuery(q: String) { _query.value = q }
+
+    /** Set the read-state scope chip (All / Unread / Saved). */
+    fun setScope(scope: FeedScope) { _scope.value = scope }
 
     fun setSourceFilter(sourceId: String, label: String) {
         _filter.value = FeedFilter.BySource(sourceId)
@@ -91,6 +99,14 @@ class FeedViewModel @Inject constructor(
     /** True while a refresh pass is in flight (manual or auto). Drives the spinner only. */
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+
+    init {
+        // One silent streaming refresh per VM lifetime. The VM is scoped to the FEED
+        // NavBackStackEntry, which survives navigation, so this fires only on the genuine
+        // first entry to the feed — not on every return from another screen (e.g. the +
+        // / onboarding flow), which would needlessly re-fetch.
+        refresh()
+    }
 
     /**
      * Silent streaming refresh: fetches sources concurrently and inserts items as each
@@ -144,6 +160,18 @@ class FeedViewModel @Inject constructor(
     fun deleteItems(itemIds: Collection<String>) {
         viewModelScope.launch { repository.deleteItems(itemIds) }
     }
+
+    /**
+     * Mark every item currently in the visible timeline READ — the top-bar "mark all as
+     * read" sweep. Respects the active source/category filter and the scope chip, so e.g.
+     * in UNREAD scope it clears the visible unread queue. Undo is not offered here (the
+     * action is explicit and the items remain in the timeline, just read).
+     */
+    fun markAllVisibleRead() {
+        val ids = visibleTimeline.value.map { it.hashUuid }
+        if (ids.isEmpty()) return
+        viewModelScope.launch { repository.markReadBatch(ids) }
+    }
 }
 
 /** Active timeline filter applied from the sources drawer. */
@@ -151,4 +179,14 @@ sealed interface FeedFilter {
     data class BySource(val sourceId: String) : FeedFilter
     data class BySourceIds(val sourceIds: Set<String>) : FeedFilter
     data class ByCategory(val categoryIds: Set<String>) : FeedFilter
+}
+
+/** Read-state scope for the timeline filter-chip row (All / Unread / Saved). */
+enum class FeedScope { ALL, UNREAD, SAVED }
+
+/** Client-side scope filter applied after the source/category + query filters. */
+private fun List<FeedItem>.filterByScope(scope: FeedScope): List<FeedItem> = when (scope) {
+    FeedScope.ALL -> this
+    FeedScope.UNREAD -> filter { it.readState == com.sapphire.domain.model.ReadState.UNREAD }
+    FeedScope.SAVED -> filter { it.savedLater }
 }

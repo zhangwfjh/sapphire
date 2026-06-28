@@ -72,7 +72,6 @@ interface SourceRepository {
         title: String,
         url: String,
         kind: SourceKind,
-        enabled: Boolean,
     ): Outcome
 
     suspend fun moveSource(id: String, toCategoryId: String): Outcome
