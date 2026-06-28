@@ -24,7 +24,9 @@ import javax.inject.Inject
  * S03 reader-sheet state (PRD §3.4 / §3.5, architecture §9).
  *
  * Lazy-compute lifecycle:
- * - [open] loads the item body + kicks Tier-1 classification. While classification runs
+ * - [open] resolves the article body first: a cached extraction is reused; otherwise the
+ *   full article is fetched + extracted on demand (and cached); on any failure the feed
+ *   body is used. Only then does it kick Tier-1 classification. While classification runs
  *   the macro slot shows shimmer (PRD §3.5); the chat input is interactive immediately.
  * - [summarize] / [translate] fire Tier-2 on tap. Results are cached by the use case, so
  *   a re-open or re-tap is a free cache hit (PRD §4.2 idempotent).
@@ -87,19 +89,23 @@ class ReaderViewModel @Inject constructor(
                     }
                 }
             }
-
-            _state.value = ReaderUiState.Open(
-                item = item,
-                paragraphs = paragraphs,
-                classification = ClassificationState.Loading,
-                macros = emptyList(),
-                summary = null,
-                translate = null,
-                translateVisible = false,
-                savedLater = item.savedLater,
-                extraction = extraction,
-            )
-            classify(itemId)
+            // Guard: if the user dismissed the sheet or opened a different item while we
+            // were extracting, drop this late write rather than resurrect a stale Open.
+            val stillCurrent = (_state.value as? ReaderUiState.Open)?.item?.hashUuid == itemId
+            if (stillCurrent) {
+                _state.value = ReaderUiState.Open(
+                    item = item,
+                    paragraphs = paragraphs,
+                    classification = ClassificationState.Loading,
+                    macros = emptyList(),
+                    summary = null,
+                    translate = null,
+                    translateVisible = false,
+                    savedLater = item.savedLater,
+                    extraction = extraction,
+                )
+                classify(itemId)
+            }
         }
     }
 
