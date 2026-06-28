@@ -3,6 +3,8 @@ package com.sapphire.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sapphire.domain.explore.ExploreCatalogRepository
+import com.sapphire.domain.explore.FeedPreview
+import com.sapphire.domain.explore.FeedPreviewResult
 import com.sapphire.domain.explore.ExploreFeed
 import com.sapphire.domain.explore.ExploreSection
 import com.sapphire.domain.explore.SearchFeedsUseCase
@@ -49,6 +51,18 @@ sealed interface SubscribeResult {
     data object Conflict : SubscribeResult
 }
 
+/** One-shot feed-preview state for the "peek before subscribe" sheet. */
+sealed interface PreviewState {
+    data object Idle : PreviewState
+    data class Loading(val feed: ExploreFeed) : PreviewState
+    data class Loaded(
+        val feed: ExploreFeed,
+        val items: List<com.sapphire.domain.explore.FeedPreviewItem>,
+    ) : PreviewState
+    data class Empty(val feed: ExploreFeed) : PreviewState
+    data class Failed(val feed: ExploreFeed) : PreviewState
+}
+
 /**
  * Holds Explore state: catalog browse rails (curated + discovered), search query/results,
  * the already-subscribed URL set (drives "Added" card state), and the category list the
@@ -60,6 +74,7 @@ class ExploreViewModel @Inject constructor(
     private val catalogRepository: ExploreCatalogRepository,
     private val sourceRepository: SourceRepository,
     private val searchFeeds: SearchFeedsUseCase,
+    private val feedPreview: FeedPreview,
 ) : ViewModel() {
 
     /** Normalized URLs of sources already subscribed, for "Added" state. */
@@ -67,6 +82,16 @@ class ExploreViewModel @Inject constructor(
         .map { tree ->
             tree.flatMap { it.sources }
                 .map { normalizeSourceUrl(it.source.url) }
+                .toSet()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+    /** Normalized URLs surfaced by the curated + discovered rails. Search results that
+     *  duplicate a rail are dropped — the user can subscribe from the rail directly. */
+    private val catalogUrls: StateFlow<Set<String>> = catalogRepository.observeCatalog()
+        .map { catalog ->
+            catalog.flatMap { it.feeds }
+                .map { normalizeSourceUrl(it.url) }
                 .toSet()
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
@@ -104,14 +129,23 @@ class ExploreViewModel @Inject constructor(
     private val _searchState = MutableStateFlow(SearchState.IDLE)
     val searchState: StateFlow<SearchState> = _searchState.asStateFlow()
 
-    private val _searchResults = MutableStateFlow<List<ExploreFeedUi>>(emptyList())
-    val searchResults: StateFlow<List<ExploreFeedUi>> = _searchResults.asStateFlow()
+    private val _rawSearchFeeds = MutableStateFlow<List<ExploreFeed>>(emptyList())
+
+    /** Search results with per-feed subscribed flags resolved reactively — so a card flips
+     *  to its "Added" state the moment its subscribe completes, matching the browse rails. */
+    val searchResults: StateFlow<List<ExploreFeedUi>> =
+        combine(_rawSearchFeeds, subscribedUrls) { feeds, subs ->
+            feeds.map { feed -> ExploreFeedUi(feed, normalizeSourceUrl(feed.url) in subs) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _searchError = MutableStateFlow<String?>(null)
     val searchError: StateFlow<String?> = _searchError.asStateFlow()
 
     private val _subscribeResult = MutableStateFlow<SubscribeResult?>(null)
     val subscribeResult: StateFlow<SubscribeResult?> = _subscribeResult.asStateFlow()
+
+    private val _previewState = MutableStateFlow<PreviewState>(PreviewState.Idle)
+    val previewState: StateFlow<PreviewState> = _previewState.asStateFlow()
 
     fun search(query: String) {
         if (query.isBlank()) return
@@ -123,20 +157,23 @@ class ExploreViewModel @Inject constructor(
                     _searchState.value = if (outcome.error is LlmError.Empty) SearchState.EMPTY else SearchState.ERROR
                 }
                 is LlmOutcome.Ok -> {
-                    val subs = subscribedUrls.value
-                    _searchResults.value = outcome.value.map { feed ->
-                        ExploreFeedUi(
-                            feed = ExploreFeed(
+                    val known = subscribedUrls.value + catalogUrls.value
+                    val feeds = outcome.value
+                        // Drop dupes of an already-subscribed or already-shown rail feed;
+                        // the user can act on those from the browse view directly.
+                        .filter { normalizeSourceUrl(it.url) !in known }
+                        .distinctBy { normalizeSourceUrl(it.url) }
+                        .map { feed ->
+                            ExploreFeed(
                                 title = feed.title,
                                 url = feed.url,
                                 kind = parseSourceKind(feed.kind),
                                 description = feed.description,
                                 language = null,
-                            ),
-                            subscribed = normalizeSourceUrl(feed.url) in subs,
-                        )
-                    }
-                    _searchState.value = if (_searchResults.value.isEmpty()) SearchState.EMPTY else SearchState.RESULTS
+                            )
+                        }
+                    _rawSearchFeeds.value = feeds
+                    _searchState.value = if (feeds.isEmpty()) SearchState.EMPTY else SearchState.RESULTS
                 }
             }
         }
@@ -144,7 +181,7 @@ class ExploreViewModel @Inject constructor(
 
     fun clearSearch() {
         _searchState.value = SearchState.IDLE
-        _searchResults.value = emptyList()
+        _rawSearchFeeds.value = emptyList()
         _searchError.value = null
     }
 
@@ -177,4 +214,24 @@ class ExploreViewModel @Inject constructor(
     }
 
     fun consumeSubscribeResult() { _subscribeResult.value = null }
+
+    /**
+     * Fetch a feed live and expose its most recent items for a "peek before subscribe" view.
+     * Idempotent re-open for the same feed is a no-op; switching to a new feed reloads.
+     */
+    fun preview(feed: ExploreFeed) {
+        val current = _previewState.value
+        if (current is PreviewState.Loading && current.feed.url == feed.url) return
+        if (current is PreviewState.Loaded && current.feed.url == feed.url) return
+        _previewState.value = PreviewState.Loading(feed)
+        viewModelScope.launch {
+            _previewState.value = when (val result = feedPreview.preview(feed.url, feed.kind)) {
+                is FeedPreviewResult.Loaded -> PreviewState.Loaded(feed, result.items)
+                FeedPreviewResult.Empty -> PreviewState.Empty(feed)
+                FeedPreviewResult.Failed -> PreviewState.Failed(feed)
+            }
+        }
+    }
+
+    fun clearPreview() { _previewState.value = PreviewState.Idle }
 }
