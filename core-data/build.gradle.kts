@@ -42,6 +42,7 @@ dependencies {
     implementation(libs.retrofit.serialization.converter)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+    implementation(libs.readability4j)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
 
@@ -49,4 +50,5 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.okhttp.mockwebserver)
 }
