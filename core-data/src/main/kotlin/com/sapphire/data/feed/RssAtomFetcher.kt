@@ -79,7 +79,12 @@ class RssAtomFetcher @Inject constructor(
         var content: String? = null
         var author: String? = null
         var pubDate: String? = null
-        var mediaUrl: String? = null
+        // Media candidates — picked in priority order at the end (enclosure > media:content
+        // > thumbnail > first <img> in body HTML). Most preview imagery in the wild comes
+        // from enclosure or an inline <img>, so all four are tracked.
+        var enclosureUrl: String? = null
+        var mediaContentUrl: String? = null
+        var thumbnailUrl: String? = null
 
         while (!(parser.eventType == XmlPullParser.END_TAG && parser.name.relaxed() == "item")) {
             if (parser.eventType == XmlPullParser.START_TAG) {
@@ -87,17 +92,45 @@ class RssAtomFetcher @Inject constructor(
                     "title" -> title = parser.nextText().trim().nullIfBlank()
                     "link" -> link = parser.nextText().trim().nullIfBlank()
                     "description" -> description = parser.nextText().trim().nullIfBlank()
-                    "content" -> content = parser.nextText().trim().nullIfBlank()
                     "encoded" -> content = parser.nextText().trim().nullIfBlank() // content:encoded
                     "creator" -> author = parser.nextText().trim().nullIfBlank() // dc:creator
                     "author" -> author = parseRssAuthor(parser.nextText().trim())
                     "pubdate", "date" -> pubDate = parser.nextText().trim().nullIfBlank()
-                    "thumbnail" -> mediaUrl = parser.getAttributeValue(null, "url")
-                        ?: mediaUrl
+                    "enclosure" -> {
+                        val url = parser.getAttributeValue(null, "url")
+                        val type = parser.getAttributeValue(null, "type")?.lowercase()
+                        if (url != null && (type?.startsWith("image/") == true ||
+                                (type == null && looksLikeImageUrl(url)))) {
+                            enclosureUrl = url
+                        }
+                    }
+                    "content" -> {
+                        // media:content carries a `url` attr (image); Atom <content> / misused
+                        // <content> carries body text. Disambiguate by attribute presence so
+                        // media:content no longer clobbers body content via nextText().
+                        val url = parser.getAttributeValue(null, "url")
+                        if (url != null) {
+                            val medium = parser.getAttributeValue(null, "medium")?.lowercase()
+                            val type = parser.getAttributeValue(null, "type")?.lowercase()
+                            if (medium == "image" || type?.startsWith("image/") == true ||
+                                looksLikeImageUrl(url)) {
+                                mediaContentUrl = url
+                            }
+                        }
+                    }
+                    "thumbnail" -> {
+                        val url = parser.getAttributeValue(null, "url")
+                        if (url != null) thumbnailUrl = url
+                    }
                 }
             }
             parser.next()
         }
+        val body = content ?: description
+        val mediaUrl = enclosureUrl
+            ?: mediaContentUrl
+            ?: thumbnailUrl
+            ?: body?.let(::firstImgSrc)
         return FeedItemCandidate(
             title = title?.stripHtml() ?: "(untitled)",
             summary = description?.stripHtml(),
@@ -119,6 +152,7 @@ class RssAtomFetcher @Inject constructor(
         var author: String? = null
         var updated: String? = null
         var published: String? = null
+        var enclosureUrl: String? = null
 
         while (!(parser.eventType == XmlPullParser.END_TAG && parser.name.relaxed() == "entry")) {
             if (parser.eventType == XmlPullParser.START_TAG) {
@@ -130,17 +164,26 @@ class RssAtomFetcher @Inject constructor(
                     "published" -> published = parser.nextText().trim().nullIfBlank()
                     "updated" -> updated = parser.nextText().trim().nullIfBlank()
                     "link" -> {
-                        // Prefer rel="alternate" (the permalink); fall back to first link.
                         val rel = parser.getAttributeValue(null, "rel")
                         val href = parser.getAttributeValue(null, "href")
-                        if (href != null && (rel == null || rel == "alternate")) {
-                            if (link == null) link = href
+                        if (href != null) {
+                            // Image enclosures surface as <link rel="enclosure" type="image/*">.
+                            val type = parser.getAttributeValue(null, "type")?.lowercase()
+                            if (rel == "enclosure" && (type?.startsWith("image/") == true ||
+                                    looksLikeImageUrl(href))) {
+                                if (enclosureUrl == null) enclosureUrl = href
+                            } else if (rel == null || rel == "alternate") {
+                                // Prefer rel="alternate" (the permalink); fall back to first link.
+                                if (link == null) link = href
+                            }
                         }
                     }
                 }
             }
             parser.next()
         }
+        val body = content ?: summary
+        val mediaUrl = enclosureUrl ?: body?.let(::firstImgSrc)
         return FeedItemCandidate(
             title = title?.stripHtml() ?: "(untitled)",
             summary = summary?.stripHtml() ?: content?.stripHtml(),
@@ -148,7 +191,7 @@ class RssAtomFetcher @Inject constructor(
             authorHandle = author,
             publishedAt = (published ?: updated)?.let(::parseIso8601),
             platformTag = null,
-            mediaUrl = null,
+            mediaUrl = mediaUrl,
             bodyRaw = content,
         )
     }

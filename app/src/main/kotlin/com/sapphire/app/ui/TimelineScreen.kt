@@ -82,12 +82,12 @@ import androidx.compose.runtime.derivedStateOf
 
 private enum class FeedLayout(val label: String) {
     LIST("List"),
-    MAGAZINE("Card"),
+    CARD("Card"),
 }
 
 /**
  * Unified timeline. Two view modes: LIST (dense one-line rows for high-density scanning)
- * and MAGAZINE (thumbnail + title + summary). Switched via a dropdown in the top bar.
+ * and CARD (hero image + title + summary). Switched via a dropdown in the top bar.
  *
  * Read model: an item becomes READ only on explicit action — opening the reader or the
  * manual mark button. Scrolling never marks read.
@@ -249,7 +249,7 @@ fun TimelineScreen(
                         onRefresh = viewModel::refresh,
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        // LIST / MAGAZINE — single column; only the card variant differs.
+                        // LIST / CARD — single column; only the card variant differs.
                         LazyColumn(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
@@ -555,7 +555,7 @@ private fun NoSearchMatches(
 
 /**
  * Control row beneath the top bar: scope chips (All / Unread / Saved) on the left, a
- * layout toggle (List / Magazine) on the right. The layout toggle shares the row with
+ * layout toggle (List / Card) on the right. The layout toggle shares the row with
  * the scope chips rather than living in the top bar, so the whole filter/surface surface
  * is one glance. Custom pills (not Material FilterChip) to match the Sapphire identity.
  */
@@ -633,7 +633,7 @@ private fun ScopeChipsRow(
 
 
 /**
- * Card dispatcher for the single-column layouts (LIST / EXPANDED / MAGAZINE / NEWSPAPER).
+ * Card dispatcher for the single-column layouts (LIST / CARD).
  * Mosaic renders its own grid cell elsewhere. Keeps the LazyColumn item lambda to one call.
  */
 @Composable
@@ -647,6 +647,6 @@ private fun FeedCardFor(
 ) {
     when (layout) {
         FeedLayout.LIST -> ListFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
-        FeedLayout.MAGAZINE -> MagazineFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
+        FeedLayout.CARD -> CardFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
     }
 }
