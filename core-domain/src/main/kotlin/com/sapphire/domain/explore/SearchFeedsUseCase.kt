@@ -6,7 +6,6 @@ import com.sapphire.domain.llm.LlmClient
 import com.sapphire.domain.llm.LlmError
 import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.llm.LlmTier
-import java.net.URI
 
 /**
  * Explore search — turn a topic or URL into a list of feed matches.
@@ -22,14 +21,13 @@ class SearchFeedsUseCase(
         val cleaned = query.trim()
         if (cleaned.isEmpty()) return LlmOutcome.Err(LlmError.Empty("Type a topic or paste a feed URL."))
 
-        val asUrl = parseAsUrl(cleaned)
+        val asUrl = parseUrlFeed(cleaned)
         if (asUrl != null) {
-            val title = asUrl.host.lowercase() + (asUrl.path?.takeIf { it.isNotEmpty() && it != "/" } ?: "")
             return LlmOutcome.Ok(
                 listOf(
                     FeedSearchResult(
-                        title = title,
-                        url = cleaned,
+                        title = asUrl.title,
+                        url = asUrl.url,
                         kind = "rss",
                         description = null,
                     ),
@@ -54,14 +52,6 @@ class SearchFeedsUseCase(
         }
     }
 
-    private fun parseAsUrl(value: String): URI? {
-        val withScheme = if (value.contains("://")) value else "https://$value"
-        val parsed = runCatching { URI(withScheme) }.getOrNull() ?: return null
-        val host = parsed.host ?: return null
-        if (!host.contains('.')) return null
-        if (!value.contains("://") && !value.contains("/")) return null
-        return parsed
-    }
 
     private fun userPrompt(topic: String) = "Topic: $topic"
 
