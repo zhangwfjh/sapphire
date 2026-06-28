@@ -171,6 +171,8 @@ abstract class RepositoryBindingsModule {
     abstract fun bindExploreCatalogRepository(impl: com.sapphire.data.explore.RoomExploreCatalogRepository): com.sapphire.domain.explore.ExploreCatalogRepository
     @Binds
     abstract fun bindDiscoveredFeedRepository(impl: com.sapphire.data.explore.RoomDiscoveredFeedRepository): com.sapphire.domain.explore.DiscoveredFeedRepository
+    @Binds
+    abstract fun bindFeedPreview(impl: com.sapphire.data.explore.FetcherFeedPreview): com.sapphire.domain.explore.FeedPreview
 }
 
 /**

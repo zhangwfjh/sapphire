@@ -50,7 +50,10 @@ fun SapphireNavHost() {
             )
         }
         composable(Routes.EXPLORE) {
-            ExploreScreen(onBack = { navController.popBackStack() })
+            ExploreScreen(
+                onBack = { navController.popBackStack() },
+                onCurateTopic = { navController.navigate(Routes.ONBOARDING) },
+            )
         }
         composable(Routes.SAVED) {
             SavedItemsScreen(onBack = { navController.popBackStack() })
