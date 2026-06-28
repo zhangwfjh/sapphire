@@ -60,15 +60,14 @@ class SourceDaoTest {
     }
 
     @Test
-    fun `updateSource changes title url kind and enabled`() = runTest {
+    fun `updateSource changes title url and kind`() = runTest {
         seed()
-        dao.updateSource("s1", "Renamed", "https://new.url", SourceKind.ATOM, enabled = false)
+        dao.updateSource("s1", "Renamed", "https://new.url", SourceKind.ATOM)
 
         val src = dao.observeSources().first().first { it.id == "s1" }
         assertEquals("Renamed", src.title)
         assertEquals("https://new.url", src.url)
         assertEquals(SourceKind.ATOM, src.kind)
-        assertFalse(src.enabled)
     }
 
     @Test

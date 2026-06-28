@@ -76,11 +76,10 @@ interface SourceDao {
         UPDATE source SET
             title = :title,
             url = :url,
-            kind = :kind,
-            enabled = :enabled
+            kind = :kind
         WHERE id = :id
     """)
-    suspend fun updateSource(id: String, title: String, url: String, kind: SourceKind, enabled: Boolean)
+    suspend fun updateSource(id: String, title: String, url: String, kind: SourceKind)
 
     @Query("UPDATE source SET category_id = :toCategoryId WHERE id = :id")
     suspend fun moveSource(id: String, toCategoryId: String)

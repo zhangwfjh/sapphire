@@ -94,7 +94,6 @@ data class SourceEntity(
     @ColumnInfo(name = "url") val url: String,
     @ColumnInfo(name = "title") val title: String?,
     @ColumnInfo(name = "config_json") val configJson: String? = null,
-    @ColumnInfo(name = "enabled") val enabled: Boolean = true,
     @ColumnInfo(name = "health_state") val healthState: HealthState = HealthState.OK,
     @ColumnInfo(name = "last_fetched_at") val lastFetchedAt: Long? = null,
     @ColumnInfo(name = "last_error_at") val lastErrorAt: Long? = null,

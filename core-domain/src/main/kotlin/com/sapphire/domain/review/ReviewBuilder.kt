@@ -39,7 +39,6 @@ class ReviewBuilder(private val ids: IdGenerator) {
                             title = feed.title.trim(),
                             url = feed.url,
                             kind = parseSourceKind(feed.kind),
-                            enabled = true,
                             userAdded = false,
                         )
                     }

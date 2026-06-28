@@ -146,7 +146,7 @@ class FeedRefreshServiceTest {
         assertEquals(0, outcome.totalNew)
         assertEquals(1, outcome.errors.size)
 
-        val src = sources.enabledSources().first()
+        val src = sources.allSources().first()
         assertEquals(HealthState.FAILED, src.healthState)
         assertNotNull(src.lastErrorAt)
     }
@@ -158,7 +158,7 @@ class FeedRefreshServiceTest {
         refresh = FeedRefreshService(FetcherRegistry.forTesting(mapOf(SourceKind.RSS to fetcher)), feedDao, sources)
 
         refresh.refreshAll()
-        val src = sources.enabledSources().first()
+        val src = sources.allSources().first()
         assertEquals(HealthState.OK, src.healthState)
         assertNull(src.lastErrorAt)
     }

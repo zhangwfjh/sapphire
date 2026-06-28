@@ -66,7 +66,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Modifier
@@ -251,8 +250,8 @@ fun SourcesDrawer(
         is DrawerDialog.EditSource -> EditSourceDialog(
             source = d.source,
             onDismiss = { dialog = null },
-            onSave = { title, url, kind, enabled ->
-                viewModel.updateSource(d.source.id, title, url, kind, enabled)
+            onSave = { title, url, kind ->
+                viewModel.updateSource(d.source.id, title, url, kind)
                 dialog = null
             },
         )
@@ -924,15 +923,15 @@ private fun SourceRow(
                 Icon(
                     Icons.Outlined.RssFeed,
                     contentDescription = null,
-                    tint = if (source.enabled) palette.OnInkMuted else palette.OnInkFaint,
-                    modifier = Modifier.size(14.dp).alpha(if (source.enabled) 1f else 0.4f),
+                    tint = palette.OnInkMuted,
+                    modifier = Modifier.size(14.dp),
                 )
                 Spacer(Modifier.width(6.dp))
             }
             Text(
                 title,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (source.enabled) palette.OnInk else palette.OnInkMuted,
+                color = palette.OnInk,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1017,12 +1016,11 @@ private fun BoxScope.SwipeActionSurface(
 private fun EditSourceDialog(
     source: Source,
     onDismiss: () -> Unit,
-    onSave: (title: String, url: String, kind: SourceKind, enabled: Boolean) -> Unit,
+    onSave: (title: String, url: String, kind: SourceKind) -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
     var title by rememberSaveable { mutableStateOf(source.title ?: "") }
     var url by rememberSaveable { mutableStateOf(source.url) }
-    var enabled by rememberSaveable { mutableStateOf(source.enabled) }
     var kind by remember { mutableStateOf(source.kind) }
 
     AlertDialog(
@@ -1037,17 +1035,10 @@ private fun EditSourceDialog(
                 DrawerTextField(url, "URL") { url = it }
                 Spacer(Modifier.height(8.dp))
                 KindPicker(kind) { kind = it }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(checked = enabled, onCheckedChange = { enabled = it })
-                    Text("Enabled", style = MaterialTheme.typography.bodyMedium, color = palette.OnInk)
-                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(title, url, kind, enabled) }) {
+            TextButton(onClick = { onSave(title, url, kind) }) {
                 Text("Save", color = palette.Accent)
             }
         },

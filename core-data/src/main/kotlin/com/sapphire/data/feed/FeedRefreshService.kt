@@ -63,7 +63,7 @@ class FeedRefreshService @Inject constructor(
 ) {
 
     /**
-     * Aggregated across all enabled sources in one refresh pass. [sourceCount],
+     * Aggregated across all sources in one refresh pass. [sourceCount],
      * [skippedNoFetcher], and [fetchedSources] let the caller distinguish the three
      * "0 new" cases: no sources configured, all skipped (AGENT/RSSHUB with no S02 fetcher),
      * or fetched-but-empty.
@@ -77,8 +77,8 @@ class FeedRefreshService @Inject constructor(
     )
 
     suspend fun refreshAll(): RefreshOutcome = withContext(Dispatchers.IO) {
-        val enabled = sources.enabledSources()
-        if (enabled.isEmpty()) return@withContext RefreshOutcome(
+        val all = sources.allSources()
+        if (all.isEmpty()) return@withContext RefreshOutcome(
             totalNew = 0, errors = emptyList(), sourceCount = 0,
         )
 
@@ -86,7 +86,7 @@ class FeedRefreshService @Inject constructor(
         var fetchedSources = 0
         var skippedNoFetcher = 0
         val errors = mutableListOf<String>()
-        for (source in enabled) {
+        for (source in all) {
             val fetcher = fetchers.forKind(source.kind)
             if (fetcher == null) {
                 // AGENT_* / RSSHUB are not S02 fetchers; skip without erroring.
@@ -113,7 +113,7 @@ class FeedRefreshService @Inject constructor(
         RefreshOutcome(
             totalNew = totalNew,
             errors = errors,
-            sourceCount = enabled.size,
+            sourceCount = all.size,
             fetchedSources = fetchedSources,
             skippedNoFetcher = skippedNoFetcher,
         )
@@ -144,22 +144,22 @@ class FeedRefreshService @Inject constructor(
             // coroutine without violating the cold-Flow single-emitter invariant that
             // a plain `flow {}` builder enforces. This is the canonical structure for
             // fanning out concurrent producers into a single output stream.
-            val enabled = try {
-                withContext(Dispatchers.IO) { sources.enabledSources() }
+            val all = try {
+                withContext(Dispatchers.IO) { sources.allSources() }
             } catch (t: Throwable) {
                 // Cannot even read the source table — emit a synthetic error and stop.
                 send(StreamEvent.SourceError("__query__", t.message ?: "source query failed"))
                 send(StreamEvent.AllDone)
                 return@channelFlow
             }
-            if (enabled.isEmpty()) {
+            if (all.isEmpty()) {
                 send(StreamEvent.AllDone)
                 return@channelFlow
             }
             // Launch one coroutine per source on IO; each maps its outcome to a
             // StreamEvent and sends it. A throw in any worker is contained to that
             // source (mapped to SourceError) so siblings keep going.
-            val jobs = enabled.map { source ->
+            val jobs = all.map { source ->
                 launch(Dispatchers.IO) {
                     val event = try {
                         fetchSourceEvent(source)

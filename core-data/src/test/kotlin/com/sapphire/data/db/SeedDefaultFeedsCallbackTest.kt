@@ -13,7 +13,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Verifies [SeedDefaultFeedsCallback] actually seeds enabled sources on first DB creation.
+ * Verifies [SeedDefaultFeedsCallback] actually seeds sources on first DB creation.
  * This is the critical link between "DB created" and "refresh has something to fetch" —
  * if the seed is broken or skipped, refreshAll() returns (0, []) with no feedback.
  */
@@ -43,13 +43,13 @@ class SeedDefaultFeedsCallbackTest {
     @After fun tearDown() { db.close() }
 
     @Test
-    fun seeds_enabled_rss_sources_on_create() = runTest {
-        val enabled = dao.enabledSources()
-        assertTrue("seed must insert sources, got ${enabled.size}", enabled.isNotEmpty())
+    fun seeds_rss_sources_on_create() = runTest {
+        val sources = dao.allSources()
+        assertTrue("seed must insert sources, got ${sources.size}", sources.isNotEmpty())
         // All seeded sources must be fetchable RSS/ATOM (have a registered Fetcher).
-        assertTrue(enabled.all { it.kind == SourceKind.RSS || it.kind == SourceKind.ATOM })
+        assertTrue(sources.all { it.kind == SourceKind.RSS || it.kind == SourceKind.ATOM })
         // BBC must be HTTPS now (cleartext fix).
-        val bbc = enabled.first { it.title == "BBC News" }
+        val bbc = sources.first { it.title == "BBC News" }
         assertTrue("BBC must be HTTPS: ${bbc.url}", bbc.url.startsWith("https://"))
     }
 
@@ -70,8 +70,8 @@ class SeedDefaultFeedsCallbackTest {
         dao = db.onboardingDao()
 
         // onOpen should have re-seeded.
-        val enabled = dao.enabledSources()
-        assertTrue("onOpen must reseed empty source table, got ${enabled.size}", enabled.isNotEmpty())
+        val sources = dao.allSources()
+        assertTrue("onOpen must reseed empty source table, got ${sources.size}", sources.isNotEmpty())
     }
 
 }

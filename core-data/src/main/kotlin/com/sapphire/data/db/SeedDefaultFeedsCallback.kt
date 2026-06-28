@@ -91,9 +91,9 @@ class SeedDefaultFeedsCallback : RoomDatabase.Callback() {
     ) {
         db.execSQL(
             """INSERT OR IGNORE INTO source
-               (id, category_id, topic_id, kind, url, title, config_json, enabled,
+               (id, category_id, topic_id, kind, url, title, config_json,
                 health_state, last_fetched_at, last_error_at)
-               VALUES (?, ?, ?, ?, ?, ?, NULL, 1, 'OK', NULL, NULL)""",
+               VALUES (?, ?, ?, ?, ?, ?, NULL, 'OK', NULL, NULL)""",
             arrayOf<Any?>(id, categoryId, topicId, kind, url, title),
         )
     }

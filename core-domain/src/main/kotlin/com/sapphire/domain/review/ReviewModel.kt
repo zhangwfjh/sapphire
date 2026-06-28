@@ -9,10 +9,9 @@ import com.sapphire.domain.model.SourceKind
  *
  * Single-level: each folder holds its own keywords and feeds directly — there are no
  * sub-folders. The taxonomy is a flat list of named folders.
- *
- * Why a separate model and not the raw LLM DTO? The DTO has no IDs, no enabled flags,
- * no deletion/append history. The review surface needs: delete folder, rename, toggle feed
- * on/off, append keyword pills, inject manual URLs — all as reversible edits. This type
+ * Why a separate model and not the raw LLM DTO? The DTO has no IDs,
+ * no deletion/append history. The review surface needs: delete folder, rename,
+ * append keyword pills, inject manual URLs — all as reversible edits. This type
  * holds that exact mutable shape; the DB is only touched on commit.
  */
 data class ReviewModel(
@@ -38,6 +37,5 @@ data class ReviewFeed(
     val title: String,
     val url: String,
     val kind: SourceKind,
-    val enabled: Boolean,
     val userAdded: Boolean,
 )

@@ -56,7 +56,7 @@ class CurateTaxonomyUseCaseTest {
         val feed = folder.feeds.single()
         assertEquals("Sleep Sci Weekly", feed.title)
         assertEquals("https://example.com/sleep.xml", feed.url)
-        assertTrue(feed.enabled && !feed.userAdded)
+        assertTrue(!feed.userAdded)
     }
 
     @Test

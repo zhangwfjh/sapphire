@@ -31,9 +31,9 @@ interface OnboardingDao {
 
     // ---- S02 feed-ingest support ----
 
-    /** Enabled sources the [FeedRefreshService] pulls. */
-    @Query("SELECT * FROM source WHERE enabled = 1")
-    suspend fun enabledSources(): List<SourceEntity>
+    /** All sources the [FeedRefreshService] pulls. */
+    @Query("SELECT * FROM source")
+    suspend fun allSources(): List<SourceEntity>
 
     /** Stamp a source's last fetch + health (S06 surfaces FAILED/DEGRADED in UI). */
     @Query("UPDATE source SET health_state = :health, last_fetched_at = :now, last_error_at = :errorAt WHERE id = :id")

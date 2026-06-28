@@ -61,9 +61,9 @@ class SourcesDrawerViewModel @Inject constructor(
         }
     }
 
-    fun updateSource(id: String, title: String, url: String, kind: SourceKind, enabled: Boolean) {
+    fun updateSource(id: String, title: String, url: String, kind: SourceKind) {
         viewModelScope.launch {
-            when (val r = repository.updateSource(id, title.trim(), url.trim(), kind, enabled)) {
+            when (val r = repository.updateSource(id, title.trim(), url.trim(), kind)) {
                 is Outcome.Ok -> Unit
                 is Outcome.Conflict -> _conflict.value = "Another source in this folder already uses that URL."
             }
