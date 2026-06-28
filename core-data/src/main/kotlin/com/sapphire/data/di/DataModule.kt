@@ -66,6 +66,7 @@ object DatabaseModule {
     @Provides fun provideSourceDao(db: SapphireDatabase): SourceDao = db.sourceDao()
     @Provides fun provideLlmCacheDao(db: SapphireDatabase): LlmCacheDao = db.llmCacheDao()
     @Provides fun provideSavedItemDao(db: SapphireDatabase): SavedItemDao = db.savedItemDao()
+    @Provides fun provideDiscoveredFeedDao(db: SapphireDatabase): DiscoveredFeedDao = db.discoveredFeedDao()
     @Provides fun provideArticleBodyDao(db: SapphireDatabase): com.sapphire.data.db.ArticleBodyDao = db.articleBodyDao()
 }
 
