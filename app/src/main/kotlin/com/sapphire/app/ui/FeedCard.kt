@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -80,13 +82,15 @@ fun ListFeedCard(
 }
 
 /**
- * Magazine variant — Inoreader "Magazine" view: a leading thumbnail (96dp square) beside
- * a stacked title + 2-line summary. Horizontal layout; falls back to a text-only column
- * when the item has no media. The classic "card with thumbnail" scan pattern.
+ * Card variant — X/Reddit-style hero layout: a full-width 16:9 image above a stacked
+ * title + 2-line summary + meta line. Falls back to a text-only column (title up to 3
+ * lines) when the item has no media. Image load failures render as a quiet InkRaised
+ * placeholder slot rather than a broken-image icon. Same selection / open semantics as
+ * [ListFeedCard]; the unread accent rail and selection badge come from [FeedCardSurface].
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun MagazineFeedCard(
+fun CardFeedCard(
     item: FeedItem,
     onToggleRead: () -> Unit,
     onOpen: () -> Unit,
@@ -95,6 +99,8 @@ fun MagazineFeedCard(
     selected: Boolean = false,
 ) {
     val state = rememberFeedCardState(item.readState)
+    val palette = LocalSapphirePalette.current
+    val mediaUrl = item.mediaUrl?.takeIf { it.isNotBlank() }
     FeedCardSurface(
         read = state.isRead,
         alpha = state.containerAlpha,
@@ -103,20 +109,26 @@ fun MagazineFeedCard(
         onLongClick = onLongPress,
         modifier = modifier,
     ) {
-        Row(Modifier.padding(12.dp)) {
-            item.mediaUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                AsyncImage(
-                    model = url,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(96.dp)
-                        .clip(RoundedCornerShape(8.dp)),
-                )
-                Spacer(Modifier.width(12.dp))
+        Column {
+            if (mediaUrl != null) {
+                // Hero image — 16:9, full bleed. Top corners rounded by the surface clip.
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .background(palette.InkRaised),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = mediaUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
-            Column(Modifier.weight(1f)) {
-                Title(item.title, read = state.isRead, maxLines = 2)
+            Column(Modifier.padding(12.dp)) {
+                Title(item.title, read = state.isRead, maxLines = if (mediaUrl != null) 2 else 3)
                 val summary = item.summary
                 if (!summary.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
