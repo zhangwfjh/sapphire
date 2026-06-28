@@ -56,6 +56,13 @@ class RoomArticleBodyStoreTest {
     }
 
     @Test
+    fun `put then get round-trips an empty paragraph list`() = runTest {
+        seedItem("h1")
+        store.put("h1", emptyList())
+        assertEquals(emptyList<String>(), store.get("h1"))
+    }
+
+    @Test
     fun `put replaces prior body for same item`() = runTest {
         seedItem("h1")
         store.put("h1", listOf("old"))
@@ -67,6 +74,8 @@ class RoomArticleBodyStoreTest {
     fun `article body cascade-deletes with the feed item`() = runTest {
         seedItem("h1")
         store.put("h1", listOf("body"))
+        // Pre-assert the row exists so the cascade case stands on its own.
+        assertEquals(listOf("body"), store.get("h1"))
         db.feedDao().deleteItem("h1")
         assertNull(store.get("h1"))
     }
