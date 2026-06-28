@@ -292,6 +292,14 @@ private fun BodyBlock(state: ReaderUiState.Open) {
                 Text(it.message, color = palette.Danger, style = MaterialTheme.typography.bodySmall)
             }
         }
+        if (state.extraction == ExtractionState.Extracting) {
+            Text(
+                text = "Extracting full article…",
+                style = MaterialTheme.typography.labelSmall,
+                color = palette.ReaderInk.copy(alpha = 0.6f),
+            )
+            Spacer(Modifier.height(8.dp))
+        }
         state.paragraphs.forEach { p ->
             Text(p, style = MaterialTheme.typography.bodyLarge, color = palette.ReaderInk)
             Spacer(Modifier.height(14.dp))

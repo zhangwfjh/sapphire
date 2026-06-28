@@ -10,6 +10,9 @@ import com.sapphire.domain.reader.BodyParagraphParser
 import com.sapphire.domain.reader.ReaderMacro
 import com.sapphire.domain.reader.ReaderOpsUseCase
 import com.sapphire.domain.save.SavedItemRepository
+import com.sapphire.domain.reader.ArticleBodyStore
+import com.sapphire.domain.reader.ArticleExtractor
+import com.sapphire.domain.reader.ExtractionOutcome
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +36,8 @@ class ReaderViewModel @Inject constructor(
     private val items: ReaderItemStore,
     private val readerOps: ReaderOpsUseCase,
     private val savedItems: SavedItemRepository,
+    private val articleExtractor: ArticleExtractor,
+    private val articleBodyStore: ArticleBodyStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Idle)
@@ -50,7 +55,39 @@ class ReaderViewModel @Inject constructor(
                 _state.value = ReaderUiState.Error("Item not found.")
                 return@launch
             }
-            val paragraphs = BodyParagraphParser.parse(item.bodyRaw ?: item.summary)
+
+            // Lazy full-text resolution: cache hit -> use; miss + url -> extract + cache; else -> feed body.
+            val cached = articleBodyStore.get(itemId)
+            val (paragraphs, extraction) = if (cached != null) {
+                cached to ExtractionState.Done
+            } else {
+                val feedParagraphs = BodyParagraphParser.parse(item.bodyRaw ?: item.summary)
+                val url = item.url
+                if (url.isNullOrBlank()) {
+                    feedParagraphs to ExtractionState.Idle
+                } else {
+                    // Show the feed body immediately so the reader is not blank during the fetch.
+                    _state.value = ReaderUiState.Open(
+                        item = item,
+                        paragraphs = feedParagraphs,
+                        classification = ClassificationState.Loading,
+                        macros = emptyList(),
+                        summary = null,
+                        translate = null,
+                        translateVisible = false,
+                        savedLater = item.savedLater,
+                        extraction = ExtractionState.Extracting,
+                    )
+                    when (val outcome = articleExtractor.extract(url)) {
+                        is ExtractionOutcome.Ok -> {
+                            articleBodyStore.put(itemId, outcome.paragraphs)
+                            outcome.paragraphs to ExtractionState.Done
+                        }
+                        is ExtractionOutcome.Err -> feedParagraphs to ExtractionState.Failed
+                    }
+                }
+            }
+
             _state.value = ReaderUiState.Open(
                 item = item,
                 paragraphs = paragraphs,
@@ -60,6 +97,7 @@ class ReaderViewModel @Inject constructor(
                 translate = null,
                 translateVisible = false,
                 savedLater = item.savedLater,
+                extraction = extraction,
             )
             classify(itemId)
         }
@@ -67,7 +105,7 @@ class ReaderViewModel @Inject constructor(
 
     private fun classify(itemId: String) {
         viewModelScope.launch {
-            when (val outcome = readerOps.classify(itemId)) {
+            when (val outcome = readerOps.classify(itemId, currentParagraphs())) {
                 is LlmOutcome.Err -> updateClassification(ClassificationState.Error(outcome.error.userMessage()))
                 is LlmOutcome.Ok -> {
                     val macros = ReaderMacro.forClassification(outcome.value.classification)
@@ -80,7 +118,7 @@ class ReaderViewModel @Inject constructor(
     fun summarize() {
         val current = _state.value as? ReaderUiState.Open ?: return
         viewModelScope.launch {
-            when (val outcome = readerOps.summarize(current.item.hashUuid)) {
+            when (val outcome = readerOps.summarize(current.item.hashUuid, current.paragraphs)) {
                 is LlmOutcome.Err -> updateSummary(SummaryState.Error(outcome.error.userMessage()))
                 is LlmOutcome.Ok -> updateSummary(SummaryState.Done(outcome.value.bullets))
             }
@@ -91,12 +129,15 @@ class ReaderViewModel @Inject constructor(
         val current = _state.value as? ReaderUiState.Open ?: return
         viewModelScope.launch {
             updateTranslate(TranslateState.Loading, visible = true)
-            when (val outcome = readerOps.translate(current.item.hashUuid, targetLanguage)) {
+            when (val outcome = readerOps.translate(current.item.hashUuid, targetLanguage, current.paragraphs)) {
                 is LlmOutcome.Err -> updateTranslate(TranslateState.Error(outcome.error.userMessage()), visible = true)
                 is LlmOutcome.Ok -> updateTranslate(TranslateState.Done(outcome.value), visible = true)
             }
         }
     }
+
+    private fun currentParagraphs(): List<String> =
+        (_state.value as? ReaderUiState.Open)?.paragraphs ?: emptyList()
 
     /**
      * S07 (PRD §3.4 [📁 Save Later]): promote/unsave the current item. Idempotent — the
@@ -153,6 +194,7 @@ sealed interface ReaderUiState {
         val translate: TranslateState?,
         val translateVisible: Boolean,
         val savedLater: Boolean,
+        val extraction: ExtractionState = ExtractionState.Idle,
     ) : ReaderUiState
     data class Error(val message: String) : ReaderUiState
 }
@@ -173,4 +215,11 @@ sealed interface TranslateState {
     data object Loading : TranslateState
     data class Done(val response: TranslateResponse) : TranslateState
     data class Error(val message: String) : TranslateState
+}
+
+sealed interface ExtractionState {
+    data object Idle : ExtractionState
+    data object Extracting : ExtractionState
+    data object Done : ExtractionState
+    data object Failed : ExtractionState
 }
