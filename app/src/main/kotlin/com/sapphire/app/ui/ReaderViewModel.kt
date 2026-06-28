@@ -58,55 +58,59 @@ class ReaderViewModel @Inject constructor(
                 return@launch
             }
 
-            // Lazy full-text resolution: cache hit -> use; miss + url -> extract + cache; else -> feed body.
+            // Lazy full-text resolution. Cache hit -> use; miss + url -> extract + cache;
+            // else -> feed body. The two synchronous paths publish immediately (no race to
+            // guard); only the post-extract write is guarded against dismiss/re-open.
             val cached = articleBodyStore.get(itemId)
-            val (paragraphs, extraction) = if (cached != null) {
-                cached to ExtractionState.Done
-            } else {
-                val feedParagraphs = BodyParagraphParser.parse(item.bodyRaw ?: item.summary)
-                val url = item.url
-                if (url.isNullOrBlank()) {
-                    feedParagraphs to ExtractionState.Idle
-                } else {
-                    // Show the feed body immediately so the reader is not blank during the fetch.
-                    _state.value = ReaderUiState.Open(
-                        item = item,
-                        paragraphs = feedParagraphs,
-                        classification = ClassificationState.Loading,
-                        macros = emptyList(),
-                        summary = null,
-                        translate = null,
-                        translateVisible = false,
-                        savedLater = item.savedLater,
-                        extraction = ExtractionState.Extracting,
-                    )
-                    when (val outcome = articleExtractor.extract(url)) {
-                        is ExtractionOutcome.Ok -> {
-                            articleBodyStore.put(itemId, outcome.paragraphs)
-                            outcome.paragraphs to ExtractionState.Done
-                        }
-                        is ExtractionOutcome.Err -> feedParagraphs to ExtractionState.Failed
-                    }
-                }
+            if (cached != null) {
+                publish(item, cached, ExtractionState.Done)
+                classify(itemId)
+                return@launch
             }
-            // Guard: if the user dismissed the sheet or opened a different item while we
-            // were extracting, drop this late write rather than resurrect a stale Open.
-            val stillCurrent = (_state.value as? ReaderUiState.Open)?.item?.hashUuid == itemId
-            if (stillCurrent) {
-                _state.value = ReaderUiState.Open(
-                    item = item,
-                    paragraphs = paragraphs,
-                    classification = ClassificationState.Loading,
-                    macros = emptyList(),
-                    summary = null,
-                    translate = null,
-                    translateVisible = false,
-                    savedLater = item.savedLater,
-                    extraction = extraction,
-                )
+
+            val feedParagraphs = BodyParagraphParser.parse(item.bodyRaw ?: item.summary)
+            val url = item.url
+            if (url.isNullOrBlank()) {
+                publish(item, feedParagraphs, ExtractionState.Idle)
+                classify(itemId)
+                return@launch
+            }
+
+            // Show the feed body + indicator while the full article is fetched/extracted.
+            // Classification is deferred until the resolved body is ready below.
+            publish(item, feedParagraphs, ExtractionState.Extracting)
+            val (resolved, extraction) = when (val outcome = articleExtractor.extract(url)) {
+                is ExtractionOutcome.Ok -> {
+                    articleBodyStore.put(itemId, outcome.paragraphs)
+                    outcome.paragraphs to ExtractionState.Done
+                }
+                is ExtractionOutcome.Err -> feedParagraphs to ExtractionState.Failed
+            }
+            // Late write: only if the user hasn't dismissed or opened a different item.
+            if ((_state.value as? ReaderUiState.Open)?.item?.hashUuid == itemId) {
+                publish(item, resolved, extraction)
                 classify(itemId)
             }
         }
+    }
+
+    /** Emits the resolved [ReaderUiState.Open] state (does not kick classification). */
+    private fun publish(
+        item: com.sapphire.domain.model.FeedItem,
+        paragraphs: List<String>,
+        extraction: ExtractionState,
+    ) {
+        _state.value = ReaderUiState.Open(
+            item = item,
+            paragraphs = paragraphs,
+            classification = ClassificationState.Loading,
+            macros = emptyList(),
+            summary = null,
+            translate = null,
+            translateVisible = false,
+            savedLater = item.savedLater,
+            extraction = extraction,
+        )
     }
 
     private fun classify(itemId: String) {
