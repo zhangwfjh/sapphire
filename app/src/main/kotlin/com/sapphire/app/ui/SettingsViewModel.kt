@@ -20,9 +20,8 @@ import kotlinx.serialization.Serializable
 import javax.inject.Inject
 
 /**
- * Settings screen state. The store flows are one-shot (emit once from cached prefs), so
- * initial load collects them once in [init]; each setter updates [_state] directly and
- * persists asynchronously. This avoids relying on hot-flow re-emission.
+ * Settings screen state. Store flows are now hot (backed by MutableStateFlow), so the
+ * initial load collects them once and subsequent edits propagate reactively.
  */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -42,6 +41,9 @@ class SettingsViewModel @Inject constructor(
     private val _snackbar = MutableStateFlow<String?>(null)
     val snackbar: StateFlow<String?> = _snackbar.asStateFlow()
 
+    private val _storageBytes = MutableStateFlow(0L)
+    val storageBytes: StateFlow<Long> = _storageBytes.asStateFlow()
+
     init {
         viewModelScope.launch {
             val llm = llmStore.observe().first()
@@ -58,6 +60,11 @@ class SettingsViewModel @Inject constructor(
                 loaded = true,
             )
         }
+        refreshStorageUsage()
+    }
+
+    private fun refreshStorageUsage() {
+        viewModelScope.launch { _storageBytes.value = dataClear.storageUsageBytes() }
     }
 
     fun setApiKey(v: String) {
@@ -110,21 +117,25 @@ class SettingsViewModel @Inject constructor(
     fun clearFeedItems() = viewModelScope.launch {
         val n = dataClear.clearFeedItems()
         _snackbar.value = "Cleared $n feed items"
+        refreshStorageUsage()
     }
 
     fun clearReaderCache() = viewModelScope.launch {
         val n = dataClear.clearReaderCache()
         _snackbar.value = "Cleared $n cached entries"
+        refreshStorageUsage()
     }
 
     fun clearSaved() = viewModelScope.launch {
         val n = dataClear.clearSaved()
         _snackbar.value = "Cleared $n saved items"
+        refreshStorageUsage()
     }
 
     fun clearAll() = viewModelScope.launch {
         dataClear.clearAll()
         _snackbar.value = "Reset complete — defaults re-seed on next open"
+        refreshStorageUsage()
     }
 
     fun consumeSnackbar() {
