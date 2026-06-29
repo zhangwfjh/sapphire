@@ -2,6 +2,7 @@ package com.sapphire.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.sapphire.domain.settings.LlmConfigBuildConfigDefaults
@@ -63,22 +64,22 @@ class SharedPrefsLlmConfigStore private constructor(
     override fun observeApiKey(): Flow<String> = _apiKey.asStateFlow()
 
     override suspend fun setApiKey(key: String) = withContext(Dispatchers.IO) {
-        secretPrefs.edit().putString(KEY_API_KEY, key).apply()
+        secretPrefs.edit { putString(KEY_API_KEY, key) }
         _apiKey.value = key
     }
 
     override suspend fun setBaseUrl(url: String) = withContext(Dispatchers.IO) {
-        plainPrefs.edit().putString(KEY_BASE_URL, ensureTrailingSlash(url)).apply()
+        plainPrefs.edit { putString(KEY_BASE_URL, ensureTrailingSlash(url)) }
         _snapshot.value = _snapshot.value.copy(baseUrl = ensureTrailingSlash(url))
     }
 
     override suspend fun setTier1Model(model: String) = withContext(Dispatchers.IO) {
-        plainPrefs.edit().putString(KEY_TIER1, model).apply()
+        plainPrefs.edit { putString(KEY_TIER1, model) }
         _snapshot.value = _snapshot.value.copy(tier1Model = model)
     }
 
     override suspend fun setTier2Model(model: String) = withContext(Dispatchers.IO) {
-        plainPrefs.edit().putString(KEY_TIER2, model).apply()
+        plainPrefs.edit { putString(KEY_TIER2, model) }
         _snapshot.value = _snapshot.value.copy(tier2Model = model)
     }
 

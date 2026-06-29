@@ -1,6 +1,6 @@
 package com.sapphire.app.ui
 
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,7 +36,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.sapphire.app.ui.design.shimmerSweep
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -402,7 +402,7 @@ private fun FeedCard(
 private fun Favicon(url: String) {
     val palette = LocalSapphirePalette.current
     val favUrl = remember(url) {
-        val host = runCatching { Uri.parse(url).host }.getOrNull()
+        val host = runCatching { url.toUri().host }.getOrNull()
         if (host.isNullOrBlank()) null else "https://icons.duckduckgo.com/ip3/$host.ico"
     }
     Box(
@@ -522,7 +522,7 @@ private fun CategoryPickerSheet(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                Divider(color = palette.InkStroke, thickness = 0.5.dp)
+                HorizontalDivider(color = palette.InkStroke, thickness = 0.5.dp)
                 Spacer(Modifier.height(4.dp))
 
                 categories.forEach { category ->

@@ -1,26 +1,12 @@
 <resources>
     <string name="app_name">Sapphire</string>
-    <string name="onboarding_title">What do you want to follow?</string>
-    <string name="onboarding_hint">e.g. Artificial Intelligence, Biohacking, Climate Tech</string>
-    <string name="onboarding_cta">Curate my feed</string>
-    <string name="onboarding_loading">Curating your taxonomy…</string>
     <string name="onboarding_error_title">Couldn\'t build that feed</string>
     <string name="onboarding_error_dismiss">Dismiss</string>
-    <string name="onboarding_not_configured_title">No model API key</string>
-    <string name="onboarding_not_configured_body">Add SAPPHIRE_LLM_API_KEY to local.properties. See README.</string>
 
-    <string name="review_title">Review &amp; approve</string>
-    <string name="review_subtitle">Delete folders, toggle feeds, or add your own.</string>
-    <string name="review_cta_approve">Approve &amp; build feed</string>
-    <string name="review_cta_back">Back</string>
     <string name="review_add_keyword_hint">Add keyword…</string>
     <string name="review_add_feed_hint">Paste RSS/Atom/JSON URL</string>
-    <string name="review_add_feed">Add feed</string>
     <string name="review_empty_feeds">No feeds — an AI search agent will source for this folder.</string>
 
     <string name="timeline_empty_title">No items yet</string>
     <string name="timeline_empty_body">Pull fresh items from your approved sources.</string>
-    <string name="timeline_empty_failed">All %1$d source(s) failed to fetch. Check your connection or source URLs.</string>
-    <string name="timeline_empty_no_sources">No feed sources are configured. Curate a topic or add feeds to get started.</string>
-    <string name="timeline_empty_no_fetcher">%1$d source(s) have no fetcher yet (agent sources fetch in a later release).</string>
 </resources>
