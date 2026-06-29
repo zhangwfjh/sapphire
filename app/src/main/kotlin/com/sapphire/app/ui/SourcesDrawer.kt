@@ -1311,7 +1311,7 @@ private fun DrawerTextField(
 @Composable
 private fun KindPicker(selected: SourceKind, onSelect: (SourceKind) -> Unit) {
     val palette = LocalSapphirePalette.current
-    val editable = listOf(SourceKind.RSS, SourceKind.ATOM, SourceKind.JSON, SourceKind.RSSHUB)
+    val editable = listOf(SourceKind.RSS, SourceKind.ATOM, SourceKind.JSON)
     var open by remember { mutableStateOf(false) }
     Box {
         Row(

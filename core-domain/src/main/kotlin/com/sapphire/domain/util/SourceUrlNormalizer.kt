@@ -12,7 +12,7 @@ import java.net.URI
  * - Lowercase the host (DNS is case-insensitive); preserve path/query case.
  * - DROP the scheme so http/https compare equal.
  * - Drop the port (default or explicit).
- * - Drop the fragment; keep the query (RSSHub routes use query params).
+ * - Drop the fragment; keep the query (some feeds key on query params).
  * - Strip a trailing "/" unless the path is "/" (root).
  * - On parse failure, return the trimmed input unchanged.
  */

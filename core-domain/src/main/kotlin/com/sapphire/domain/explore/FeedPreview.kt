@@ -24,7 +24,7 @@ sealed interface FeedPreviewResult {
 /**
  * Fetches a feed on-demand and returns its most recent items for a "peek before you
  * subscribe" view (Explore §preview). Pure-domain contract; the fetcher dispatch lives in
- * core-data. [SourceKind]s without a fetcher (e.g. RSSHUB, AGENT_*) resolve to [Failed].
+ * core-data. [SourceKind]s without a fetcher (e.g. AGENT_*) resolve to [Failed].
  */
 interface FeedPreview {
     suspend fun preview(url: String, kind: SourceKind): FeedPreviewResult

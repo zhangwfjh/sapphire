@@ -30,8 +30,7 @@ sealed interface FetchResult {
 }
 
 /**
- * Fetches a feed source and normalizes to [FeedItemCandidate]s. Implementations:
- * RSS/Atom (`RssAtomFetcher`), JSON Feed (`JsonFeedFetcher`), RSSHub (`RsshubFetcher` — S06),
+ * RSS/Atom (`RssAtomFetcher`), JSON Feed (`JsonFeedFetcher`),
  * web-search agent (`WebSearchFetcher` — S04).
  *
  * Dispatched on [com.sapphire.domain.model.Source.kind]. Pure-domain contract; the HTTP +

@@ -33,6 +33,6 @@ data class TaxonomyL2(
 data class TaxonomyFeed(
     val title: String,
     val url: String,
-    /** rss | atom | json | rsshub. Unknown values fall back to RSS in [ReviewBuilder]. */
+    /** rss | atom | json. Unknown values fall back to RSS in [ReviewBuilder]. */
     val kind: String = "rss",
 )

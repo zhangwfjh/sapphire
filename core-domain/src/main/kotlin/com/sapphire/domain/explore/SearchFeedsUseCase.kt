@@ -63,7 +63,7 @@ feeds a reader could subscribe to.
 Rules:
 - Return 3-8 results. Prefer official site feeds and well-known aggregators.
 - Only return feeds the user can actually subscribe to. Skip paywalled/login-gated sources.
-- feed.kind is one of: rss, atom, json, rsshub.
+- feed.kind is one of: rss, atom, json.
 - Output STRICT JSON matching this shape:
   {"results":[{"title":string,"url":string,"kind":string,"description":string}]}
 - No prose outside the JSON object.

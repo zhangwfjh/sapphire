@@ -22,5 +22,5 @@
     <string name="timeline_empty_body">Pull fresh items from your approved sources.</string>
     <string name="timeline_empty_failed">All %1$d source(s) failed to fetch. Check your connection or source URLs.</string>
     <string name="timeline_empty_no_sources">No feed sources are configured. Curate a topic or add feeds to get started.</string>
-    <string name="timeline_empty_no_fetcher">%1$d source(s) have no fetcher yet (agent/RSSHub sources fetch in a later release).</string>
+    <string name="timeline_empty_no_fetcher">%1$d source(s) have no fetcher yet (agent sources fetch in a later release).</string>
 </resources>

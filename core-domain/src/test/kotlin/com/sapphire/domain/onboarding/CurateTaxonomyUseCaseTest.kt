@@ -73,7 +73,6 @@ class CurateTaxonomyUseCaseTest {
                                 TaxonomyFeed(title = "A", url = "https://a.feed", kind = "weird-kind"),
                                 TaxonomyFeed(title = "B", url = "https://b.feed", kind = "atom"),
                                 TaxonomyFeed(title = "C", url = "https://c.feed", kind = "json"),
-                                TaxonomyFeed(title = "D", url = "/rsshub/abc", kind = "rsshub"),
                             ),
                         ),
                     ),
@@ -83,15 +82,14 @@ class CurateTaxonomyUseCaseTest {
         val useCase = useCase(StubLlm(resp))
         val outcome = useCase.invoke("Tech") as LlmOutcome.Ok
         val kinds = outcome.value.folders.first().feeds.map { it.kind }
-        assertEquals(
-            listOf(
-                com.sapphire.domain.model.SourceKind.RSS,
-                com.sapphire.domain.model.SourceKind.ATOM,
-                com.sapphire.domain.model.SourceKind.JSON,
-                com.sapphire.domain.model.SourceKind.RSSHUB,
-            ),
-            kinds,
-        )
+            assertEquals(
+                listOf(
+                    com.sapphire.domain.model.SourceKind.RSS,
+                    com.sapphire.domain.model.SourceKind.ATOM,
+                    com.sapphire.domain.model.SourceKind.JSON,
+                ),
+                kinds,
+            )
     }
 
     @Test

@@ -56,10 +56,10 @@ with recommended high-signal feeds.
 Rules:
 - Return 2-4 Level-1 categories. Each has 2-4 Level-2 sub-categories.
 - Every Level-2 sub-category MUST include 3-6 context keywords and 1-3 recommended feeds.
-- Prefer feeds the user can actually subscribe to: RSS/Atom/JSON Feed URLs or RSSHub routes.
+- Prefer feeds the user can actually subscribe to: RSS/Atom/JSON Feed URLs.
 - If you cannot find high-signal feeds for a sub-category, return that sub-category with an
   empty feeds array — the client seeds an autonomous web-search agent for it.
-- feed.kind is one of: rss, atom, json, rsshub.
+- feed.kind is one of: rss, atom, json.
 - Output STRICT JSON matching this shape:
   {"categories":[{"name":string,"level2":[{"name":string,"keywords":[string],"feeds":[{"title":string,"url":string,"kind":string}]}]}]}
 - No prose outside the JSON object.
