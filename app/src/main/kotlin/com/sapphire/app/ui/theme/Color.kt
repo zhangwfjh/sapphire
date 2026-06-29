@@ -3,38 +3,64 @@ package com.sapphire.app.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Sapphire dark-first palette.
+ * Sapphire palette — dark-first identity with a light variant. The sapphire-blue accent is
+ * the ONLY saturated color; it is preserved across both themes. Everything else is a cool
+ * ramp (charcoal for dark; cool paper for light).
  *
- * Concept: deep ink with a single disciplined sapphire-blue accent. The accent is the
- * ONLY saturated color in the system — it marks unread state, AI provenance, primary
- * CTAs, and active toggles. Everything else is a ramp of cool charcoal. Read items fade
- * into the ink; unread items glow against it.
- *
- * Hex values cross-referenced with res/values/colors.xml so the XML bootstrap window
- * matches this scheme before Compose paints.
+ * Two instances: [SapphirePaletteDark] (the original) and [SapphirePaletteLight].
  */
-object SapphirePalette {
-    // Base ink ramp — background, elevated surfaces, cards.
-    val Ink = Color(0xFF0B0F14)          // app background; deepest.
-    val InkElevated = Color(0xFF11161D)  // cards, bottom sheet.
-    val InkRaised = Color(0xFF161D26)    // hover/active card, inputs.
-    val InkStroke = Color(0xFF222B36)    // hairline borders.
-    val InkStrokeStrong = Color(0xFF2F3A47)
+data class SapphirePalette(
+    val Ink: Color,
+    val InkElevated: Color,
+    val InkRaised: Color,
+    val InkStroke: Color,
+    val InkStrokeStrong: Color,
+    val OnInk: Color,
+    val OnInkMuted: Color,
+    val OnInkFaint: Color,
+    val Accent: Color,
+    val AccentBright: Color,
+    val AccentDeep: Color,
+    val Danger: Color,
+    val ReaderPaper: Color,
+    val ReaderInk: Color,
+)
 
-    // Text — cool off-whites so nothing reads pure #FFF (too harsh on charcoal).
-    val OnInk = Color(0xFFE6EAF0)        // primary text.
-    val OnInkMuted = Color(0xFFAEB8C4)   // secondary text.
-    val OnInkFaint = Color(0xFF6B7785)   // tertiary / placeholder.
+val SapphirePaletteDark = SapphirePalette(
+    Ink = Color(0xFF0B0F14),
+    InkElevated = Color(0xFF11161D),
+    InkRaised = Color(0xFF161D26),
+    InkStroke = Color(0xFF222B36),
+    InkStrokeStrong = Color(0xFF2F3A47),
+    OnInk = Color(0xFFE6EAF0),
+    OnInkMuted = Color(0xFFAEB8C4),
+    OnInkFaint = Color(0xFF6B7785),
+    Accent = Color(0xFF3B82F6),
+    AccentBright = Color(0xFF60A5FA),
+    AccentDeep = Color(0xFF1D4ED8),
+    Danger = Color(0xFFF87171),
+    ReaderPaper = Color(0xFF141A22),
+    ReaderInk = Color(0xFFD8DEE6),
+)
 
-    // The single accent. Deepened from #3B82F6 toward a more saturated jewel tone.
-    val Accent = Color(0xFF3B82F6)       // primary accent.
-    val AccentBright = Color(0xFF60A5FA) // unread glow / hover.
-    val AccentDeep = Color(0xFF1D4ED8)   // pressed / gradient base.
-
-    // Semantic — kept restrained, only where needed.
-    val Danger = Color(0xFFF87171)
-
-    // Reader body — warmer paper-on-charcoal for long-form.
-    val ReaderPaper = Color(0xFF141A22)
-    val ReaderInk = Color(0xFFD8DEE6)
-}
+/**
+ * Light variant — cool paper canvas, same sapphire accent. Text inverts to near-black;
+ * surfaces become cool off-whites. Accent deepened from #3B82F6 to #2563EB for WCAG-AA
+ * contrast on paper.
+ */
+val SapphirePaletteLight = SapphirePalette(
+    Ink = Color(0xFFF4F6F8),
+    InkElevated = Color(0xFFFFFFFF),
+    InkRaised = Color(0xFFE9EEF3),
+    InkStroke = Color(0xFFD7DEE6),
+    InkStrokeStrong = Color(0xFFB8C2CE),
+    OnInk = Color(0xFF1A1F26),
+    OnInkMuted = Color(0xFF5C6873),
+    OnInkFaint = Color(0xFF8A95A1),
+    Accent = Color(0xFF2563EB),
+    AccentBright = Color(0xFF3B82F6),
+    AccentDeep = Color(0xFF1D4ED8),
+    Danger = Color(0xFFDC2626),
+    ReaderPaper = Color(0xFFFFFFFF),
+    ReaderInk = Color(0xFF2A3340),
+)

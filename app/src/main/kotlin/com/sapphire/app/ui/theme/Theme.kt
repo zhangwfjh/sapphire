@@ -1,9 +1,9 @@
 package com.sapphire.app.ui.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -13,62 +13,87 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-/**
- * Sapphire theme — dark-first by design (PRD: research-terminal + editorial hybrid).
- * Light mode is intentionally not provided; the whole identity is built around the
- * charcoal canvas and the single sapphire accent.
- */
-private val SapphireColorScheme = darkColorScheme(
-    primary = SapphirePalette.Accent,
+private val SapphireColorSchemeDark = darkColorScheme(
+    primary = SapphirePaletteDark.Accent,
     onPrimary = Color.White,
-    primaryContainer = SapphirePalette.AccentDeep,
-    onPrimaryContainer = SapphirePalette.OnInk,
-    secondary = SapphirePalette.AccentBright,
+    primaryContainer = SapphirePaletteDark.AccentDeep,
+    onPrimaryContainer = SapphirePaletteDark.OnInk,
+    secondary = SapphirePaletteDark.AccentBright,
     onSecondary = Color.White,
-    secondaryContainer = SapphirePalette.InkRaised,
-    onSecondaryContainer = SapphirePalette.OnInk,
-    tertiary = SapphirePalette.AccentBright,
+    secondaryContainer = SapphirePaletteDark.InkRaised,
+    onSecondaryContainer = SapphirePaletteDark.OnInk,
+    tertiary = SapphirePaletteDark.AccentBright,
     onTertiary = Color.White,
-    background = SapphirePalette.Ink,
-    onBackground = SapphirePalette.OnInk,
-    surface = SapphirePalette.Ink,
-    onSurface = SapphirePalette.OnInk,
-    surfaceVariant = SapphirePalette.InkElevated,
-    onSurfaceVariant = SapphirePalette.OnInkMuted,
-    surfaceTint = SapphirePalette.Accent,
-    inverseSurface = SapphirePalette.OnInk,
-    inverseOnSurface = SapphirePalette.Ink,
-    outline = SapphirePalette.InkStrokeStrong,
-    outlineVariant = SapphirePalette.InkStroke,
-    error = SapphirePalette.Danger,
+    background = SapphirePaletteDark.Ink,
+    onBackground = SapphirePaletteDark.OnInk,
+    surface = SapphirePaletteDark.Ink,
+    onSurface = SapphirePaletteDark.OnInk,
+    surfaceVariant = SapphirePaletteDark.InkElevated,
+    onSurfaceVariant = SapphirePaletteDark.OnInkMuted,
+    surfaceTint = SapphirePaletteDark.Accent,
+    inverseSurface = SapphirePaletteDark.OnInk,
+    inverseOnSurface = SapphirePaletteDark.Ink,
+    outline = SapphirePaletteDark.InkStrokeStrong,
+    outlineVariant = SapphirePaletteDark.InkStroke,
+    error = SapphirePaletteDark.Danger,
     onError = Color.White,
-    errorContainer = SapphirePalette.Danger,
+    errorContainer = SapphirePaletteDark.Danger,
     onErrorContainer = Color.White,
     scrim = Color(0xE60B0F14),
 )
 
-/** Local access to the raw palette for screens that need explicit token colors. */
-val LocalSapphirePalette = staticCompositionLocalOf { SapphirePalette }
+private val SapphireColorSchemeLight = lightColorScheme(
+    primary = SapphirePaletteLight.Accent,
+    onPrimary = Color.White,
+    primaryContainer = SapphirePaletteLight.AccentDeep,
+    onPrimaryContainer = Color.White,
+    secondary = SapphirePaletteLight.AccentBright,
+    onSecondary = Color.White,
+    secondaryContainer = SapphirePaletteLight.InkRaised,
+    onSecondaryContainer = SapphirePaletteLight.OnInk,
+    tertiary = SapphirePaletteLight.AccentBright,
+    onTertiary = Color.White,
+    background = SapphirePaletteLight.Ink,
+    onBackground = SapphirePaletteLight.OnInk,
+    surface = SapphirePaletteLight.Ink,
+    onSurface = SapphirePaletteLight.OnInk,
+    surfaceVariant = SapphirePaletteLight.InkElevated,
+    onSurfaceVariant = SapphirePaletteLight.OnInkMuted,
+    surfaceTint = SapphirePaletteLight.Accent,
+    inverseSurface = SapphirePaletteLight.OnInk,
+    inverseOnSurface = SapphirePaletteLight.Ink,
+    outline = SapphirePaletteLight.InkStrokeStrong,
+    outlineVariant = SapphirePaletteLight.InkStroke,
+    error = SapphirePaletteLight.Danger,
+    onError = Color.White,
+    errorContainer = SapphirePaletteLight.Danger,
+    onErrorContainer = Color.White,
+    scrim = Color(0x33000000),
+)
+
+val LocalSapphirePalette = staticCompositionLocalOf { SapphirePaletteDark }
 
 @Composable
 fun SapphireTheme(
-    @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit,
 ) {
+    val palette = if (darkTheme) SapphirePaletteDark else SapphirePaletteLight
+    val colorScheme = if (darkTheme) SapphireColorSchemeDark else SapphireColorSchemeLight
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = SapphirePalette.Ink.toArgb()
-            window.navigationBarColor = SapphirePalette.Ink.toArgb()
+            window.statusBarColor = palette.Ink.toArgb()
+            window.navigationBarColor = palette.Ink.toArgb()
             val controller = WindowCompat.getInsetsController(window, view)
-            controller.isAppearanceLightStatusBars = false
-            controller.isAppearanceLightNavigationBars = false
+            controller.isAppearanceLightStatusBars = !darkTheme
+            controller.isAppearanceLightNavigationBars = !darkTheme
         }
     }
-    CompositionLocalProvider(LocalSapphirePalette provides SapphirePalette) {
+    CompositionLocalProvider(LocalSapphirePalette provides palette) {
         MaterialTheme(
-            colorScheme = SapphireColorScheme,
+            colorScheme = colorScheme,
             typography = SapphireTypography,
             shapes = SapphireShapes,
             content = content,
