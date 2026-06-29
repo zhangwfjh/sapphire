@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
-
+import dagger.hilt.android.qualifiers.ApplicationContext
 /**
  * Encrypted-SharedPreferences-backed [LlmConfigStore]. The API key lives in an encrypted
  * file (AES-GCM); non-secret fields live in a plain prefs file. On first read, seeds from
@@ -29,7 +29,7 @@ class SharedPrefsLlmConfigStore private constructor(
 ) : LlmConfigStore {
 
     @Inject
-    constructor(context: Context, defaults: LlmConfigBuildConfigDefaults) : this(
+    constructor(@ApplicationContext context: Context, defaults: LlmConfigBuildConfigDefaults) : this(
         defaults = defaults,
         plainPrefs = context.getSharedPreferences("settings_llm", Context.MODE_PRIVATE),
         secretPrefsProvider = { createEncryptedPrefs(context) },
