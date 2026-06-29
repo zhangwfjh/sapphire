@@ -178,6 +178,14 @@ abstract class RepositoryBindingsModule {
     abstract fun bindArticleExtractor(impl: com.sapphire.data.reader.ReadabilityArticleExtractor): com.sapphire.domain.reader.ArticleExtractor
     @Binds
     abstract fun bindArticleBodyStore(impl: com.sapphire.data.reader.RoomArticleBodyStore): com.sapphire.domain.reader.ArticleBodyStore
+    @Binds
+    abstract fun bindLlmConfigStore(impl: com.sapphire.data.settings.SharedPrefsLlmConfigStore): com.sapphire.domain.settings.LlmConfigStore
+    @Binds
+    abstract fun bindRetentionConfigStore(impl: com.sapphire.data.settings.SharedPrefsRetentionConfigStore): com.sapphire.domain.settings.RetentionConfigStore
+    @Binds
+    abstract fun bindThemeConfigStore(impl: com.sapphire.data.settings.SharedPrefsThemeConfigStore): com.sapphire.domain.settings.ThemeConfigStore
+    @Binds
+    abstract fun bindDataClearUseCase(impl: com.sapphire.data.settings.RoomDataClearUseCase): com.sapphire.domain.settings.DataClearUseCase
 }
 
 /**
