@@ -191,17 +191,17 @@ fun SettingsScreen(
             // ── Data ──
             SectionEyebrow("DATA")
             Spacer(Modifier.height(8.dp))
-            val bytes by viewModel.storageBytes.collectAsStateWithLifecycle()
+            val bd by viewModel.breakdown.collectAsStateWithLifecycle()
             Text(
-                "Database: ${formatBytes(bytes)}",
+                "Database: ${formatBytes(bd.totalBytes)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.OnInkMuted,
             )
-            Spacer(Modifier.height(8.dp))
-            ClearRow("Clear feed items", "Remove all feed items? Sources and saved items are kept.") { confirmDialog = ClearAction.FEED_ITEMS }
-            ClearRow("Clear reader cache", "Remove all extracted article bodies and LLM caches?") { confirmDialog = ClearAction.READER_CACHE }
-            ClearRow("Clear saved items", "Remove all saved items? Feed items are kept.") { confirmDialog = ClearAction.SAVED }
-            ClearRow("Reset all data", "Erase everything and re-seed defaults? This cannot be undone.") { confirmDialog = ClearAction.ALL }
+            Spacer(Modifier.height(12.dp))
+            ClearRow("Feed items", "${bd.feedItems} items", "Remove all feed items? Sources and saved items are kept.") { confirmDialog = ClearAction.FEED_ITEMS }
+            ClearRow("Reader cache", "${bd.readerCache} entries", "Remove all extracted article bodies and LLM caches?") { confirmDialog = ClearAction.READER_CACHE }
+            ClearRow("Saved items", "${bd.savedItems} items", "Remove all saved items? Feed items are kept.") { confirmDialog = ClearAction.SAVED }
+            ClearRow("Reset all data", formatBytes(bd.totalBytes), "Erase everything and re-seed defaults? This cannot be undone.") { confirmDialog = ClearAction.ALL }
 
             Spacer(Modifier.height(32.dp))
 
@@ -252,7 +252,7 @@ private fun LlmField(label: String, value: String, onChange: (String) -> Unit) {
 }
 
 @Composable
-private fun ClearRow(title: String, message: String, onClick: () -> Unit) {
+private fun ClearRow(title: String, countLabel: String, message: String, onClick: () -> Unit) {
     val palette = LocalSapphirePalette.current
     Row(
         Modifier
@@ -261,7 +261,11 @@ private fun ClearRow(title: String, message: String, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge, color = palette.OnInk)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = palette.OnInk)
+            Spacer(Modifier.width(8.dp))
+            Text(countLabel, style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted)
+        }
         TextButton(onClick = onClick) { Text("Clear", color = palette.Danger) }
     }
 }

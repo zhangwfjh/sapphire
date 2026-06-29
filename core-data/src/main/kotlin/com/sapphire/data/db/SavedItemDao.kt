@@ -50,4 +50,7 @@ interface SavedItemDao {
 
     @Query("SELECT COUNT(*) FROM saved_item")
     fun observeCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM saved_item")
+    suspend fun count(): Int
 }

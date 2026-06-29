@@ -176,15 +176,15 @@ abstract class RepositoryBindingsModule {
     abstract fun bindFeedPreview(impl: com.sapphire.data.explore.FetcherFeedPreview): com.sapphire.domain.explore.FeedPreview
     @Binds
     abstract fun bindArticleExtractor(impl: com.sapphire.data.reader.ReadabilityArticleExtractor): com.sapphire.domain.reader.ArticleExtractor
-    @Binds
+    @Binds @javax.inject.Singleton
     abstract fun bindArticleBodyStore(impl: com.sapphire.data.reader.RoomArticleBodyStore): com.sapphire.domain.reader.ArticleBodyStore
-    @Binds
+    @Binds @javax.inject.Singleton
     abstract fun bindLlmConfigStore(impl: com.sapphire.data.settings.SharedPrefsLlmConfigStore): com.sapphire.domain.settings.LlmConfigStore
-    @Binds
+    @Binds @javax.inject.Singleton
     abstract fun bindRetentionConfigStore(impl: com.sapphire.data.settings.SharedPrefsRetentionConfigStore): com.sapphire.domain.settings.RetentionConfigStore
-    @Binds
+    @Binds @javax.inject.Singleton
     abstract fun bindThemeConfigStore(impl: com.sapphire.data.settings.SharedPrefsThemeConfigStore): com.sapphire.domain.settings.ThemeConfigStore
-    @Binds
+    @Binds @javax.inject.Singleton
     abstract fun bindDataClearUseCase(impl: com.sapphire.data.settings.RoomDataClearUseCase): com.sapphire.domain.settings.DataClearUseCase
 }
 

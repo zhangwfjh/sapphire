@@ -6,6 +6,7 @@ import com.sapphire.data.db.LlmCacheDao
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.data.db.SavedItemDao
 import com.sapphire.domain.settings.DataClearUseCase
+import com.sapphire.domain.settings.DataBreakdown
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -44,5 +45,14 @@ class RoomDataClearUseCase @Inject constructor(
     override suspend fun storageUsageBytes(): Long = withContext(Dispatchers.IO) {
         val path = database.openHelper.readableDatabase.path
         java.io.File(path).length()
+    }
+
+    override suspend fun breakdown(): DataBreakdown = withContext(Dispatchers.IO) {
+        DataBreakdown(
+            feedItems = feedDao.countItems(),
+            readerCache = llmCacheDao.count() + articleBodyDao.count(),
+            savedItems = savedItemDao.count(),
+            totalBytes = storageUsageBytes(),
+        )
     }
 }
