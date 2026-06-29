@@ -27,12 +27,13 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.RssFeed
 import androidx.compose.material.icons.filled.FileUpload
@@ -122,6 +123,7 @@ fun SourcesDrawer(
     onClearFilter: () -> Unit = {},
     onOpenSaved: () -> Unit = {},
     onOpenExplore: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val tree by viewModel.tree.collectAsStateWithLifecycle()
@@ -226,10 +228,11 @@ fun SourcesDrawer(
                     onMarkAllReadInSourceGroup = { sourceIds, label -> viewModel.markAllReadInSourceGroup(sourceIds, label) },
                     onCategoryClick = onCategoryClick,
                     onSourceGroupClick = onSourceGroupClick,
-                    onSourceClick = onSourceClick,
-                    onClearFilter = onClearFilter,
-                    onOpenSaved = onOpenSaved,
+    onSourceClick = onSourceClick,
+    onClearFilter = onClearFilter,
+    onOpenSaved = onOpenSaved,
                     onOpenExplore = onOpenExplore,
+                    onOpenSettings = onOpenSettings,
                     onImportOpml = { importLauncher.launch(arrayOf("application/xml", "text/xml", "*/*")) },
                     onExportOpml = { viewModel.exportOpml() },
                 )
@@ -370,6 +373,7 @@ private fun DrawerSheetContent(
     onClearFilter: () -> Unit,
     onOpenSaved: () -> Unit,
     onOpenExplore: () -> Unit,
+    onOpenSettings: () -> Unit,
     onImportOpml: () -> Unit,
     onExportOpml: () -> Unit,
 ) {
@@ -455,6 +459,9 @@ private fun DrawerSheetContent(
             }
             item(key = "read-later") {
                 ReadLaterRow(onClick = onOpenSaved)
+            }
+            item(key = "settings") {
+                SettingsRow(onClick = onOpenSettings)
             }
             tree.forEach { folder ->
                 val isExpanded = expandedFolders[folder.category.id] == true
@@ -661,6 +668,32 @@ private fun ReadLaterRow(onClick: () -> Unit) {
     Divider(color = palette.InkStroke, thickness = 0.5.dp)
 }
 
+@Composable
+private fun SettingsRow(onClick: () -> Unit) {
+    val palette = LocalSapphirePalette.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.Settings,
+            contentDescription = null,
+            tint = palette.OnInkMuted,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "Settings",
+            style = MaterialTheme.typography.labelLarge,
+            color = palette.OnInk,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+    Divider(color = palette.InkStroke, thickness = 0.5.dp)
+}
 @Composable
 private fun FolderHeader(
     node: SourceFolderNode,

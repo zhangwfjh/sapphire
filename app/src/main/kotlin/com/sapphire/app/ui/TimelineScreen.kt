@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Markunread
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -177,8 +176,11 @@ fun TimelineScreen(
             sourcesDrawerScope.launch { sourcesDrawerState.close() }
             onOpenExplore()
         },
+        onOpenSettings = {
+            sourcesDrawerScope.launch { sourcesDrawerState.close() }
+            onOpenSettings()
+        },
     ) {
-
     LaunchedEffect(searchExpanded) {
         if (!searchExpanded) viewModel.setQuery("")
     }
@@ -197,7 +199,6 @@ fun TimelineScreen(
                 },
                 onMarkAllRead = viewModel::markAllVisibleRead,
                 onBuildFeed = onBuildFeed,
-                onOpenSettings = onOpenSettings,
                 onOpenSources = { sourcesDrawerScope.launch { sourcesDrawerState.open() } },
                 onClearSelection = { selectedItems.clear() },
                 onMarkRead = {
@@ -331,7 +332,6 @@ private fun TimelineTopBar(
     onToggleSearch: () -> Unit,
     onMarkAllRead: () -> Unit,
     onBuildFeed: () -> Unit,
-    onOpenSettings: () -> Unit,
     onOpenSources: () -> Unit,
     onClearSelection: () -> Unit,
     onMarkRead: () -> Unit,
@@ -381,9 +381,6 @@ private fun TimelineTopBar(
                 }
                 IconButton(onClick = onBuildFeed) {
                     Icon(Icons.Filled.Add, contentDescription = "Curate new topic", tint = palette.OnInkMuted)
-                }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = palette.OnInkMuted)
                 }
             }
         },
