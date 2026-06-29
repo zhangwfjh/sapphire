@@ -8,4 +8,12 @@ interface DataClearUseCase {
     suspend fun clearAll()
     /** Total on-device database file size in bytes. */
     suspend fun storageUsageBytes(): Long
+    suspend fun breakdown(): DataBreakdown
 }
+
+data class DataBreakdown(
+    val feedItems: Int,
+    val readerCache: Int,
+    val savedItems: Int,
+    val totalBytes: Long,
+)

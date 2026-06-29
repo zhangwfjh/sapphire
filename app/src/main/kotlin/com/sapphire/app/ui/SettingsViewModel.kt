@@ -44,6 +44,9 @@ class SettingsViewModel @Inject constructor(
     private val _storageBytes = MutableStateFlow(0L)
     val storageBytes: StateFlow<Long> = _storageBytes.asStateFlow()
 
+    private val _breakdown = MutableStateFlow(com.sapphire.domain.settings.DataBreakdown(0, 0, 0, 0L))
+    val breakdown: StateFlow<com.sapphire.domain.settings.DataBreakdown> = _breakdown.asStateFlow()
+
     init {
         viewModelScope.launch {
             val llm = llmStore.observe().first()
@@ -64,7 +67,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun refreshStorageUsage() {
-        viewModelScope.launch { _storageBytes.value = dataClear.storageUsageBytes() }
+        viewModelScope.launch {
+            val b = dataClear.breakdown()
+            _storageBytes.value = b.totalBytes
+            _breakdown.value = b
+        }
     }
 
     fun setApiKey(v: String) {
