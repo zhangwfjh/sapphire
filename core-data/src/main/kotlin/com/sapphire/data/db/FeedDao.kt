@@ -231,5 +231,9 @@ interface FeedDao {
           AND fetched_at < :cutoff
     """)
     suspend fun purgeOldRead(cutoff: Long): Int
+
+    /** Settings §3.3: clear every feed_item row. Returns rows deleted. CASCADE sweeps read_log/llm_cache/article_body/saved_item. */
+    @Query("DELETE FROM feed_item")
+    suspend fun deleteAllFeedItems(): Int
 }
 

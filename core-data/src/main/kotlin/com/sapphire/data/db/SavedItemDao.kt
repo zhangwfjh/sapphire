@@ -23,6 +23,10 @@ interface SavedItemDao {
     @Query("DELETE FROM saved_item WHERE item_id = :itemId")
     suspend fun delete(itemId: String)
 
+    /** Settings §3.3: clear every saved_item row. Returns rows deleted. */
+    @Query("DELETE FROM saved_item")
+    suspend fun deleteAll(): Int
+
     @Query("SELECT EXISTS(SELECT 1 FROM saved_item WHERE item_id = :itemId)")
     suspend fun isSaved(itemId: String): Boolean
 
