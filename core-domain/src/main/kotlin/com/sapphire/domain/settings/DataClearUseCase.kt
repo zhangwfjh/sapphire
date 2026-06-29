@@ -16,4 +16,7 @@ data class DataBreakdown(
     val readerCache: Int,
     val savedItems: Int,
     val totalBytes: Long,
+    val feedItemsBytes: Long,
+    val readerCacheBytes: Long,
+    val savedItemsBytes: Long,
 )

@@ -44,7 +44,7 @@ class SettingsViewModel @Inject constructor(
     private val _storageBytes = MutableStateFlow(0L)
     val storageBytes: StateFlow<Long> = _storageBytes.asStateFlow()
 
-    private val _breakdown = MutableStateFlow(com.sapphire.domain.settings.DataBreakdown(0, 0, 0, 0L))
+    private val _breakdown = MutableStateFlow(com.sapphire.domain.settings.DataBreakdown(0, 0, 0, 0L, 0L, 0L, 0L))
     val breakdown: StateFlow<com.sapphire.domain.settings.DataBreakdown> = _breakdown.asStateFlow()
 
     init {
