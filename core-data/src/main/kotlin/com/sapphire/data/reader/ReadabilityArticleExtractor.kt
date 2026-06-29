@@ -1,7 +1,6 @@
 package com.sapphire.data.reader
 
 import com.sapphire.domain.reader.ArticleExtractor
-import com.sapphire.domain.reader.BodyParagraphParser
 import com.sapphire.domain.reader.ExtractionOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,8 +12,9 @@ import javax.inject.Inject
 /**
  * readability4J-backed [ArticleExtractor]. Fetches HTML via the shared [OkHttpClient] with
  * a browser-like User-Agent (avoids naive blocks), then runs Mozilla-Readability heuristics.
- * The extracted HTML is normalized through [BodyParagraphParser] so feed-body and
- * extracted-body share one paragraph pipeline.
+ * Returns the cleaned article HTML (block tags intact); the caller parses it to rich blocks
+ * via [com.sapphire.domain.reader.RichContentParser] so feed-body and extracted-body share
+ * one rendering pipeline.
  *
  * Failures map to the [ExtractionOutcome.Err] taxonomy — callers fall back silently.
  */
@@ -56,18 +56,16 @@ class ReadabilityArticleExtractor @Inject constructor(
             // readability4J/Jsoup choked on pathological HTML — treat as nothing extracted.
             return ExtractionOutcome.Err.Empty
         }
-        // readability4j 1.0.8 Article.content = articleContent.toString() (Jsoup Element
-        // outerHtml) → cleaned HTML WITH block-level tags, so BodyParagraphParser can split
-        // on <p>/<div>/etc. (contentWithMarkupTags does not exist in 1.0.8; content is it.)
+        // readability4j 1.0.8 Article.content = cleaned HTML WITH block-level tags; the
+        // caller parses it to rich blocks. textContent gives a tag-stripped length probe.
         val contentHtml = article.content ?: ""
-        val paragraphs = BodyParagraphParser.parse(contentHtml)
-        val joined = paragraphs.joinToString("")
-        return if (joined.length < MIN_USABLE_CHARS) {
+        val usable = (article.textContent ?: "").replace(Regex("\\s+"), "").length
+        return if (usable < MIN_USABLE_CHARS) {
             ExtractionOutcome.Err.Empty
         } else {
             ExtractionOutcome.Ok(
                 title = article.title?.takeIf { it.isNotBlank() },
-                paragraphs = paragraphs,
+                html = contentHtml,
                 byline = article.byline?.takeIf { it.isNotBlank() },
             )
         }

@@ -234,6 +234,6 @@ data class SavedItemEntity(
 )
 data class ArticleBodyEntity(
     @PrimaryKey @ColumnInfo(name = "item_id") val itemId: String,
-    @ColumnInfo(name = "paragraphs_json") val paragraphsJson: String,
+    @ColumnInfo(name = "body_html") val bodyHtml: String,
     @ColumnInfo(name = "fetched_at") val fetchedAt: Long,
 )

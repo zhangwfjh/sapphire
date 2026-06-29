@@ -87,7 +87,7 @@ class RoomDataClearUseCaseTest {
             LlmCacheEntity(cacheKey = "k1", itemId = "h1", op = "summarize", payloadJson = "{}", createdAt = 0L),
         )
         db.articleBodyDao().upsert(
-            ArticleBodyEntity(itemId = "h1", paragraphsJson = "[]", fetchedAt = 0L),
+            ArticleBodyEntity(itemId = "h1", bodyHtml = "", fetchedAt = 0L),
         )
         val n = clear.clearReaderCache()
         assertEquals(2, n)
@@ -112,7 +112,7 @@ class RoomDataClearUseCaseTest {
             LlmCacheEntity(cacheKey = "k1", itemId = "h1", op = "summarize", payloadJson = "{}", createdAt = 0L),
         )
         db.articleBodyDao().upsert(
-            ArticleBodyEntity(itemId = "h1", paragraphsJson = "[]", fetchedAt = 0L),
+            ArticleBodyEntity(itemId = "h1", bodyHtml = "", fetchedAt = 0L),
         )
 
         clear.clearAll()
