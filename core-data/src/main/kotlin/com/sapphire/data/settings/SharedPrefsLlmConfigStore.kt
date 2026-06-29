@@ -23,7 +23,6 @@ import javax.inject.Inject
  * a plain instance (Robolectric lacks the Android Keystore that EncryptedSharedPreferences needs).
  */
 class SharedPrefsLlmConfigStore private constructor(
-    context: Context,
     private val defaults: LlmConfigBuildConfigDefaults,
     private val plainPrefs: SharedPreferences,
     private val secretPrefsProvider: () -> SharedPreferences,
@@ -31,7 +30,6 @@ class SharedPrefsLlmConfigStore private constructor(
 
     @Inject
     constructor(context: Context, defaults: LlmConfigBuildConfigDefaults) : this(
-        context = context,
         defaults = defaults,
         plainPrefs = context.getSharedPreferences("settings_llm", Context.MODE_PRIVATE),
         secretPrefsProvider = { createEncryptedPrefs(context) },
@@ -44,7 +42,6 @@ class SharedPrefsLlmConfigStore private constructor(
         secretPrefsProvider: (Context) -> SharedPreferences,
         plainPrefsName: String,
     ) : this(
-        context = context,
         defaults = defaults,
         plainPrefs = context.getSharedPreferences(plainPrefsName, Context.MODE_PRIVATE),
         secretPrefsProvider = { secretPrefsProvider(context) },
