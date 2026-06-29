@@ -1,5 +1,6 @@
 package com.sapphire.app.ui
 
+import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,8 +22,8 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -327,7 +328,7 @@ private fun ActionRow(state: ReaderUiState.Open, viewModel: ReaderViewModel) {
             ToolButton(
                 onClick = { openInAppBrowser(context, url) },
                 enabled = true,
-                icon = Icons.Filled.OpenInNew,
+                icon = Icons.AutoMirrored.Filled.OpenInNew,
                 label = "Open",
             )
         }
@@ -411,7 +412,7 @@ private fun CustomPromptField() {
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    Icons.Filled.Send,
+                    Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Run",
                     tint = if (prompt.isNotBlank()) Color.White else palette.OnInkFaint,
                     modifier = Modifier.size(16.dp),
@@ -431,7 +432,7 @@ private fun openInAppBrowser(context: android.content.Context, url: String) {
         .setShowTitle(true)
         .build()
     runCatching {
-        customTabsIntent.launchUrl(context, android.net.Uri.parse(url))
+        customTabsIntent.launchUrl(context, url.toUri())
     }
 }
 

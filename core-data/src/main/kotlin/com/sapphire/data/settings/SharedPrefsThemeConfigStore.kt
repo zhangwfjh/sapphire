@@ -1,6 +1,7 @@
 package com.sapphire.data.settings
 
 import android.content.Context
+import androidx.core.content.edit
 import com.sapphire.domain.settings.ThemeConfigStore
 import com.sapphire.domain.settings.ThemePreference
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -25,7 +26,7 @@ class SharedPrefsThemeConfigStore(
     override fun observe(): Flow<ThemePreference> = _state.asStateFlow()
 
     override suspend fun set(pref: ThemePreference) = withContext(Dispatchers.IO) {
-        prefs.edit().putString(KEY, pref.name).apply()
+        prefs.edit { putString(KEY, pref.name) }
         _state.value = pref
     }
 

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The adaptive launcher icons live in mipmap-anydpi-v26 because AAPT requires an
+  API qualifier (v26+) for <adaptive-icon> resources — plain mipmap-anydpi is
+  rejected and the resource is dropped. With minSdk = 29 the -v26 qualifier is
+  effectively always satisfied, so lint's ObsoleteSdkInt nudge to "merge into
+  mipmap-anydpi" is a false positive here and is scoped-suppressed.
+-->
+<lint>
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>

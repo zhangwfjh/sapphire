@@ -1,6 +1,7 @@
 package com.sapphire.data.settings
 
 import android.content.Context
+import androidx.core.content.edit
 import com.sapphire.domain.settings.RetentionConfigStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +25,7 @@ class SharedPrefsRetentionConfigStore(
     override fun observe(): Flow<Int> = _state.asStateFlow()
 
     override suspend fun setDays(days: Int) = withContext(Dispatchers.IO) {
-        prefs.edit().putInt(KEY_DAYS, days).apply()
+        prefs.edit { putInt(KEY_DAYS, days) }
         _state.value = days
     }
 
