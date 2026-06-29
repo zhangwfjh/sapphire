@@ -6,7 +6,9 @@ import com.sapphire.domain.reader.ReaderItemStore
 import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.llm.TranslateResponse
 import com.sapphire.domain.model.FeedItem
-import com.sapphire.domain.reader.BodyParagraphParser
+import com.sapphire.domain.reader.RichBlock
+import com.sapphire.domain.reader.RichContentParser
+import com.sapphire.domain.reader.toPlainParagraphs
 import com.sapphire.domain.reader.ReaderMacro
 import com.sapphire.domain.reader.ReaderOpsUseCase
 import com.sapphire.domain.save.SavedItemRepository
@@ -38,6 +40,7 @@ class ReaderViewModel @Inject constructor(
     private val items: ReaderItemStore,
     private val readerOps: ReaderOpsUseCase,
     private val savedItems: SavedItemRepository,
+    private val richContentParser: RichContentParser,
     private val articleExtractor: ArticleExtractor,
     private val articleBodyStore: ArticleBodyStore,
 ) : ViewModel() {
@@ -53,38 +56,39 @@ class ReaderViewModel @Inject constructor(
         _state.value = ReaderUiState.Loading
         viewModelScope.launch {
             val item = items.item(itemId)
-            if (item == null) {
-                _state.value = ReaderUiState.Error("Item not found.")
-                return@launch
-            }
+        if (item == null) {
+            _state.value = ReaderUiState.Error("Item not found.")
+            return@launch
+        }
 
             // Lazy full-text resolution. Cache hit -> use; miss + url -> extract + cache;
-            // else -> feed body. The two synchronous paths publish immediately (no race to
-            // guard); only the post-extract write is guarded against dismiss/re-open.
-            val cached = articleBodyStore.get(itemId)
-            if (cached != null) {
-                publish(item, cached, ExtractionState.Done)
+            // else -> feed body. HTML (cached or feed bodyRaw) is parsed to RichBlocks once;
+            // the LLM ops derive a plain-text paragraph view from the same blocks so the
+            // paragraph-aligned translate contract (block i <-> translate paragraph i) holds.
+            val cachedHtml = articleBodyStore.get(itemId)
+            if (cachedHtml != null) {
+                publish(item, richContentParser.parse(cachedHtml), ExtractionState.Done)
                 classify(itemId)
                 return@launch
             }
 
-            val feedParagraphs = BodyParagraphParser.parse(item.bodyRaw ?: item.summary)
+            val feedBlocks = richContentParser.parse(item.bodyRaw ?: item.summary ?: item.title)
             val url = item.url
             if (url.isNullOrBlank()) {
-                publish(item, feedParagraphs, ExtractionState.Idle)
+                publish(item, feedBlocks, ExtractionState.Idle)
                 classify(itemId)
                 return@launch
             }
 
             // Show the feed body + indicator while the full article is fetched/extracted.
             // Classification is deferred until the resolved body is ready below.
-            publish(item, feedParagraphs, ExtractionState.Extracting)
+            publish(item, feedBlocks, ExtractionState.Extracting)
             val (resolved, extraction) = when (val outcome = articleExtractor.extract(url)) {
                 is ExtractionOutcome.Ok -> {
-                    articleBodyStore.put(itemId, outcome.paragraphs)
-                    outcome.paragraphs to ExtractionState.Done
+                    articleBodyStore.put(itemId, outcome.html)
+                    richContentParser.parse(outcome.html) to ExtractionState.Done
                 }
-                is ExtractionOutcome.Err -> feedParagraphs to ExtractionState.Failed
+                is ExtractionOutcome.Err -> feedBlocks to ExtractionState.Failed
             }
             // Late write: only if the user hasn't dismissed or opened a different item.
             if ((_state.value as? ReaderUiState.Open)?.item?.hashUuid == itemId) {
@@ -97,12 +101,12 @@ class ReaderViewModel @Inject constructor(
     /** Emits the resolved [ReaderUiState.Open] state (does not kick classification). */
     private fun publish(
         item: com.sapphire.domain.model.FeedItem,
-        paragraphs: List<String>,
+        blocks: List<RichBlock>,
         extraction: ExtractionState,
     ) {
         _state.value = ReaderUiState.Open(
             item = item,
-            paragraphs = paragraphs,
+            blocks = blocks,
             classification = ClassificationState.Loading,
             macros = emptyList(),
             summary = null,
@@ -128,7 +132,7 @@ class ReaderViewModel @Inject constructor(
     fun summarize() {
         val current = _state.value as? ReaderUiState.Open ?: return
         viewModelScope.launch {
-            when (val outcome = readerOps.summarize(current.item.hashUuid, current.paragraphs)) {
+            when (val outcome = readerOps.summarize(current.item.hashUuid, current.blocks.toPlainParagraphs())) {
                 is LlmOutcome.Err -> updateSummary(SummaryState.Error(outcome.error.userMessage()))
                 is LlmOutcome.Ok -> updateSummary(SummaryState.Done(outcome.value.bullets))
             }
@@ -139,7 +143,7 @@ class ReaderViewModel @Inject constructor(
         val current = _state.value as? ReaderUiState.Open ?: return
         viewModelScope.launch {
             updateTranslate(TranslateState.Loading, visible = true)
-            when (val outcome = readerOps.translate(current.item.hashUuid, targetLanguage, current.paragraphs)) {
+            when (val outcome = readerOps.translate(current.item.hashUuid, targetLanguage, current.blocks.toPlainParagraphs())) {
                 is LlmOutcome.Err -> updateTranslate(TranslateState.Error(outcome.error.userMessage()), visible = true)
                 is LlmOutcome.Ok -> updateTranslate(TranslateState.Done(outcome.value), visible = true)
             }
@@ -147,7 +151,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun currentParagraphs(): List<String> =
-        (_state.value as? ReaderUiState.Open)?.paragraphs ?: emptyList()
+        (_state.value as? ReaderUiState.Open)?.blocks?.toPlainParagraphs() ?: emptyList()
 
     /**
      * S07 (PRD §3.4 [📁 Save Later]): promote/unsave the current item. Idempotent — the
@@ -197,7 +201,7 @@ sealed interface ReaderUiState {
     data object Loading : ReaderUiState
     data class Open(
         val item: FeedItem,
-        val paragraphs: List<String>,
+        val blocks: List<RichBlock>,
         val classification: ClassificationState,
         val macros: List<ReaderMacro>,
         val summary: SummaryState?,

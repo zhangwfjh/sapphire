@@ -48,34 +48,34 @@ class RoomArticleBodyStoreTest {
     }
 
     @Test
-    fun `put then get round-trips paragraphs`() = runTest {
+    fun `put then get round-trips body html`() = runTest {
         seedItem("h1")
-        val paragraphs = listOf("First para.", "Second para.", "Third.")
-        store.put("h1", paragraphs)
-        assertEquals(paragraphs, store.get("h1"))
+        val html = "<p>First para.</p><p>Second para.</p>"
+        store.put("h1", html)
+        assertEquals(html, store.get("h1"))
     }
 
     @Test
-    fun `put then get round-trips an empty paragraph list`() = runTest {
+    fun `put then get round-trips an empty html body`() = runTest {
         seedItem("h1")
-        store.put("h1", emptyList())
-        assertEquals(emptyList<String>(), store.get("h1"))
+        store.put("h1", "")
+        assertEquals("", store.get("h1"))
     }
 
     @Test
     fun `put replaces prior body for same item`() = runTest {
         seedItem("h1")
-        store.put("h1", listOf("old"))
-        store.put("h1", listOf("new"))
-        assertEquals(listOf("new"), store.get("h1"))
+        store.put("h1", "<p>old</p>")
+        store.put("h1", "<p>new</p>")
+        assertEquals("<p>new</p>", store.get("h1"))
     }
 
     @Test
     fun `article body cascade-deletes with the feed item`() = runTest {
         seedItem("h1")
-        store.put("h1", listOf("body"))
+        store.put("h1", "<p>body</p>")
         // Pre-assert the row exists so the cascade case stands on its own.
-        assertEquals(listOf("body"), store.get("h1"))
+        assertEquals("<p>body</p>", store.get("h1"))
         db.feedDao().deleteItem("h1")
         assertNull(store.get("h1"))
     }

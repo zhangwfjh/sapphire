@@ -179,6 +179,8 @@ abstract class RepositoryBindingsModule {
     @Binds @javax.inject.Singleton
     abstract fun bindArticleBodyStore(impl: com.sapphire.data.reader.RoomArticleBodyStore): com.sapphire.domain.reader.ArticleBodyStore
     @Binds @javax.inject.Singleton
+    abstract fun bindRichContentParser(impl: com.sapphire.data.reader.JsoupRichContentParser): com.sapphire.domain.reader.RichContentParser
+    @Binds @javax.inject.Singleton
     abstract fun bindLlmConfigStore(impl: com.sapphire.data.settings.SharedPrefsLlmConfigStore): com.sapphire.domain.settings.LlmConfigStore
     @Binds @javax.inject.Singleton
     abstract fun bindRetentionConfigStore(impl: com.sapphire.data.settings.SharedPrefsRetentionConfigStore): com.sapphire.domain.settings.RetentionConfigStore

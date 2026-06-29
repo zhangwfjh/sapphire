@@ -3,10 +3,11 @@ package com.sapphire.domain.reader
 /**
  * Extracts the readable article body from a full HTML page. Lazy on first reader-open
  * (PRD §4.2 — no work on unread items). Failure is always non-fatal: callers fall back
- * to [BodyParagraphParser] on the feed body.
+ * to the feed body via [RichContentParser].
  *
- * The [Ok.paragraphs] follow the same non-empty, document-order contract as
- * [BodyParagraphParser.parse] so paragraph-aligned translate keeps working.
+ * [Ok.html] is the Readability-cleaned article HTML (block tags preserved); the caller
+ * parses it to [com.sapphire.domain.reader.RichBlock]s for rendering and to a plain-text
+ * paragraph view for the Tier-2 LLM ops.
  */
 interface ArticleExtractor {
     suspend fun extract(url: String): ExtractionOutcome
@@ -15,7 +16,7 @@ interface ArticleExtractor {
 sealed interface ExtractionOutcome {
     data class Ok(
         val title: String?,
-        val paragraphs: List<String>,
+        val html: String,
         val byline: String?,
     ) : ExtractionOutcome
 

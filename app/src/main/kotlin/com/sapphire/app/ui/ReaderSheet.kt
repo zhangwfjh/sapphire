@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sapphire.app.ui.design.PlatformBadge
 import com.sapphire.app.ui.design.SectionEyebrow
@@ -129,7 +130,7 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel)
                 )
             }
             item.publishedAt?.let {
-                Text("· now", style = SapphireMono.Label, color = palette.OnInkFaint)
+                Text("· " + formatRelativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint)
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -138,6 +139,7 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel)
             style = MaterialTheme.typography.headlineMedium,
             color = palette.ReaderInk,
             fontWeight = FontWeight.SemiBold,
+            lineHeight = 33.sp,
         )
 
         // Macro slot — shimmer while classifying, chips once done (PRD §3.5)
@@ -146,23 +148,23 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel)
 
         // Summary block pinned beneath header once produced (PRD §3.4)
         state.summary?.let { sum ->
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
             SummaryBlock(sum)
         }
 
         // Body — original or interleaved translate stream
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(20.dp))
         BodyBlock(state)
 
         // Action row (PRD §3.4 tools; Save Later lands in S07)
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(20.dp))
         ActionRow(state, viewModel)
 
         // Custom prompt field (PRD §3.5 — interactive from launch)
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         CustomPromptField()
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
     }
 }
 
@@ -270,17 +272,11 @@ private fun BodyBlock(state: ReaderUiState.Open) {
     val palette = LocalSapphirePalette.current
     val translate = state.translate
     if (state.translateVisible && translate is TranslateState.Done) {
-        translate.response.paragraphs.forEach { p ->
-            Text(p.original, style = MaterialTheme.typography.bodyLarge, color = palette.ReaderInk)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                p.target,
-                style = MaterialTheme.typography.bodyLarge,
-                fontStyle = FontStyle.Italic,
-                color = palette.AccentBright,
-            )
-            Spacer(Modifier.height(14.dp))
-        }
+        // Paragraph-aligned interleave: text-block i pairs with translate.response[i].target.
+        RichBlockList(
+            blocks = state.blocks,
+            translateTargets = translate.response.paragraphs.map { it.target },
+        )
     } else {
         translate?.let {
             if (it is TranslateState.Loading) {
@@ -300,10 +296,7 @@ private fun BodyBlock(state: ReaderUiState.Open) {
             )
             Spacer(Modifier.height(8.dp))
         }
-        state.paragraphs.forEach { p ->
-            Text(p, style = MaterialTheme.typography.bodyLarge, color = palette.ReaderInk)
-            Spacer(Modifier.height(14.dp))
-        }
+        RichBlockList(blocks = state.blocks)
     }
 }
 
@@ -439,5 +432,17 @@ private fun openInAppBrowser(context: android.content.Context, url: String) {
         .build()
     runCatching {
         customTabsIntent.launchUrl(context, android.net.Uri.parse(url))
+    }
+}
+
+/** Compact relative-time formatter for the reader header (e.g. "3h", "2d"). */
+private fun formatRelativeTime(epochMs: Long): String {
+    val mins = (System.currentTimeMillis() - epochMs) / 60_000
+    return when {
+        mins < 1 -> "now"
+        mins < 60 -> "${mins}m"
+        mins < 24 * 60 -> "${mins / 60}h"
+        mins < 30 * 24 * 60 -> "${mins / (24 * 60)}d"
+        else -> "${mins / (30 * 24 * 60)}mo"
     }
 }

@@ -35,9 +35,8 @@ class ReadabilityArticleExtractorTest {
         val outcome = extractor.extract(server.url("/post").toString())
         assertTrue(outcome is ExtractionOutcome.Ok)
         val ok = outcome as ExtractionOutcome.Ok
-        assertTrue(ok.paragraphs.size >= 3)
-        assertTrue(ok.paragraphs.first().contains("first paragraph"))
-        assertTrue(ok.paragraphs.last().contains("third paragraph"))
+        assertTrue(ok.html.contains("first paragraph"))
+        assertTrue(ok.html.contains("third paragraph"))
     }
 
     @Test

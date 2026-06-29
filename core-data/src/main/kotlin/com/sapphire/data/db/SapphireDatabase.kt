@@ -21,7 +21,7 @@ import androidx.room.TypeConverters
         DiscoveredFeedEntity::class,
         ArticleBodyEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = false,
 )
 @TypeConverters(EnumTypeConverter::class)
