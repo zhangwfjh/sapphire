@@ -9,6 +9,5 @@ import com.sapphire.domain.model.SourceKind
 fun parseSourceKind(raw: String?): SourceKind = when (raw?.trim()?.lowercase()) {
     "atom" -> SourceKind.ATOM
     "json", "jsonfeed" -> SourceKind.JSON
-    "rsshub", "rss-hub", "rss_hub" -> SourceKind.RSSHUB
     else -> SourceKind.RSS
 }

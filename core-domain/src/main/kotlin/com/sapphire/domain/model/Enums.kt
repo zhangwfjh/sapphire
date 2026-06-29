@@ -2,14 +2,13 @@ package com.sapphire.domain.model
 
 /**
  * Dispatch key for ingestion. New kinds extend the [Fetcher] interface in core-data.
- * S01 only persists RSS/ATOM/JSON/RSSHUB rows; AGENT_* are defined now so the schema
+ * S01 only persists RSS/ATOM/JSON rows; AGENT_* are defined now so the schema
  * is stable when S04/S05 land.
  */
 enum class SourceKind {
     RSS,
     ATOM,
     JSON,
-    RSSHUB,
     AGENT_SEARCH,
     AGENT_PROMPT,
 }

@@ -65,7 +65,7 @@ class FeedRefreshService @Inject constructor(
     /**
      * Aggregated across all sources in one refresh pass. [sourceCount],
      * [skippedNoFetcher], and [fetchedSources] let the caller distinguish the three
-     * "0 new" cases: no sources configured, all skipped (AGENT/RSSHUB with no S02 fetcher),
+     * "0 new" cases: no sources configured, all skipped (AGENT with no S02 fetcher),
      * or fetched-but-empty.
      */
     data class RefreshOutcome(
@@ -89,7 +89,7 @@ class FeedRefreshService @Inject constructor(
         for (source in all) {
             val fetcher = fetchers.forKind(source.kind)
             if (fetcher == null) {
-                // AGENT_* / RSSHUB are not S02 fetchers; skip without erroring.
+                // AGENT_* are not S02 fetchers; skip without erroring.
                 skippedNoFetcher++
                 continue
             }

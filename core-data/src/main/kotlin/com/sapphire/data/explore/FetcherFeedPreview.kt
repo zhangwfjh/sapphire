@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 /**
  * FetcherRegistry-backed [FeedPreview]. Dispatches on [SourceKind] like the ingest path,
  * takes the most recent items by `publishedAt` (falling back to feed order), and surfaces
- * a [Failed] result for kinds with no fetcher (RSSHUB/AGENT_*) so the UI can degrade
+ * a [Failed] result for kinds with no fetcher (AGENT_*) so the UI can degrade
  * gracefully instead of hanging on an unsupported source.
  */
 class FetcherFeedPreview @Inject constructor(

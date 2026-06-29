@@ -11,8 +11,7 @@ import java.io.IOException
 import javax.inject.Inject
 
 /**
- * JSON Feed (jsonfeed.org, v1 & v1.1) fetcher. The third S02 ingestion kind; social feeds
- * routed through RSSHub (S06) also arrive as JSON Feed.
+ * JSON Feed (jsonfeed.org, v1 & v1.1) fetcher. The third S02 ingestion kind.
  *
  * Parses only the card-relevant fields. `content_html` → `bodyRaw` for S03; the summary
  * uses `summary` if present, else a stripped snippet of `content_text`.
