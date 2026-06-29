@@ -19,4 +19,8 @@ interface LlmCacheDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(row: LlmCacheEntity)
+
+    /** Settings §3.3: clear every llm_cache row. Returns rows deleted. */
+    @Query("DELETE FROM llm_cache")
+    suspend fun deleteAll(): Int
 }

@@ -17,4 +17,8 @@ interface ArticleBodyDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: ArticleBodyEntity)
+
+    /** Settings §3.3: clear every article_body row. Returns rows deleted. */
+    @Query("DELETE FROM article_body")
+    suspend fun deleteAll(): Int
 }
