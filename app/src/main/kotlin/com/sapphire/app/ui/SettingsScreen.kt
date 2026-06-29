@@ -190,7 +190,14 @@ fun SettingsScreen(
 
             // ── Data ──
             SectionEyebrow("DATA")
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
+            val bytes by viewModel.storageBytes.collectAsStateWithLifecycle()
+            Text(
+                "Database: ${formatBytes(bytes)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.OnInkMuted,
+            )
+            Spacer(Modifier.height(8.dp))
             ClearRow("Clear feed items", "Remove all feed items? Sources and saved items are kept.") { confirmDialog = ClearAction.FEED_ITEMS }
             ClearRow("Clear reader cache", "Remove all extracted article bodies and LLM caches?") { confirmDialog = ClearAction.READER_CACHE }
             ClearRow("Clear saved items", "Remove all saved items? Feed items are kept.") { confirmDialog = ClearAction.SAVED }
@@ -264,5 +271,12 @@ private enum class ClearAction(val title: String, val message: String) {
     READER_CACHE("Clear reader cache", "Remove all extracted article bodies and LLM caches?"),
     SAVED("Clear saved items", "Remove all saved items? Feed items are kept."),
     ALL("Reset all data", "Erase everything and re-seed defaults? This cannot be undone."),
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> String.format("%.1f KB", bytes / 1024.0)
+    bytes < 1024 * 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024))
+    else -> String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024))
 }
 

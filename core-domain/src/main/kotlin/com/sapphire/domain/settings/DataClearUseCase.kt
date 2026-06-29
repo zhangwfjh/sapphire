@@ -6,4 +6,6 @@ interface DataClearUseCase {
     suspend fun clearReaderCache(): Int
     suspend fun clearSaved(): Int
     suspend fun clearAll()
+    /** Total on-device database file size in bytes. */
+    suspend fun storageUsageBytes(): Long
 }
