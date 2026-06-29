@@ -197,10 +197,9 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.OnInkMuted,
             )
-            Spacer(Modifier.height(12.dp))
-            ClearRow("Feed items", "${bd.feedItems} items", "Remove all feed items? Sources and saved items are kept.") { confirmDialog = ClearAction.FEED_ITEMS }
-            ClearRow("Reader cache", "${bd.readerCache} entries", "Remove all extracted article bodies and LLM caches?") { confirmDialog = ClearAction.READER_CACHE }
-            ClearRow("Saved items", "${bd.savedItems} items", "Remove all saved items? Feed items are kept.") { confirmDialog = ClearAction.SAVED }
+            ClearRow("Feed items", "${bd.feedItems} · ${formatBytes(bd.feedItemsBytes)}", "Remove all feed items? Sources and saved items are kept.") { confirmDialog = ClearAction.FEED_ITEMS }
+            ClearRow("Reader cache", "${bd.readerCache} · ${formatBytes(bd.readerCacheBytes)}", "Remove all extracted article bodies and LLM caches?") { confirmDialog = ClearAction.READER_CACHE }
+            ClearRow("Saved items", "${bd.savedItems} · ${formatBytes(bd.savedItemsBytes)}", "Remove all saved items? Feed items are kept.") { confirmDialog = ClearAction.SAVED }
             ClearRow("Reset all data", formatBytes(bd.totalBytes), "Erase everything and re-seed defaults? This cannot be undone.") { confirmDialog = ClearAction.ALL }
 
             Spacer(Modifier.height(32.dp))
