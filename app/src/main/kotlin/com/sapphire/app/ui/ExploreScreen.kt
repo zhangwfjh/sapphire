@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.RssFeed
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,6 +53,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -223,7 +225,6 @@ private fun SearchRow(
         keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
     )
 }
-
 @Composable
 private fun BrowseRails(
     sections: List<ExploreSectionUi>,
@@ -241,27 +242,51 @@ private fun BrowseRails(
         }
         return
     }
-    // Single-column list: each section renders as an eyebrow header followed by its
-    // feeds as full-width rows (no horizontal rail). Keeps one LazyColumn so scroll
-    // is linear and cards reflow at any width.
+    // All categories start collapsed so the catalog reads as a table of contents;
+    // tapping a header expands that section. State keyed by section title so it
+    // survives recomposition without retaining the section list identity.
+    val collapsed = remember { mutableStateMapOf<String, Boolean>() }
+    val isCollapsed = { title: String ->
+        collapsed[title] ?: true
+    }
+    // Single-column list: each section renders as a clickable eyebrow header followed
+    // by its feeds as full-width rows (no horizontal rail). Keeps one LazyColumn so
+    // scroll is linear and cards reflow at any width.
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         sections.forEach { section ->
             item(key = "header-${section.title}") {
-                SectionEyebrow(text = section.title.uppercase())
+                val open = !isCollapsed(section.title)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { collapsed[section.title] = open }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    SectionEyebrow(text = section.title.uppercase())
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (open) "Collapse ${section.title}" else "Expand ${section.title}",
+                        tint = palette.OnInkFaint,
+                    )
+                }
             }
-            items(
-                items = section.feeds,
-                key = { feedUi -> "${section.title}-${feedUi.feed.url}" },
-            ) { feedUi ->
-                FeedCard(
-                    feedUi = feedUi,
-                    onPreview = { onPreview(feedUi.feed) },
-                    onSubscribe = { onSubscribe(feedUi.feed) },
-                    expanded = true,
-                )
+            if (!isCollapsed(section.title)) {
+                items(
+                    items = section.feeds,
+                    key = { feedUi -> "${section.title}-${feedUi.feed.url}" },
+                ) { feedUi ->
+                    FeedCard(
+                        feedUi = feedUi,
+                        onPreview = { onPreview(feedUi.feed) },
+                        onSubscribe = { onSubscribe(feedUi.feed) },
+                        expanded = true,
+                    )
+                }
             }
         }
     }
