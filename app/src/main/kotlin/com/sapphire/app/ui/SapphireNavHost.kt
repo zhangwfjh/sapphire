@@ -11,6 +11,7 @@ object Routes {
     const val FEED = "feed"
     const val SAVED = "saved"
     const val EXPLORE = "explore"
+    const val SETTINGS = "settings"
 }
 
 @Composable
@@ -47,6 +48,7 @@ fun SapphireNavHost() {
                 onBuildFeed = { navController.navigate(Routes.ONBOARDING) },
                 onOpenSaved = { navController.navigate(Routes.SAVED) },
                 onOpenExplore = { navController.navigate(Routes.EXPLORE) },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
             )
         }
         composable(Routes.EXPLORE) {
@@ -57,6 +59,9 @@ fun SapphireNavHost() {
         }
         composable(Routes.SAVED) {
             SavedItemsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.SETTINGS) {
+            SettingsScreen(onBack = { navController.popBackStack() })
         }
     }
 }
