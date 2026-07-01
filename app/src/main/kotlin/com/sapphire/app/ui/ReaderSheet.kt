@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -22,17 +23,20 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -99,10 +103,16 @@ fun ReaderSheet(
 private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel) {
     val palette = LocalSapphirePalette.current
     val item = state.item
-    Column(
+    Box(
         Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState()),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+    Column(
+        Modifier
+            .widthIn(max = 720.dp)
+            .fillMaxWidth()
             .padding(horizontal = 20.dp)
             .padding(top = 12.dp, bottom = 28.dp),
     ) {
@@ -143,6 +153,10 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel)
             lineHeight = 33.sp,
         )
 
+        // Action row (PRD §3.4 tools) — pinned near the top for instant reach
+        Spacer(Modifier.height(14.dp))
+        ActionRow(state, viewModel)
+
         // Macro slot — shimmer while classifying, chips once done (PRD §3.5)
         Spacer(Modifier.height(16.dp))
         MacroSlot(state)
@@ -152,20 +166,25 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel)
             Spacer(Modifier.height(16.dp))
             SummaryBlock(sum)
         }
-
-        // Body — original or interleaved translate stream
+        // Brief — the original feed body, always visible (PRD §3.4).
         Spacer(Modifier.height(20.dp))
-        BodyBlock(state)
+        BriefBlock(state)
 
-        // Action row (PRD §3.4 tools; Save Later lands in S07)
-        Spacer(Modifier.height(20.dp))
-        ActionRow(state, viewModel)
+        // Full article — extracted body appended below the brief behind a divider, sitting
+        // directly above the custom prompt field. Rendered only once the article resolves;
+        // omitted while fetching (the brief is the focus then) and on no-URL/extraction fail.
+        if (state.articleBlocks != null) {
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider(color = palette.InkStrokeStrong.copy(alpha = 0.5f))
+            Spacer(Modifier.height(16.dp))
+            ArticleBlock(state)
+        }
 
         // Custom prompt field (PRD §3.5 — interactive from launch)
         Spacer(Modifier.height(12.dp))
         CustomPromptField()
-
         Spacer(Modifier.height(20.dp))
+    }
     }
 }
 
@@ -269,35 +288,87 @@ private fun SummaryBlock(sum: SummaryState) {
 }
 
 @Composable
-private fun BodyBlock(state: ReaderUiState.Open) {
-    val palette = LocalSapphirePalette.current
+private fun BriefBlock(state: ReaderUiState.Open) {
+    // The brief is the translation target only when no full article is present; otherwise
+    // translation applies to the article (see [ArticleBlock]).
     val translate = state.translate
-    if (state.translateVisible && translate is TranslateState.Done) {
-        // Paragraph-aligned interleave: text-block i pairs with translate.response[i].target.
+    val isTranslateTarget = state.articleBlocks == null
+    if (isTranslateTarget) TranslateStatus(translate, state.translateVisible)
+    if (isTranslateTarget && state.translateVisible && translate is TranslateState.Done) {
         RichBlockList(
             blocks = state.blocks,
             translateTargets = translate.response.paragraphs.map { it.target },
         )
     } else {
-        translate?.let {
-            if (it is TranslateState.Loading) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = palette.Accent)
-                    Text("Translating…", style = SapphireMono.Body, color = palette.OnInkMuted)
-                }
-            } else if (it is TranslateState.Error) {
-                Text(it.message, color = palette.Danger, style = MaterialTheme.typography.bodySmall)
+        RichBlockList(blocks = state.blocks)
+    }
+}
+
+@Composable
+private fun ArticleBlock(state: ReaderUiState.Open) {
+    val palette = LocalSapphirePalette.current
+    val article = state.articleBlocks ?: return
+    val translate = state.translate
+    // Collapsed by default — the full article only renders once the user taps the toggle.
+    // The state is keyed on the item id so it resets when the reader opens a different item.
+    var expanded by remember(state.item.hashUuid) { mutableStateOf(false) }
+    // If the user triggers translate while collapsed, auto-expand so the result is visible;
+    // translate runs on the full article body (articleBlocks != null).
+    val showTranslate = state.translateVisible
+    LaunchedEffect(showTranslate) { if (showTranslate) expanded = true }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Collapsible toggle (PRD §3.4) — "Show full article" / "Hide full article".
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { expanded = !expanded }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                Icons.Filled.KeyboardArrowDown,
+                contentDescription = null,
+                tint = palette.Accent,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                if (expanded) "Hide full article" else "Show full article",
+                style = SapphireMono.Label,
+                color = palette.Accent,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        if (expanded) {
+            TranslateStatus(translate, state.translateVisible)
+            if (state.translateVisible && translate is TranslateState.Done) {
+                RichBlockList(
+                    blocks = article,
+                    translateTargets = translate.response.paragraphs.map { it.target },
+                )
+            } else {
+                RichBlockList(blocks = article)
             }
         }
-        if (state.extraction == ExtractionState.Extracting) {
-            Text(
-                text = "Extracting full article…",
-                style = MaterialTheme.typography.labelSmall,
-                color = palette.ReaderInk.copy(alpha = 0.6f),
-            )
-            Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** Inline translate loading/error indicator; rendered once by whichever block is the active translate target. */
+@Composable
+private fun TranslateStatus(translate: TranslateState?, visible: Boolean) {
+    if (!visible) return
+    val palette = LocalSapphirePalette.current
+    when (translate) {
+        is TranslateState.Loading -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = palette.Accent)
+            Text("Translating…", style = SapphireMono.Body, color = palette.OnInkMuted)
         }
-        RichBlockList(blocks = state.blocks)
+        is TranslateState.Error -> Text(translate.message, color = palette.Danger, style = MaterialTheme.typography.bodySmall)
+        else -> {}
     }
 }
 

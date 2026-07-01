@@ -1,5 +1,7 @@
 package com.sapphire.app.ui
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +36,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withAnnotation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sapphire.app.ui.theme.LocalSapphirePalette
@@ -63,8 +66,9 @@ fun RichBlockList(
 ) {
     val palette = LocalSapphirePalette.current
     var textIndex = 0
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        blocks.forEach { block ->
+    Column(modifier = modifier) {
+        blocks.forEachIndexed { index, block ->
+            if (index > 0) Spacer(Modifier.height(blockGap(blocks[index - 1], block)))
             val translated = translateTargets?.getOrNull(textIndex)
             RichBlockView(block)
             if (block.plainText().isNotEmpty()) {
@@ -104,7 +108,14 @@ private fun RichBlockView(block: RichBlock) {
                 RichSpanText(block.spans, color = palette.ReaderInk)
             }
         }
-        is RichBlock.Quote -> Row(Modifier.height(IntrinsicSize.Min)) {
+        is RichBlock.Quote -> Row(
+            Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .clip(RoundedCornerShape(10.dp))
+                .background(palette.Accent.copy(alpha = 0.06f))
+                .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+        ) {
             Box(
                 Modifier
                     .width(3.dp)
@@ -113,6 +124,15 @@ private fun RichBlockView(block: RichBlock) {
                     .background(palette.Accent.copy(alpha = 0.6f)),
             )
             Column(Modifier.padding(start = 12.dp)) {
+                Text(
+                    "\u201C",
+                    color = palette.Accent.copy(alpha = 0.5f),
+                    style = TextStyle(
+                        fontFamily = SapphireFonts.display,
+                        fontSize = 28.sp,
+                        lineHeight = 28.sp,
+                    ),
+                )
                 RichSpanText(
                     block.spans,
                     color = palette.OnInkMuted,
@@ -120,19 +140,32 @@ private fun RichBlockView(block: RichBlock) {
                         fontFamily = SapphireFonts.display,
                         fontStyle = FontStyle.Italic,
                         fontSize = 16.sp,
-                        lineHeight = 25.sp,
+                        lineHeight = 24.sp,
                     ),
                 )
             }
         }
-        is RichBlock.Code -> Box(
+        is RichBlock.Code -> Column(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
-                .background(palette.InkRaised)
-                .padding(12.dp),
+                .background(palette.InkRaised),
         ) {
-            Text(block.text, style = SapphireMono.Body, color = palette.ReaderInk)
+            Text(
+                "CODE",
+                style = SapphireMono.Label,
+                color = palette.OnInkFaint,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 12.dp, top = 10.dp, end = 12.dp),
+            )
+            Text(
+                block.text,
+                style = SapphireMono.Body,
+                color = palette.ReaderInk,
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            )
         }
         is RichBlock.Image -> Column {
             if (block.url.isNotBlank()) {
@@ -166,6 +199,22 @@ private fun headingStyle(level: Int) = when (level) {
 }
 
 /**
+ * Editorial block rhythm: the vertical gap before [cur] given the preceding [prev] block.
+ * Headings open new sections (large gap above, tight below); list items cluster tightly;
+ * everything else breathes at a comfortable paragraph gap.
+ */
+private fun blockGap(prev: RichBlock, cur: RichBlock): Dp = when {
+    cur is RichBlock.Heading -> 24.dp
+    prev is RichBlock.Heading -> 8.dp
+    prev is RichBlock.ListItem && cur is RichBlock.ListItem -> 6.dp
+    prev is RichBlock.ListItem || cur is RichBlock.ListItem -> 12.dp
+    prev is RichBlock.Quote || cur is RichBlock.Quote -> 16.dp
+    prev is RichBlock.Image || cur is RichBlock.Image -> 16.dp
+    prev is RichBlock.Code || cur is RichBlock.Code -> 16.dp
+    else -> 14.dp
+}
+
+/**
  * Clickable rich-text line. Builds an [AnnotatedString] from [spans] (bold/italic/strike/
  * inline-code/links) and routes link taps through the platform [LocalUriHandler]. Uses
  * [ClickableText] so per-span link clicks resolve by offset.
@@ -175,7 +224,12 @@ private fun headingStyle(level: Int) = when (level) {
 private fun RichSpanText(
     spans: List<RichSpan>,
     color: Color,
-    base: TextStyle = TextStyle(fontSize = 16.sp, lineHeight = 25.sp, letterSpacing = 0.25.sp),
+    base: TextStyle = TextStyle(
+        fontFamily = SapphireFonts.sans,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.2.sp,
+    ),
 ) {
     val palette = LocalSapphirePalette.current
     val uriHandler = LocalUriHandler.current
