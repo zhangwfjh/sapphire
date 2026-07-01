@@ -114,5 +114,12 @@ class SearchFeedsUseCaseTest {
                 else -> LlmOutcome.Ok(response as T)
             }
         }
+
+        override fun streamText(
+            tier: LlmTier,
+            systemPrompt: String,
+            userPrompt: String,
+        ): kotlinx.coroutines.flow.Flow<LlmOutcome<String>> =
+            kotlinx.coroutines.flow.flowOf(LlmOutcome.Err(LlmError.InvalidResponse))
     }
 }

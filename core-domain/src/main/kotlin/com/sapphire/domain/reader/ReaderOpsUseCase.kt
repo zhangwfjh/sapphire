@@ -6,9 +6,12 @@ import com.sapphire.domain.llm.LlmClient
 import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.llm.LlmTier
 import com.sapphire.domain.llm.SummaryResponse
+import com.sapphire.domain.llm.SummaryStreamFrame
 import com.sapphire.domain.llm.TranslateResponse
 import com.sapphire.domain.llm.TranslatedParagraph
 import com.sapphire.domain.util.LlmCacheKey
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 /**
  * PRD §4.2 lazy-compute cache port. Implementations store LLM op payloads keyed by
@@ -102,36 +105,59 @@ class ReaderOpsUseCase(
             }
         }
     }
-
     /**
-     * Tier-2 summary (PRD §3.4 [✨ Summary]). Cache-first; exactly three bullets.
+     * Tier-2 streaming summary (PRD §3.4 [✨ Summary], streaming reveal). Cache-first: a hit
+     * emits a single complete frame and skips the LLM entirely (re-open is free). On a miss the
+     * plain-text stream is parsed line by line — completed bullets versus the line being typed —
+     * and each token chunk emits a [SummaryStreamFrame]; the final frame carries the full bullet
+     * list and is persisted so the next open is a cache hit.
      *
-     * @param paragraphs resolved article body to summarize. `null` (default) parses the
-     *  item's feed body; non-null uses the supplied paragraphs verbatim (the reader
-     *  forwards the full extracted body when available).
+     * @param paragraphs resolved article body to summarize. `null` (default) parses the item's
+     *  feed body; non-null uses the supplied paragraphs verbatim (the reader forwards the full
+     *  extracted body when available).
      */
-    suspend fun summarize(itemId: String, paragraphs: List<String>? = null): LlmOutcome<SummaryResponse> {
+    fun summarizeStreaming(
+        itemId: String,
+        paragraphs: List<String>? = null,
+    ): Flow<LlmOutcome<SummaryStreamFrame>> = flow {
         val key = LlmCacheKey.compute(itemId, OP_SUMMARY, tier2ModelVersion)
-        cache.get(key)?.let { return decode(it, SummaryResponse.serializer()) }
+        cache.get(key)?.let {
+            val cached = decode(it, SummaryResponse.serializer())
+            if (cached is LlmOutcome.Ok) emit(LlmOutcome.Ok(SummaryStreamFrame(cached.value.bullets)))
+            else emit(castedErr(cached))
+            return@flow
+        }
 
         val body = if (paragraphs != null) {
             paragraphs.joinToString("\n\n")
         } else {
-            readerBody(itemId) ?: return missingItem()
+            readerBody(itemId) ?: run { emit(missingItem()); return@flow }
         }
-        return when (val outcome = llm.completeStructured(
+
+        var failed = false
+        var fullText: String? = null
+        llm.streamText(
             tier = LlmTier.TIER2_DEEP,
-            systemPrompt = SummaryResponse.SYSTEM_PROMPT,
+            systemPrompt = SummaryResponse.STREAM_PROMPT,
             userPrompt = body,
-            outputSerializer = SummaryResponse.serializer(),
-        )) {
-            is LlmOutcome.Err -> outcome
-            is LlmOutcome.Ok -> {
-                cache.put(itemId, key, OP_SUMMARY, json.encodeToString(SummaryResponse.serializer(), outcome.value))
-                outcome
+        ).collect { outcome ->
+            when (outcome) {
+                is LlmOutcome.Err -> { failed = true; emit(outcome) }
+                is LlmOutcome.Ok -> {
+                    fullText = outcome.value
+                    emit(LlmOutcome.Ok(parseSummaryFrame(outcome.value)))
+                }
             }
         }
+        if (!failed && fullText != null) {
+            val bullets = parseSummaryBullets(fullText)
+            cache.put(itemId, key, OP_SUMMARY, json.encodeToString(SummaryResponse.serializer(), SummaryResponse(bullets)))
+            emit(LlmOutcome.Ok(SummaryStreamFrame(bullets)))
+        }
     }
+
+    private fun castedErr(err: LlmOutcome<*>): LlmOutcome<Nothing> =
+        (err as LlmOutcome.Err).let { LlmOutcome.Err(it.error) }
 
     /**
      * Tier-2 paragraph-aligned translate (PRD §3.4 [🌐 Translate]). Cache-first, keyed
@@ -184,6 +210,45 @@ class ReaderOpsUseCase(
         } catch (e: Exception) {
             LlmOutcome.Err(com.sapphire.domain.llm.LlmError.InvalidResponse)
         }
+
+    /**
+     * Splits the streaming summary text into a [SummaryStreamFrame]: lines that a newline
+     * has already terminated are completed [SummaryStreamFrame.bullets]; the trailing line
+     * (no newline yet) is the in-progress [SummaryStreamFrame.partial]. Blank/partial lines
+     * between bullets are ignored.
+     */
+    private fun parseSummaryFrame(text: String): SummaryStreamFrame {
+        val endsNewline = text.endsWith('\n')
+        val lines = text.split('\n').let { if (endsNewline) it.dropLast(1) else it }
+        val completed = lines
+            .dropLast(if (endsNewline || lines.isEmpty()) 0 else 1)
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .map(::cleanSummaryBullet)
+        val partial = if (endsNewline) "" else lines.lastOrNull()?.trim().orEmpty()
+        return SummaryStreamFrame(completed, partial)
+    }
+
+    /** Final parse of the complete summary text into the cached bullet list. */
+    private fun parseSummaryBullets(text: String): List<String> =
+        text.split('\n').map(String::trim).filter(String::isNotEmpty).map(::cleanSummaryBullet)
+
+    /**
+     * Strips list decoration the model may emit despite instructions (bullets, dashes,
+     * `1.`/`1)` numbering) so cached + rendered bullets are uniform.
+     */
+    private fun cleanSummaryBullet(line: String): String {
+        var s = line.trim()
+        val markers = listOf("•", "●", "▪", "‣", "→", "-", "*")
+        while (s.isNotEmpty()) {
+            val marker = markers.firstOrNull { s.startsWith(it) }
+            if (marker != null) { s = s.removePrefix(marker).trim(); continue }
+            val number = Regex("^\\d+[.)]\\s*").find(s)
+            if (number != null) { s = s.substring(number.range.last + 1); continue }
+            break
+        }
+        return s
+    }
 
     companion object {
         internal const val OP_CLASSIFY = "classification"

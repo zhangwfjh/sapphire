@@ -201,6 +201,13 @@ class CurateTaxonomyUseCaseTest {
             error != null -> LlmOutcome.Err(error)
             else -> LlmOutcome.Ok(response as T)
         }
+
+        override fun streamText(
+            tier: com.sapphire.domain.llm.LlmTier,
+            systemPrompt: String,
+            userPrompt: String,
+        ): kotlinx.coroutines.flow.Flow<LlmOutcome<String>> =
+            kotlinx.coroutines.flow.flowOf(LlmOutcome.Err(LlmError.InvalidResponse))
     }
 
     /** Deterministic ids for stable assertions in tests. */

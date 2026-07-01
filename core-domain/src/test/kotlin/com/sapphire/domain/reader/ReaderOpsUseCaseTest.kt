@@ -9,6 +9,8 @@ import com.sapphire.domain.llm.SummaryResponse
 import com.sapphire.domain.llm.TranslateResponse
 import com.sapphire.domain.llm.TranslatedParagraph
 import com.sapphire.domain.model.FeedItem
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -127,16 +129,34 @@ class ReaderOpsUseCaseTest {
     }
 
     @Test
-    fun `summary cache hit skips LLM`() = runTest {
-        val llm = StubLlm(summary = SummaryResponse(listOf("a", "b", "c")))
+    fun `summary streams bullets, writes cache, then replays from cache without streaming`() = runTest {
+        val llm = StubLlm(summary = SummaryResponse(listOf("First bullet.", "Second bullet.", "Third bullet.")))
         val cache = MemCache()
         val useCase = useCase(llm, cache, StubItems())
 
-        val first = useCase.summarize("item-1")
-        assertEquals(listOf("a", "b", "c"), (first as LlmOutcome.Ok).value.bullets)
-        val second = useCase.summarize("item-1")
-        assertEquals(listOf("a", "b", "c"), (second as LlmOutcome.Ok).value.bullets)
-        assertEquals(1, llm.summaryCalls)
+        val frames = useCase.summarizeStreaming("item-1").toList()
+        assertTrue("every frame is Ok", frames.all { it is LlmOutcome.Ok })
+        val final = (frames.last() as LlmOutcome.Ok).value
+        assertEquals(listOf("First bullet.", "Second bullet.", "Third bullet."), final.bullets)
+        assertEquals("", final.partial)
+        assertEquals(1, llm.summaryStreamCalls)
+
+        // Re-call: cache hit emits a single complete frame and does not stream.
+        val replayed = useCase.summarizeStreaming("item-1").toList()
+        assertEquals(1, replayed.size)
+        val replayedFinal = (replayed.single() as LlmOutcome.Ok).value
+        assertEquals(listOf("First bullet.", "Second bullet.", "Third bullet."), replayedFinal.bullets)
+        assertEquals(1, llm.summaryStreamCalls)
+    }
+
+    @Test
+    fun `streamed bullets are stripped of list decoration before caching`() = runTest {
+        val llm = StubLlm(summaryText = "1. One\n• Two\n- Three")
+        val cache = MemCache()
+        val useCase = useCase(llm, cache, StubItems())
+
+        val final = (useCase.summarizeStreaming("item-1").toList().last() as LlmOutcome.Ok).value
+        assertEquals(listOf("One", "Two", "Three"), final.bullets)
     }
 
     @Test
@@ -226,11 +246,12 @@ class ReaderOpsUseCaseTest {
     private class StubLlm(
         val classification: ClassificationResponse = ClassificationResponse("Other", 0.0),
         val summary: SummaryResponse = SummaryResponse(emptyList()),
+        val summaryText: String? = null,
         val translate: TranslateResponse = TranslateResponse(emptyList()),
         val error: LlmError? = null,
     ) : LlmClient {
         var classifyCalls = 0; private set
-        var summaryCalls = 0; private set
+        var summaryStreamCalls = 0; private set
         var translateCalls = 0; private set
         val userPrompts = mutableListOf<String>()
 
@@ -245,11 +266,26 @@ class ReaderOpsUseCaseTest {
             if (error != null) return LlmOutcome.Err(error)
             val raw: Any = when (outputSerializer) {
                 ClassificationResponse.serializer() -> { classifyCalls++; classification }
-                SummaryResponse.serializer() -> { summaryCalls++; summary }
                 TranslateResponse.serializer() -> { translateCalls++; translate }
                 else -> error("unexpected serializer")
             }
             return LlmOutcome.Ok(raw as T)
+        }
+
+        /** Simulates a streamed summary: emits two partials of the bullet text, then the full text. */
+        override fun streamText(
+            tier: LlmTier,
+            systemPrompt: String,
+            userPrompt: String,
+        ): kotlinx.coroutines.flow.Flow<LlmOutcome<String>> = flow {
+            userPrompts.add(userPrompt)
+            if (error != null) { emit(LlmOutcome.Err(error)); return@flow }
+            summaryStreamCalls++
+            val full = summaryText ?: summary.bullets.joinToString("\n")
+            if (full.isEmpty()) return@flow
+            val mid = full.length / 2
+            if (mid > 0) emit(LlmOutcome.Ok(full.substring(0, mid)))
+            emit(LlmOutcome.Ok(full))
         }
     }
 }

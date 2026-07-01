@@ -1,6 +1,12 @@
 package com.sapphire.app.ui
 
 import androidx.core.net.toUri
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,8 +42,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +52,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -271,19 +280,42 @@ private fun SummaryBlock(sum: SummaryState) {
                 Text("Summarizing…", style = SapphireMono.Body, color = palette.OnInkMuted)
             }
             is SummaryState.Error -> Text(sum.message, style = MaterialTheme.typography.bodySmall, color = palette.Danger)
+            is SummaryState.Streaming -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                sum.bullets.forEach { bullet -> SummaryBullet(bullet) }
+                if (sum.current.isNotEmpty()) SummaryBullet(sum.current, streaming = true)
+            }
             is SummaryState.Done -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                sum.bullets.forEach { bullet ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("→", color = palette.Accent, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            bullet,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = palette.ReaderInk,
-                        )
-                    }
-                }
+                sum.bullets.forEach { bullet -> SummaryBullet(bullet) }
             }
         }
+    }
+}
+
+@Composable
+private fun SummaryBullet(text: String, streaming: Boolean = false) {
+    val palette = LocalSapphirePalette.current
+    // Blink the caret only while the bullet is still being typed.
+    val caretAlpha by if (streaming) {
+        val transition = rememberInfiniteTransition(label = "summary-caret")
+        transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0f,
+            animationSpec = infiniteRepeatable(tween(500, easing = LinearEasing), RepeatMode.Reverse),
+            label = "caret-alpha",
+        )
+    } else {
+        remember { mutableStateOf(0f) }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("→", color = palette.Accent, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            buildAnnotatedString {
+                append(text)
+                if (streaming) withStyle(SpanStyle(color = palette.Accent.copy(alpha = caretAlpha))) { append(" ▏") }
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = palette.ReaderInk,
+        )
     }
 }
 
@@ -376,12 +408,6 @@ private fun TranslateStatus(translate: TranslateState?, visible: Boolean) {
 private fun ActionRow(state: ReaderUiState.Open, viewModel: ReaderViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ToolButton(
-            onClick = viewModel::summarize,
-            enabled = state.summary !is SummaryState.Loading,
-            icon = Icons.Filled.AutoAwesome,
-            label = "Summary",
-        )
         ToolButton(
             onClick = viewModel::translate,
             enabled = state.translate !is TranslateState.Loading,

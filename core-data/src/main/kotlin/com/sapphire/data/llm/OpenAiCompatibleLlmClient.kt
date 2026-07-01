@@ -6,6 +6,9 @@ import com.sapphire.domain.llm.LlmError
 import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.llm.LlmTier
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
@@ -82,6 +85,91 @@ class OpenAiCompatibleLlmClient(
         }
         last
     }
+
+    override fun streamText(
+        tier: LlmTier,
+        systemPrompt: String,
+        userPrompt: String,
+    ): Flow<LlmOutcome<String>> = flow {
+        if (config.apiKey.isBlank()) {
+            emit(LlmOutcome.Err(LlmError.NotConfigured))
+            return@flow
+        }
+        val request = ChatRequest(
+            model = config.modelFor(tier),
+            messages = listOf(
+                ChatMessage(role = "system", content = systemPrompt),
+                ChatMessage(role = "user", content = userPrompt),
+            ),
+            // Plain-text streaming: no response_format (can't stream JSON readably). The model
+            // emits raw content and the caller parses it (e.g. summary bullets line by line).
+            stream = true,
+            thinking = Thinking(type = "disabled"),
+        )
+        val body = json.encodeToString(ChatRequest.serializer(), request)
+        val url = config.baseUrl + config.chatPath
+
+        val response = try {
+            client.newCall(
+                Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer ${config.apiKey}")
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "text/event-stream")
+                    .post(body.toRequestBody("application/json".toMediaType()))
+                    .build(),
+            ).execute()
+        } catch (e: IOException) {
+            emit(if (isTimeout(e)) LlmOutcome.Err(LlmError.Timeout) else LlmOutcome.Err(LlmError.Network(e.message ?: "network failure")))
+            return@flow
+        }
+
+        val code = response.code
+        if (!response.isSuccessful) {
+            response.close()
+            emit(
+                when (code) {
+                    429 -> LlmOutcome.Err(LlmError.RateLimited)
+                    408, 504 -> LlmOutcome.Err(LlmError.Timeout)
+                    else -> LlmOutcome.Err(LlmError.Http(code))
+                },
+            )
+            return@flow
+        }
+
+        val source = response.body?.source()
+        if (source == null) {
+            response.close()
+            emit(LlmOutcome.Err(LlmError.InvalidResponse))
+            return@flow
+        }
+
+        val accumulated = StringBuilder()
+        try {
+            while (true) {
+                val line = source.readUtf8Line() ?: break
+                if (!line.startsWith("data:")) continue
+                val data = line.removePrefix("data:").trim()
+                if (data == "[DONE]") break
+                val chunk = try {
+                    json.decodeFromString(StreamChunk.serializer(), data)
+                } catch (e: Exception) {
+                    null
+                } ?: continue
+                val delta = chunk.choices.firstOrNull()?.delta?.content
+                if (!delta.isNullOrEmpty()) {
+                    accumulated.append(delta)
+                    emit(LlmOutcome.Ok(accumulated.toString()))
+                }
+            }
+        } catch (e: IOException) {
+            emit(if (isTimeout(e)) LlmOutcome.Err(LlmError.Timeout) else LlmOutcome.Err(LlmError.Network(e.message ?: "network failure")))
+            response.close()
+            return@flow
+        }
+        response.close()
+        if (accumulated.isEmpty()) emit(LlmOutcome.Err(LlmError.Empty("The summary came back empty.")))
+    }.flowOn(Dispatchers.IO)
 
     private suspend fun <T> runOnce(
         url: String,

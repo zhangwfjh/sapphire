@@ -82,8 +82,10 @@ class ReaderViewModel @Inject constructor(
 
             val cachedHtml = articleBodyStore.get(itemId)
             if (cachedHtml != null) {
-                publish(item, feedBlocks, mergeFeedImages(richContentParser.parse(cachedHtml), feedBlocks), ExtractionState.Done)
+                val cachedArticle = mergeFeedImages(richContentParser.parse(cachedHtml), feedBlocks)
+                publish(item, feedBlocks, cachedArticle, ExtractionState.Done)
                 classify(itemId)
+                autoSummarizeIfLongEnough(cachedArticle)
                 return@launch
             }
 
@@ -108,6 +110,7 @@ class ReaderViewModel @Inject constructor(
             if ((_state.value as? ReaderUiState.Open)?.item?.hashUuid == itemId) {
                 publish(item, feedBlocks, article, extraction)
                 classify(itemId)
+                autoSummarizeIfLongEnough(article)
             }
         }
     }
@@ -168,14 +171,40 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun summarize() {
+    private fun summarize() {
         val current = _state.value as? ReaderUiState.Open ?: return
+        updateSummary(SummaryState.Loading)
         viewModelScope.launch {
-            when (val outcome = readerOps.summarize(current.item.hashUuid, (current.articleBlocks ?: current.blocks).toPlainParagraphs())) {
-                is LlmOutcome.Err -> updateSummary(SummaryState.Error(outcome.error.userMessage()))
-                is LlmOutcome.Ok -> updateSummary(SummaryState.Done(outcome.value.bullets))
-            }
+            var errored = false
+            var lastBullets = emptyList<String>()
+            readerOps
+                .summarizeStreaming(current.item.hashUuid, (current.articleBlocks ?: current.blocks).toPlainParagraphs())
+                .collect { outcome ->
+                    when (outcome) {
+                        is LlmOutcome.Err -> {
+                            errored = true
+                            updateSummary(SummaryState.Error(outcome.error.userMessage()))
+                        }
+                        is LlmOutcome.Ok -> {
+                            lastBullets = outcome.value.bullets
+                            updateSummary(SummaryState.Streaming(outcome.value.bullets, outcome.value.partial))
+                        }
+                    }
+                }
+            if (!errored) updateSummary(SummaryState.Done(lastBullets))
         }
+    }
+
+    /**
+     * Auto-triggers the streaming summary once the full article body lands, but only when it
+     * is substantial enough to warrant one (> [SUMMARY_MIN_WORDS] words). Short articles and
+     * items with no extractable body are left alone. The use case is cache-first, so a
+     * re-open of an already-summarized item renders instantly without re-streaming.
+     */
+    private fun autoSummarizeIfLongEnough(articleBlocks: List<RichBlock>?) {
+        if (articleBlocks == null) return
+        val wordCount = articleBlocks.toPlainParagraphs().sumOf { it.split(Regex("\\s+")).count { w -> w.isNotBlank() } }
+        if (wordCount > SUMMARY_MIN_WORDS) summarize()
     }
 
     fun translate() {
@@ -233,6 +262,9 @@ class ReaderViewModel @Inject constructor(
 
     private companion object {
         const val DEFAULT_SAVE_FOLDER = "Inbox"
+
+        /** Articles at/under this word count are too short to auto-summarize. */
+        const val SUMMARY_MIN_WORDS = 300
     }
 }
 
@@ -263,6 +295,8 @@ sealed interface ClassificationState {
 
 sealed interface SummaryState {
     data object Loading : SummaryState
+    /** Tokens are arriving: [bullets] are complete lines, [current] is the line being typed. */
+    data class Streaming(val bullets: List<String>, val current: String) : SummaryState
     data class Done(val bullets: List<String>) : SummaryState
     data class Error(val message: String) : SummaryState
 }

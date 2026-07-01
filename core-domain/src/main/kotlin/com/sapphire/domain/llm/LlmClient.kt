@@ -1,5 +1,6 @@
 package com.sapphire.domain.llm
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.KSerializer
 
 /** PRD §4.2 routing tier. Fast models for taxonomy/classification; deep for context ops. */
@@ -49,4 +50,19 @@ interface LlmClient {
         userPrompt: String,
         outputSerializer: KSerializer<T>,
     ): LlmOutcome<T>
+
+    /**
+     * Streams a plain-text completion as progressive partials. Each [LlmOutcome.Ok] carries
+     * the full text accumulated so far; the final emission is the complete text. A failure
+     * yields a single [LlmOutcome.Err] and the flow completes. Never throws.
+     *
+     * Unlike [completeStructured] this uses no JSON mode — callers render raw deltas and
+     * parse the final text themselves. The reader summary streams bullets token by token
+     * (PRD §3.4 streaming reveal).
+     */
+    fun streamText(
+        tier: LlmTier,
+        systemPrompt: String,
+        userPrompt: String,
+    ): Flow<LlmOutcome<String>>
 }

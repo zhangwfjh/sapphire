@@ -61,3 +61,22 @@ internal data class ChoiceMessage(
     val content: String? = null,
 )
 
+/**
+ * One Server-Sent-Events chunk from a streaming Chat Completions response. Only the
+ * incremental content delta is read; the rest is ignored for forward-compat.
+ */
+@Serializable
+internal data class StreamChunk(
+    val choices: List<StreamChoice> = emptyList(),
+)
+
+@Serializable
+internal data class StreamChoice(
+    val delta: StreamDelta? = null,
+)
+
+@Serializable
+internal data class StreamDelta(
+    val content: String? = null,
+)
+

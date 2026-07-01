@@ -51,25 +51,40 @@ Output STRICT JSON: {"classification": string, "confidence": number}
 // region Summary (§3.4) — Tier-2, on [✨ Summary] tap -----------------------
 
 /**
- * Three-bullet executive summary (PRD §3.4). Exactly three bullets; the UI pins them
- * beneath the header metadata.
+ * Three-bullet executive summary (PRD §3.4). Exactly three bullets streamed token by token
+ * and pinned beneath the header metadata once complete. The DTO is also the cached payload
+ * (PRD §4.2) so a re-open renders instantly without re-streaming.
  */
 @Serializable
 data class SummaryResponse(
     val bullets: List<String> = emptyList(),
 ) {
     companion object {
-        internal val SYSTEM_PROMPT = """
-You are Sapphire's summarizer. Produce a three-bullet executive summary of the article.
+        /**
+         * Plain-text (non-JSON) prompt: streaming can't reveal partial JSON readably, so the
+         * model emits one bullet per line and [ReaderOpsUseCase] parses the lines. Output is
+         * deliberately bare — no numbering/markdown — so deltas render cleanly as they arrive.
+         */
+        internal val STREAM_PROMPT = """
+            You are Sapphire's summarizer. Produce a three-bullet executive summary of the article.
 
-Rules:
-- Exactly 3 bullets.
-- Each bullet is one sentence, <= 24 words.
-- Output STRICT JSON: {"bullets": [string, string, string]}
-- No prose outside the JSON object.
-""".trimIndent()
+            Rules:
+            - Exactly 3 bullets, one per line.
+            - Each bullet is one sentence, <= 24 words.
+            - Output ONLY the three sentences, each on its own line.
+            - No numbering, no markdown, no bullet characters, no preamble, no notes.
+        """.trimIndent()
     }
 }
+
+/**
+ * One progressive frame of a streaming summary: [bullets] are the completed (newline-ended)
+ * lines; [partial] is the line still being typed (empty between lines / once complete).
+ */
+data class SummaryStreamFrame(
+    val bullets: List<String> = emptyList(),
+    val partial: String = "",
+)
 
 // region Translate (§3.4) — Tier-2, on [🌐 Translate] tap -------------------
 
