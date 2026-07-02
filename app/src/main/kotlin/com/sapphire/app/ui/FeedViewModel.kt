@@ -35,6 +35,7 @@ class FeedViewModel @Inject constructor(
     private val repository: FeedRepository,
     private val refreshService: FeedRefreshService,
     private val uiPrefsStore: UiPrefsStore,
+    private val savedItemRepository: com.sapphire.domain.save.SavedItemRepository,
 ) : ViewModel() {
 
     /** In-feed free-text search query. Blank = full timeline. */
@@ -161,6 +162,18 @@ class FeedViewModel @Inject constructor(
             if (isCurrentlyRead) repository.markUnread(itemId)
             else repository.markRead(itemId, ReadMechanism.MANUAL)
         }
+    }
+
+    /** Toggle saved/unsaved for an item (swipe-left gesture). */
+    fun toggleSaved(itemId: String, isCurrentlySaved: Boolean) {
+        viewModelScope.launch {
+            if (isCurrentlySaved) savedItemRepository.unsave(itemId)
+            else savedItemRepository.save(itemId, folder = DEFAULT_SAVE_FOLDER)
+        }
+    }
+
+    private companion object {
+        const val DEFAULT_SAVE_FOLDER = "Inbox"
     }
 
     /** Batch-mark the selected items READ. */

@@ -22,8 +22,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.filled.Drafts
@@ -31,6 +33,9 @@ import androidx.compose.material.icons.filled.Markunread
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -255,13 +260,39 @@ fun TimelineScreen(
                         ) {
                             items(items = timeline, key = { it.hashUuid }) { item ->
                                 val isSelected = selectedItems[item.hashUuid] == true
-                                FeedCardFor(
-                                    layout = layout,
-                                    item = item,
-                                    selected = isSelected,
-                                    onToggleRead = itemToggleRead(item),
-                                    onOpen = itemOpen(item, isSelected),
-                                    onLongPress = itemLongPress(item, isSelected),
+                                val dismissState = rememberSwipeToDismissBoxState(
+                                    confirmValueChange = { value ->
+                                        when (value) {
+                                            SwipeToDismissBoxValue.StartToEnd -> {
+                                                // Swipe right → toggle read/unread
+                                                viewModel.toggleRead(
+                                                    item.hashUuid,
+                                                    item.readState == com.sapphire.domain.model.ReadState.READ,
+                                                )
+                                                false // snap back
+                                            }
+                                            SwipeToDismissBoxValue.EndToStart -> {
+                                                // Swipe left → toggle save/unsave
+                                                viewModel.toggleSaved(item.hashUuid, item.savedLater)
+                                                false // snap back
+                                            }
+                                            else -> false
+                                        }
+                                    },
+                                )
+                                SwipeToDismissBox(
+                                    state = dismissState,
+                                    backgroundContent = { SwipeBackground(dismissState.dismissDirection) },
+                                    content = {
+                                        FeedCardFor(
+                                            layout = layout,
+                                            item = item,
+                                            selected = isSelected,
+                                            onToggleRead = itemToggleRead(item),
+                                            onOpen = itemOpen(item, isSelected),
+                                            onLongPress = itemLongPress(item, isSelected),
+                                        )
+                                    },
                                 )
                             }
                             item { Spacer(Modifier.height(96.dp)) }
@@ -593,5 +624,42 @@ private fun FeedCardFor(
     when (layout) {
         FeedLayout.DENSE -> DenseFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
         FeedLayout.RICH -> RichFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
+    }
+}
+
+/**
+ * Directional background revealed behind a feed card during a triage swipe.
+ * StartToEnd (swipe right) → sapphire accent + "done" glyph (toggle read).
+ * EndToStart (swipe left) → amber + bookmark glyph (toggle save).
+ */
+@Composable
+private fun SwipeBackground(direction: SwipeToDismissBoxValue) {
+    val palette = LocalSapphirePalette.current
+    val bgColor = when (direction) {
+        SwipeToDismissBoxValue.StartToEnd -> palette.AccentDeep // read toggle — sapphire
+        SwipeToDismissBoxValue.EndToStart -> Color(0xFFE8B96A) // save toggle — amber
+        else -> Color.Transparent
+    }
+    val icon = when (direction) {
+        SwipeToDismissBoxValue.StartToEnd -> Icons.Filled.DoneAll
+        SwipeToDismissBoxValue.EndToStart -> Icons.Filled.BookmarkBorder
+        else -> null
+    }
+    val alignment = when (direction) {
+        SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+        SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+        else -> Alignment.Center
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(14.dp))
+            .background(bgColor)
+            .padding(horizontal = 24.dp),
+        contentAlignment = alignment,
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+        }
     }
 }
