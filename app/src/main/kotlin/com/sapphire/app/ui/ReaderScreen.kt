@@ -98,6 +98,7 @@ fun ReaderScreen(
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val translateViewMode by viewModel.translateViewMode.collectAsStateWithLifecycle()
 
     LaunchedEffect(itemId) { viewModel.open(itemId) }
 
@@ -130,7 +131,7 @@ fun ReaderScreen(
                 }
             }
         }
-        is ReaderUiState.Open -> ReaderContent(s, viewModel, onBack)
+        is ReaderUiState.Open -> ReaderContent(s, viewModel, onBack, translateViewMode)
     }
 }
 
@@ -153,11 +154,20 @@ private fun ReaderTopBar(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel, onBack: () -> Unit) {
+private fun ReaderContent(
+    state: ReaderUiState.Open,
+    viewModel: ReaderViewModel,
+    onBack: () -> Unit,
+    translateViewMode: com.sapphire.domain.settings.TranslateViewMode,
+) {
     val palette = LocalSapphirePalette.current
     val item = state.item
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
+    // Translate-view mode governs whether translations render at all, and whether the
+    // originals are hidden when a translation is present (TRANSLATION mode only).
+    val effectiveTranslateVisible = state.translateVisible && translateViewMode != com.sapphire.domain.settings.TranslateViewMode.ORIGIN
+    val hideOriginals = translateViewMode == com.sapphire.domain.settings.TranslateViewMode.TRANSLATION && effectiveTranslateVisible
     Box(Modifier.fillMaxSize()) {
         ReaderTopBar(onBack)
         Box(
@@ -193,24 +203,40 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel,
             }
         }
         Spacer(Modifier.height(10.dp))
-        Text(
-            item.title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = palette.ReaderInk,
-            fontWeight = FontWeight.SemiBold,
-            lineHeight = 33.sp,
-        )
-        // Translated headline, rendered beneath the title once translate is active.
+        // Translate-view mode: BILINGUAL shows origin + translation; ORIGIN hides translations;
+        // TRANSLATION hides originals and promotes the translated title to the primary headline.
         val tFrame = (state.translate as? TranslateState.Done)?.frame
             ?: (state.translate as? TranslateState.Streaming)?.frame
-        if (state.translateVisible && !tFrame?.title.isNullOrEmpty()) {
-            Spacer(Modifier.height(4.dp))
+        val translatedTitle = tFrame?.title?.takeIf { it.isNotEmpty() }
+        if (!(hideOriginals && translatedTitle != null)) {
             Text(
-                tFrame!!.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontStyle = FontStyle.Italic,
-                color = palette.AccentBright,
+                item.title,
+                style = MaterialTheme.typography.headlineMedium,
+                color = palette.ReaderInk,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 33.sp,
             )
+        }
+        if (effectiveTranslateVisible && translatedTitle != null) {
+            Spacer(Modifier.height(4.dp))
+            if (hideOriginals) {
+                // TRANSLATION mode: translated title becomes the primary headline.
+                Text(
+                    translatedTitle,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = palette.ReaderInk,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 33.sp,
+                )
+            } else {
+                // BILINGUAL: italic accent translation beneath the original.
+                Text(
+                    translatedTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontStyle = FontStyle.Italic,
+                    color = palette.AccentBright,
+                )
+            }
         }
 
         // Action row (PRD §3.4 tools) — pinned near the top for instant reach
@@ -218,7 +244,7 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel,
         ActionRow(state, viewModel)
         // Translate indicator (shimmer while loading, caret while streaming, error) — hoisted
         // here because translate now spans the title, summary, brief, and full article.
-        TranslateStatus(state.translate, state.translateVisible)
+        TranslateStatus(state.translate, effectiveTranslateVisible)
 
         // Macro slot — shimmer while classifying, chips once done (PRD §3.5)
         Spacer(Modifier.height(16.dp))
@@ -229,7 +255,7 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel,
             Spacer(Modifier.height(16.dp))
             SummaryBlock(
                 sum = sum,
-                summaryTargets = if (state.translateVisible) {
+                summaryTargets = if (effectiveTranslateVisible) {
                     (state.translate as? TranslateState.Done)?.frame?.summary
                         ?: (state.translate as? TranslateState.Streaming)?.frame?.summary
                 } else null,
@@ -237,7 +263,7 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel,
         }
         // Brief — the original feed body, always visible (PRD §3.4).
         Spacer(Modifier.height(20.dp))
-        BriefBlock(state)
+        BriefBlock(state, effectiveTranslateVisible, hideOriginals)
 
         // Full article — extracted body appended below the brief behind a divider, sitting
         // directly above the custom prompt field. Rendered only once the article resolves;
@@ -246,7 +272,7 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel,
             Spacer(Modifier.height(16.dp))
             HorizontalDivider(color = palette.InkStrokeStrong.copy(alpha = 0.5f))
             Spacer(Modifier.height(16.dp))
-            ArticleBlock(state)
+            ArticleBlock(state, effectiveTranslateVisible, hideOriginals)
         }
 
         // Custom prompt field (PRD §3.5 — interactive from launch)
@@ -444,18 +470,28 @@ private fun SummaryBullet(text: String, streaming: Boolean = false) {
 }
 
 @Composable
-private fun BriefBlock(state: ReaderUiState.Open) {
+private fun BriefBlock(
+    state: ReaderUiState.Open,
+    effectiveTranslateVisible: Boolean,
+    @Suppress("UNUSED_PARAMETER") hideOriginals: Boolean,
+) {
     // The brief is always a translate region (PRD §3.4); its targets arrive as
     // frame.brief, paragraph-aligned with the feed body's text blocks.
-    val briefTargets = if (state.translateVisible) {
+    val briefTargets = if (effectiveTranslateVisible) {
         (state.translate as? TranslateState.Done)?.frame?.brief
             ?: (state.translate as? TranslateState.Streaming)?.frame?.brief
     } else null
+    // TODO: hide originals in TRANSLATION mode — RichBlockList/RichBlockRenderer renders
+    //  origin + translation inline; threading hideOriginals through requires renderer support.
     RichBlockList(blocks = state.blocks, translateTargets = briefTargets)
 }
 
 @Composable
-private fun ArticleBlock(state: ReaderUiState.Open) {
+private fun ArticleBlock(
+    state: ReaderUiState.Open,
+    effectiveTranslateVisible: Boolean,
+    @Suppress("UNUSED_PARAMETER") hideOriginals: Boolean,
+) {
     val palette = LocalSapphirePalette.current
     val article = state.articleBlocks ?: return
     // Collapsed by default — the full article only renders once the user taps the toggle.
@@ -488,7 +524,9 @@ private fun ArticleBlock(state: ReaderUiState.Open) {
             )
         }
         if (expanded) {
-            val articleTargets = if (state.translateVisible) {
+            // TODO: hide originals in TRANSLATION mode — RichBlockList/RichBlockRenderer renders
+            //  origin + translation inline; threading hideOriginals requires renderer support.
+            val articleTargets = if (effectiveTranslateVisible) {
                 (state.translate as? TranslateState.Done)?.frame?.article
                     ?: (state.translate as? TranslateState.Streaming)?.frame?.article
             } else null

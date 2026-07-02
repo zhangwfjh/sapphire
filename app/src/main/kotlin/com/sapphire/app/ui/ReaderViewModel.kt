@@ -18,8 +18,10 @@ import com.sapphire.domain.reader.ArticleExtractor
 import com.sapphire.domain.reader.ExtractionOutcome
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -44,11 +46,16 @@ class ReaderViewModel @Inject constructor(
     private val richContentParser: RichContentParser,
     private val articleExtractor: ArticleExtractor,
     private val articleBodyStore: ArticleBodyStore,
+    private val uiPrefsStore: com.sapphire.domain.settings.UiPrefsStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Idle)
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
 
+    /** How translated content renders in the reader: bilingual, origin-only, or translation-only. */
+    val translateViewMode: StateFlow<com.sapphire.domain.settings.TranslateViewMode> =
+        uiPrefsStore.observeTranslateView()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.sapphire.domain.settings.TranslateViewMode.BILINGUAL)
     /** Default translate target — resolved from the device locale by the caller. */
     private var targetLanguage: String = "zh"
 
