@@ -13,9 +13,10 @@ package com.sapphire.domain.reader
  * maps to paragraph *i* in the output. To keep that contract, the LLM path consumes
  * [toPlainParagraphs] — a plain-text view of the same blocks — and the UI re-indexes into
  * the translate response by counting text-bearing blocks (see
- * [textBlocks]). Non-text blocks (e.g. [RichBlock.Image] without a caption) are dropped
- * from the plain view, exactly mirroring the legacy "drop empties" behaviour the model
- * relies on.
+ * [textBlocks]). Code blocks are excluded — code is rendered verbatim, never translated or
+ * summarised as prose — and media-only blocks (e.g. [RichBlock.Image] without a caption) are
+ * dropped from the plain view, exactly mirroring the legacy "drop empties" behaviour the
+ * model relies on.
  *
  * Pure Kotlin (no Android/Compose deps) so it is unit-testable in core-domain.
  */
@@ -92,9 +93,20 @@ sealed interface RichSpan {
     }
 }
 
-/** The text-bearing blocks, in order — the LLM-aligned view. Non-text blocks are dropped. */
+/**
+ * Whether this block consumes a paragraph-aligned LLM slot (translate/summary/classify).
+ * Text-bearing blocks (paragraphs, headings, list items, quotes, and captioned/alt-text
+ * images) each map to one plain-text paragraph; [RichBlock.Code] is excluded so code is
+ * never sent to the LLM, and media-only images carry no text. Both the LLM input path
+ * ([toPlainParagraphs]) and the renderer's translate-slot counter consult this, keeping
+ * paragraph *i* ↔ translation *i* locked to one definition.
+ */
+fun RichBlock.isTextBlock(): Boolean =
+    plainText().isNotEmpty() && this !is RichBlock.Code
+
+/** The text-bearing blocks, in order — the LLM-aligned view. Code and media-only images are dropped. */
 val List<RichBlock>.textBlocks: List<RichBlock>
-    get() = filter { it.plainText().isNotEmpty() }
+    get() = filter { it.isTextBlock() }
 
 /**
  * Plain-text paragraph view of [this] for the Tier-2 LLM ops (translate/summary/classify).

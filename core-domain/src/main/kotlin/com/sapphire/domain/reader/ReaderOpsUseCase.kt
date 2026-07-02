@@ -7,8 +7,9 @@ import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.llm.LlmTier
 import com.sapphire.domain.llm.SummaryResponse
 import com.sapphire.domain.llm.SummaryStreamFrame
+import com.sapphire.domain.llm.TranslateRegions
 import com.sapphire.domain.llm.TranslateResponse
-import com.sapphire.domain.llm.TranslatedParagraph
+import com.sapphire.domain.llm.TranslateStreamFrame
 import com.sapphire.domain.util.LlmCacheKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -160,37 +161,57 @@ class ReaderOpsUseCase(
         (err as LlmOutcome.Err).let { LlmOutcome.Err(it.error) }
 
     /**
-     * Tier-2 paragraph-aligned translate (PRD §3.4 [🌐 Translate]). Cache-first, keyed
-     * per target language. The body is split into paragraphs and handed to the model with
-     * the instruction to preserve boundaries; the returned [TranslateResponse] is the
-     * interleaved-original/target stream the UI renders.
-     *
-     * @param paragraphs resolved article paragraphs to translate. `null` (default) parses
-     *  the item's feed body; non-null uses the supplied paragraphs verbatim, preserving
-     *  paragraph boundaries for the aligned output (the reader forwards the full extracted
-     *  body when available).
+     * Tier-2 paragraph-aligned streaming translate (PRD §3.4 [🌐 Translate], streaming
+     * reveal), covering every reader region — title, AI summary, brief, and full article.
+     * Cache-first, keyed per target language: a hit emits a single complete frame and skips
+     * the LLM entirely (re-open is free). On a miss the [TranslateRegions] are flattened in
+     * document order and streamed segment by segment; each chunk is re-partitioned by region
+     * counts into a [TranslateStreamFrame], and the final regioned frame is persisted so the
+     * next open is a cache hit.
      */
-    suspend fun translate(itemId: String, targetLanguage: String, paragraphs: List<String>? = null): LlmOutcome<TranslateResponse> {
+    fun translateStreaming(
+        itemId: String,
+        targetLanguage: String,
+        regions: TranslateRegions,
+    ): Flow<LlmOutcome<TranslateStreamFrame>> = flow {
         val op = "$OP_TRANSLATE:$targetLanguage"
         val key = LlmCacheKey.compute(itemId, op, tier2ModelVersion)
-        cache.get(key)?.let { return decode(it, TranslateResponse.serializer()) }
+        cache.get(key)?.let {
+            val cached = decode(it, TranslateResponse.serializer())
+            if (cached is LlmOutcome.Ok) emit(LlmOutcome.Ok(cached.value.toFrame()))
+            else emit(castedErr(cached))
+            return@flow
+        }
 
-        val item = items.item(itemId) ?: return missingItem()
-        val paras = paragraphs ?: BodyParagraphParser.parse(item.bodyRaw ?: item.summary ?: item.title)
-        if (paras.isEmpty()) return LlmOutcome.Ok(TranslateResponse(emptyList()))
+        val originals = regions.flat()
+        if (originals.isEmpty()) {
+            val response = TranslateResponse()
+            cache.put(itemId, key, op, json.encodeToString(TranslateResponse.serializer(), response))
+            emit(LlmOutcome.Ok(response.toFrame()))
+            return@flow
+        }
 
-        val userPrompt = paras.joinToString("\n\n") { it }
-        return when (val outcome = llm.completeStructured(
+        val counts = intArrayOf(regions.title.size, regions.summary.size, regions.brief.size, regions.article.size)
+        val userPrompt = originals.joinToString("\n\n") { it }
+        var failed = false
+        var fullText: String? = null
+        llm.streamText(
             tier = LlmTier.TIER2_DEEP,
-            systemPrompt = TranslatedParagraph.systemPrompt(translateLanguageName(targetLanguage)),
+            systemPrompt = TranslateResponse.streamSystemPrompt(translateLanguageName(targetLanguage), originals.size),
             userPrompt = userPrompt,
-            outputSerializer = TranslateResponse.serializer(),
-        )) {
-            is LlmOutcome.Err -> outcome
-            is LlmOutcome.Ok -> {
-                cache.put(itemId, key, op, json.encodeToString(TranslateResponse.serializer(), outcome.value))
-                outcome
+        ).collect { outcome ->
+            when (outcome) {
+                is LlmOutcome.Err -> { failed = true; emit(outcome) }
+                is LlmOutcome.Ok -> {
+                    fullText = outcome.value
+                    emit(LlmOutcome.Ok(parseTranslateFrame(outcome.value, counts)))
+                }
             }
+        }
+        if (!failed && fullText != null) {
+            val response = parseTranslateResponse(fullText, counts)
+            cache.put(itemId, key, op, json.encodeToString(TranslateResponse.serializer(), response))
+            emit(LlmOutcome.Ok(response.toFrame()))
         }
     }
 
@@ -234,6 +255,79 @@ class ReaderOpsUseCase(
         text.split('\n').map(String::trim).filter(String::isNotEmpty).map(::cleanSummaryBullet)
 
     /**
+     * Splits the streamed translate text into per-paragraph segments. Primary separator is
+     * [TranslateResponse.STREAM_DELIMITER] (`|||`), but some models ignore that obscure
+     * sentinel on longer articles and instead separate paragraphs with blank lines or single
+     * newlines — without a fallback the whole response collapses into ONE segment and lands
+     * entirely in the title slot ("all paragraphs just below the title").
+     *
+     * Recovery is gated on [expected]: we only accept a fallback split when it yields MORE
+     * non-empty segments than the primary (still short of, or equal to, [expected]). A clean
+     * `|||` stream is never re-split. Single-newline fallback is last resort — it can over-
+     * split a translation that wraps, so it's only used when nothing else reaches expected.
+     */
+    private fun splitTranslateSegments(text: String, expected: Int): List<String> {
+        if (text.isBlank()) return emptyList()
+        val primary = text.split(TranslateResponse.STREAM_DELIMITER)
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+        if (expected <= 1 || primary.size >= expected) return primary
+
+        // Blank-line separated paragraphs — the most common natural fallback.
+        val byBlankLine = text.split(Regex("\\n[\\t ]*\\n"))
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+        if (byBlankLine.size in (primary.size + 1)..expected) return byBlankLine
+
+        // Single-newline separated — riskier (may split a wrapped translation) but better
+        // than dumping every paragraph under the title.
+        val byNewline = text.split('\n')
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+        if (byNewline.size in (primary.size + 1)..expected) return byNewline
+
+        return primary
+    }
+
+    /**
+     * Streaming translate segments via [splitTranslateSegments]; the flat list is then
+     * re-partitioned into regions by [partitionTargets]. Mid-stream the trailing paragraph
+     * being typed is whatever the last segment is — empties are already filtered out, so we
+     * never reserve an empty translate slot.
+     */
+    private fun parseTranslateFrame(text: String, counts: IntArray): TranslateStreamFrame {
+        val segments = splitTranslateSegments(text, counts.sum())
+        return partitionTargets(segments, counts)
+    }
+
+    /** Final parse of the complete translate text into the cached regioned response. */
+    private fun parseTranslateResponse(text: String, counts: IntArray): TranslateResponse {
+        val targets = splitTranslateSegments(text, counts.sum())
+        return partitionTargets(targets, counts).let { TranslateResponse(it.title, it.summary, it.brief, it.article) }
+    }
+
+    /**
+     * Re-partitions a flat translated-paragraph list (in document order) back into reader
+     * regions using the original region sizes [counts] = [title, summary, brief, article].
+     * Short streams (still arriving) simply yield shorter/empty later regions.
+     */
+    private fun partitionTargets(targets: List<String>, counts: IntArray): TranslateStreamFrame {
+        var idx = 0
+        fun take(n: Int): List<String> {
+            val s = targets.drop(idx).take(n).map(String::trim); idx += n; return s
+        }
+        val titleList = take(counts[0])
+        val title = titleList.firstOrNull().orEmpty()
+        val summary = take(counts[1])
+        val brief = take(counts[2])
+        val article = take(counts[3])
+        return TranslateStreamFrame(title, summary, brief, article)
+    }
+
+    private fun TranslateResponse.toFrame(): TranslateStreamFrame =
+        TranslateStreamFrame(title, summary, brief, article)
+
+    /**
      * Strips list decoration the model may emit despite instructions (bullets, dashes,
      * `1.`/`1)` numbering) so cached + rendered bullets are uniform.
      */
@@ -253,7 +347,7 @@ class ReaderOpsUseCase(
     companion object {
         internal const val OP_CLASSIFY = "classification"
         internal const val OP_SUMMARY = "summary"
-        internal const val OP_TRANSLATE = "translate"
+        internal const val OP_TRANSLATE = "translate:v2"
 
         /**
          * Map a locale tag to the human language name handed to the translate prompt.

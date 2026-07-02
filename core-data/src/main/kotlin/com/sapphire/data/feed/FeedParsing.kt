@@ -9,14 +9,17 @@ import java.util.TimeZone
 internal fun String.nullIfBlank(): String? = if (isBlank()) null else this
 
 /**
- * Strips the tags from an RSS/Atom HTML fragment for the card summary snippet. Does NOT
- * decode entities beyond the common `&amp;`/`&lt;`/`&gt;`/`&quot;`/`&#39;` set — feeds
- * rarely use exotic entities and the summary is re-rendered by Compose, not a browser.
+ * Strips the tags from an RSS/Atom HTML fragment for the card title/summary snippet, then
+ * decodes HTML entities in a single left-to-right pass so the result is plain text for
+ * Compose. Handles the common named entities plus ALL numeric ones (`&#8217;`, `&#x2019;`,
+ * …) — feeds routinely emit numeric entities for typographic quotes/dashes that the old
+ * hard-coded set missed (e.g. `Anthropic&#8217;s`). Single-pass: a literal `&amp;#39;` in
+ * source decodes to `&#39;` text, not `'`, because decoded output is never re-scanned.
  */
 internal fun String.stripHtml(): String {
     val out = StringBuilder(length)
-    var i = 0
     var inTag = false
+    var i = 0
     while (i < length) {
         val c = this[i]
         when {
@@ -26,15 +29,47 @@ internal fun String.stripHtml(): String {
         }
         i++
     }
+    return out.toString().decodeHtmlEntities().trim()
+}
+
+/** HTML named entities real feeds actually emit. */
+private val NAMED_ENTITIES = mapOf(
+    "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'",
+    "nbsp" to " ", "mdash" to "—", "ndash" to "–", "hellip" to "…",
+    "rsquo" to "’", "lsquo" to "‘", "rdquo" to "”", "ldquo" to "“",
+    "trade" to "™", "copy" to "©", "reg" to "®", "deg" to "°", "middot" to "·",
+    "laquo" to "«", "raquo" to "»", "bull" to "•", "prime" to "′", "Prime" to "″",
+)
+
+/**
+ * Decodes HTML entities in one left-to-right pass: named (from [NAMED_ENTITIES]), decimal
+ * (`&#8217;`), and hex (`&#x2019;`). Unknown/malformed references are left intact. Output is
+ * never re-scanned, so `&amp;#39;` → `&#39;` (literal), not `'`.
+ */
+internal fun String.decodeHtmlEntities(): String {
+    val amp = indexOf('&')
+    if (amp == -1) return this
+    val out = StringBuilder(length)
+    var i = 0
+    while (i < length) {
+        if (this[i] != '&') { out.append(this[i]); i++; continue }
+        val semi = indexOf(';', startIndex = i + 1)
+        if (semi == -1 || semi - i > 12) { out.append('&'); i++; continue } // too long to be an entity
+        val body = substring(i + 1, semi)
+        val resolved: String? = if (body.startsWith("#")) {
+            val code = if (body.length > 1 && (body[1] == 'x' || body[1] == 'X')) {
+                body.substring(2).toIntOrNull(16)
+            } else {
+                body.substring(1).toIntOrNull(10)
+            }
+            code?.let { if (it in 1..0x10FFFF) String(Character.toChars(it)) else null }
+        } else {
+            NAMED_ENTITIES[body]
+        }
+        if (resolved != null) { out.append(resolved); i = semi + 1 }
+        else { out.append('&'); i++ } // unknown entity name — leave the '&' verbatim
+    }
     return out.toString()
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&apos;", "'")
-        .replace("&nbsp;", " ")
-        .trim()
 }
 
 /** RFC-822 / RFC-1123 — RSS 2.0 pubDate. Feeds emit a mix of named zones ("GMT") and

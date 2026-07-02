@@ -6,10 +6,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -44,6 +46,7 @@ import com.sapphire.app.ui.theme.SapphireFonts
 import com.sapphire.app.ui.theme.SapphireMono
 import com.sapphire.domain.reader.RichBlock
 import com.sapphire.domain.reader.RichSpan
+import com.sapphire.domain.reader.isTextBlock
 
 private const val URL_TAG = "url"
 
@@ -55,8 +58,11 @@ private const val URL_TAG = "url"
  * inline [AsyncImage]s. Links open through the platform [LocalUriHandler].
  *
  * [translateTargets] — when non-null, the renderer interleaves each text-bearing block with
- * its translation (paragraph-aligned: text-block *i* ↔ [translateTargets][i]). Non-text
- * blocks (images without caption) render standalone and do not consume a translate slot.
+ * its translation (paragraph-aligned: text-block *i* ↔ [translateTargets][i]). A block
+ * consumes a slot iff [RichBlock.isTextBlock]: paragraphs, headings, list items, quotes, and
+ * captioned/alt-text images do; [RichBlock.Code] and media-only images render standalone and
+ * consume no slot. The slot counter consults the same predicate the LLM input path uses, so
+ * the two cannot drift.
  */
 @Composable
 fun RichBlockList(
@@ -69,34 +75,33 @@ fun RichBlockList(
     Column(modifier = modifier) {
         blocks.forEachIndexed { index, block ->
             if (index > 0) Spacer(Modifier.height(blockGap(blocks[index - 1], block)))
-            val translated = translateTargets?.getOrNull(textIndex)
-            RichBlockView(block)
-            if (block.plainText().isNotEmpty()) {
-                if (translated != null) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        translated,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontStyle = FontStyle.Italic,
-                        color = palette.AccentBright,
-                    )
-                }
-                textIndex++
-            }
+            // Only text-bearing blocks may consume a translate slot. A non-text block (e.g. an
+            // empty/decorative blockquote, a media-only image) must neither read nor advance
+            // the index — otherwise it steals the next paragraph's translation and renders it
+            // in the wrong place (e.g. inside an empty quote box, above the real original).
+            val translated = if (block.isTextBlock()) translateTargets?.getOrNull(textIndex) else null
+            RichBlockView(block, translated = translated)
+            if (block.isTextBlock()) textIndex++
         }
     }
 }
 
 @Composable
-private fun RichBlockView(block: RichBlock) {
+private fun RichBlockView(block: RichBlock, translated: String? = null) {
     val palette = LocalSapphirePalette.current
     when (block) {
-        is RichBlock.Paragraph -> RichSpanText(block.spans, color = palette.ReaderInk)
-        is RichBlock.Heading -> RichSpanText(
-            spans = block.spans,
-            color = palette.OnInk,
-            base = headingStyle(block.level),
-        )
+        is RichBlock.Paragraph -> Column {
+            RichSpanText(block.spans, color = palette.ReaderInk)
+            TranslatedText(translated)
+        }
+        is RichBlock.Heading -> Column {
+            RichSpanText(
+                spans = block.spans,
+                color = palette.OnInk,
+                base = headingStyle(block.level),
+            )
+            TranslatedText(translated)
+        }
         is RichBlock.ListItem -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 if (block.ordered) "${block.index}." else "•",
@@ -106,42 +111,54 @@ private fun RichBlockView(block: RichBlock) {
             )
             Column(Modifier.weight(1f)) {
                 RichSpanText(block.spans, color = palette.ReaderInk)
+                TranslatedText(translated)
             }
         }
-        is RichBlock.Quote -> Row(
+        is RichBlock.Quote -> Column(
             Modifier
                 .fillMaxWidth()
-                .height(IntrinsicSize.Min)
                 .clip(RoundedCornerShape(10.dp))
                 .background(palette.Accent.copy(alpha = 0.06f))
-                .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+                .drawBehind {
+                    // Accent bar drawn directly so the Column sizes to its real content height
+                    // (IntrinsicSize.Min under-reports when the translation text is appended,
+                    // clipping it inside the rounded box).
+                    drawRoundRect(
+                        color = palette.Accent.copy(alpha = 0.6f),
+                        topLeft = Offset(14.dp.toPx(), 12.dp.toPx()),
+                        size = Size(3.dp.toPx(), size.height - 24.dp.toPx()),
+                        cornerRadius = CornerRadius(2.dp.toPx()),
+                    )
+                }
+                .padding(start = 29.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
         ) {
-            Box(
-                Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(palette.Accent.copy(alpha = 0.6f)),
+            Text(
+                "\u201C",
+                color = palette.Accent.copy(alpha = 0.5f),
+                style = TextStyle(
+                    fontFamily = SapphireFonts.display,
+                    fontSize = 28.sp,
+                    lineHeight = 28.sp,
+                ),
             )
-            Column(Modifier.padding(start = 12.dp)) {
+            RichSpanText(
+                block.spans,
+                color = palette.OnInkMuted,
+                base = TextStyle(
+                    fontFamily = SapphireFonts.display,
+                    fontStyle = FontStyle.Italic,
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                ),
+            )
+            // Translation renders INSIDE the quote box, after the original — no quote
+            // mark, no italic, so it reads as a plain gloss rather than a second quote.
+            if (!translated.isNullOrEmpty()) {
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    "\u201C",
-                    color = palette.Accent.copy(alpha = 0.5f),
-                    style = TextStyle(
-                        fontFamily = SapphireFonts.display,
-                        fontSize = 28.sp,
-                        lineHeight = 28.sp,
-                    ),
-                )
-                RichSpanText(
-                    block.spans,
-                    color = palette.OnInkMuted,
-                    base = TextStyle(
-                        fontFamily = SapphireFonts.display,
-                        fontStyle = FontStyle.Italic,
-                        fontSize = 16.sp,
-                        lineHeight = 24.sp,
-                    ),
+                    translated,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.AccentBright,
                 )
             }
         }
@@ -187,8 +204,22 @@ private fun RichBlockView(block: RichBlock) {
                 Spacer(Modifier.height(6.dp))
                 Text(cap, style = SapphireMono.Label, color = palette.OnInkFaint)
             }
+            TranslatedText(translated)
         }
     }
+}
+
+/** The translation of a text block — rendered after the original as a plain accent line. */
+@Composable
+private fun TranslatedText(translated: String?) {
+    if (translated.isNullOrEmpty()) return
+    val palette = LocalSapphirePalette.current
+    Spacer(Modifier.height(4.dp))
+    Text(
+        translated,
+        style = MaterialTheme.typography.bodyLarge,
+        color = palette.AccentBright,
+    )
 }
 
 /** Serif heading scale keyed to level; falls back to bodyLarge beyond h3. */

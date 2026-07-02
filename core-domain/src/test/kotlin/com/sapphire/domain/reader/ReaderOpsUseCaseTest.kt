@@ -6,8 +6,8 @@ import com.sapphire.domain.llm.LlmError
 import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.llm.LlmTier
 import com.sapphire.domain.llm.SummaryResponse
+import com.sapphire.domain.llm.TranslateRegions
 import com.sapphire.domain.llm.TranslateResponse
-import com.sapphire.domain.llm.TranslatedParagraph
 import com.sapphire.domain.model.FeedItem
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
@@ -160,17 +160,84 @@ class ReaderOpsUseCaseTest {
     }
 
     @Test
-    fun `translate cache hit skips LLM and is keyed per language`() = runTest {
-        val llm = StubLlm(translate = TranslateResponse(listOf(TranslatedParagraph("Hi", "你好"))))
+    fun `translate streams regions, writes cache, then replays from cache keyed per language`() = runTest {
+        val llm = StubLlm(translateText = "t1|||s1|||b1|||a1")
         val cache = MemCache()
         val useCase = useCase(llm, cache, StubItems())
+        val regions = TranslateRegions(title = listOf("T1"), summary = listOf("S1"), brief = listOf("B1"), article = listOf("A1"))
 
-        useCase.translate("item-1", "zh")
-        useCase.translate("item-1", "zh") // cache hit
-        assertEquals(1, llm.translateCalls)
+        val frames = useCase.translateStreaming("item-1", "zh", regions).toList()
+        assertTrue("every frame is Ok", frames.all { it is LlmOutcome.Ok })
+        val final = (frames.last() as LlmOutcome.Ok).value
+        assertEquals("t1", final.title)
+        assertEquals(listOf("s1"), final.summary)
+        assertEquals(listOf("b1"), final.brief)
+        assertEquals(listOf("a1"), final.article)
+        assertEquals(1, llm.translateStreamCalls)
 
-        useCase.translate("item-1", "ja") // different language → miss
-        assertEquals(2, llm.translateCalls)
+        // Re-call same language: cache hit emits a single complete frame without streaming.
+        val replayed = useCase.translateStreaming("item-1", "zh", regions).toList()
+        assertEquals(1, replayed.size)
+        val replayedFinal = (replayed.single() as LlmOutcome.Ok).value
+        assertEquals("t1", replayedFinal.title)
+        assertEquals(listOf("b1"), replayedFinal.brief)
+        assertEquals(1, llm.translateStreamCalls)
+
+        // Different language → miss → streams again.
+        useCase.translateStreaming("item-1", "ja", regions).toList()
+        assertEquals(2, llm.translateStreamCalls)
+    }
+
+    @Test
+    fun `streamed translate without a delimiter is a single in-progress region`() = runTest {
+        val llm = StubLlm(translateText = "uno\ndos") // no delimiter yet → one segment mid-stream
+        val cache = MemCache()
+        val useCase = useCase(llm, cache, StubItems())
+        val regions = TranslateRegions(brief = listOf("only"))
+
+        val final = (useCase.translateStreaming("item-1", "es", regions).toList().last() as LlmOutcome.Ok).value
+        assertEquals(listOf("uno\ndos"), final.brief)
+    }
+
+    @Test
+    fun `translate without pipe delimiter recovers paragraph alignment from blank lines`() = runTest {
+        // Models routinely ignore the obscure `|||` sentinel on longer articles and emit
+        // blank-line-separated paragraphs instead. Without recovery the whole blob collapses
+        // into the title slot ("all paragraphs just below the title").
+        val llm = StubLlm(translateText = "t1\n\nb1\n\nb2\n\na1")
+        val cache = MemCache()
+        val useCase = useCase(llm, cache, StubItems())
+        val regions = TranslateRegions(title = listOf("T1"), brief = listOf("B1", "B2"), article = listOf("A1"))
+
+        val final = (useCase.translateStreaming("item-1", "zh", regions).toList().last() as LlmOutcome.Ok).value
+        assertEquals("t1", final.title)
+        assertEquals(listOf("b1", "b2"), final.brief)
+        assertEquals(listOf("a1"), final.article)
+    }
+
+    @Test
+    fun `translate without pipe or blank-line recovers from single newlines`() = runTest {
+        val llm = StubLlm(translateText = "b1\nb2\nb3")
+        val cache = MemCache()
+        val useCase = useCase(llm, cache, StubItems())
+        val regions = TranslateRegions(brief = listOf("B1", "B2", "B3"))
+
+        val final = (useCase.translateStreaming("item-1", "zh", regions).toList().last() as LlmOutcome.Ok).value
+        assertEquals(listOf("b1", "b2", "b3"), final.brief)
+    }
+
+    @Test
+    fun `clean pipe-delimited stream is never re-split by newlines`() = runTest {
+        // A `|||` stream whose individual translations contain newlines must not be over-split.
+        val llm = StubLlm(translateText = "t1|||b1 line1\nb1 line2|||a1")
+        val cache = MemCache()
+        val useCase = useCase(llm, cache, StubItems())
+        val regions = TranslateRegions(title = listOf("T1"), brief = listOf("B1"), article = listOf("A1"))
+
+        val final = (useCase.translateStreaming("item-1", "zh", regions).toList().last() as LlmOutcome.Ok).value
+        assertEquals("t1", final.title)
+        assertEquals(listOf("b1 line1\nb1 line2"), final.brief)
+        assertEquals(listOf("a1"), final.article)
     }
 
     @Test
@@ -247,12 +314,13 @@ class ReaderOpsUseCaseTest {
         val classification: ClassificationResponse = ClassificationResponse("Other", 0.0),
         val summary: SummaryResponse = SummaryResponse(emptyList()),
         val summaryText: String? = null,
-        val translate: TranslateResponse = TranslateResponse(emptyList()),
+        val translate: TranslateResponse = TranslateResponse(),
+        val translateText: String? = null,
         val error: LlmError? = null,
     ) : LlmClient {
         var classifyCalls = 0; private set
         var summaryStreamCalls = 0; private set
-        var translateCalls = 0; private set
+        var translateStreamCalls = 0; private set
         val userPrompts = mutableListOf<String>()
 
         @Suppress("UNCHECKED_CAST")
@@ -266,13 +334,18 @@ class ReaderOpsUseCaseTest {
             if (error != null) return LlmOutcome.Err(error)
             val raw: Any = when (outputSerializer) {
                 ClassificationResponse.serializer() -> { classifyCalls++; classification }
-                TranslateResponse.serializer() -> { translateCalls++; translate }
+                TranslateResponse.serializer() -> { translate }
                 else -> error("unexpected serializer")
             }
             return LlmOutcome.Ok(raw as T)
         }
 
-        /** Simulates a streamed summary: emits two partials of the bullet text, then the full text. */
+        /**
+         * Simulates a streamed completion. Routes by system prompt: a translate stream
+         * (prompt contains "translator") emits the configured translate text; otherwise the
+         * summary text. Each emits a mid-point partial then the full text, like the real
+         * provider's token deltas.
+         */
         override fun streamText(
             tier: LlmTier,
             systemPrompt: String,
@@ -280,8 +353,15 @@ class ReaderOpsUseCaseTest {
         ): kotlinx.coroutines.flow.Flow<LlmOutcome<String>> = flow {
             userPrompts.add(userPrompt)
             if (error != null) { emit(LlmOutcome.Err(error)); return@flow }
-            summaryStreamCalls++
-            val full = summaryText ?: summary.bullets.joinToString("\n")
+            val isTranslate = systemPrompt.contains("translator")
+            if (isTranslate) translateStreamCalls++ else summaryStreamCalls++
+            val full = if (isTranslate) {
+                translateText ?: listOf(translate.title, *translate.summary.toTypedArray(), *translate.brief.toTypedArray(), *translate.article.toTypedArray())
+                    .filter { it.isNotEmpty() }
+                    .joinToString("\n${TranslateResponse.STREAM_DELIMITER}\n")
+            } else {
+                summaryText ?: summary.bullets.joinToString("\n")
+            }
             if (full.isEmpty()) return@flow
             val mid = full.length / 2
             if (mid > 0) emit(LlmOutcome.Ok(full.substring(0, mid)))
