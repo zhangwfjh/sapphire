@@ -3,6 +3,8 @@ package com.sapphire.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sapphire.domain.feed.FeedRepository
+import com.sapphire.domain.settings.TranslateViewMode
+import com.sapphire.domain.settings.UiPrefsStore
 import com.sapphire.data.feed.FeedRefreshService
 import com.sapphire.domain.feed.filterByQuery
 import com.sapphire.domain.model.FeedItem
@@ -32,11 +34,18 @@ import javax.inject.Inject
 class FeedViewModel @Inject constructor(
     private val repository: FeedRepository,
     private val refreshService: FeedRefreshService,
+    private val uiPrefsStore: UiPrefsStore,
 ) : ViewModel() {
 
     /** In-feed free-text search query. Blank = full timeline. */
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
+
+    val density: StateFlow<UiPrefsStore.FeedDensity> = uiPrefsStore.observeDensity()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiPrefsStore.FeedDensity.DEFAULT)
+
+    val translateView: StateFlow<TranslateViewMode> = uiPrefsStore.observeTranslateView()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TranslateViewMode.BILINGUAL)
 
     /** Active read-state scope chip (All / Unread / Saved). Applied client-side. */
     private val _scope = MutableStateFlow(FeedScope.ALL)
@@ -65,6 +74,14 @@ class FeedViewModel @Inject constructor(
     /** Set the read-state scope chip (All / Unread / Saved). */
     fun setScope(scope: FeedScope) { _scope.value = scope }
 
+
+    fun setDensity(d: UiPrefsStore.FeedDensity) {
+        viewModelScope.launch { uiPrefsStore.setDensity(d) }
+    }
+
+    fun setTranslateView(mode: TranslateViewMode) {
+        viewModelScope.launch { uiPrefsStore.setTranslateView(mode) }
+    }
     fun setSourceFilter(sourceId: String, label: String) {
         _filter.value = FeedFilter.BySource(sourceId)
         _filterLabel.value = label

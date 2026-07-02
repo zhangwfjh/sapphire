@@ -115,7 +115,10 @@ fun TimelineScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val sourcesDrawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val sourcesDrawerScope = rememberCoroutineScope()
-    var layout by rememberSaveable { mutableStateOf(FeedLayout.DENSE) }
+    var rightDrawerOpen by rememberSaveable { mutableStateOf(false) }
+    val density by viewModel.density.collectAsStateWithLifecycle()
+    val layout = if (density.isDense) FeedLayout.DENSE else FeedLayout.RICH
+    val translateView by viewModel.translateView.collectAsStateWithLifecycle()
 
     // Show the jump-to-top FAB only once the user has scrolled below the first item.
     val showJumpToTop by remember {
@@ -187,7 +190,7 @@ fun TimelineScreen(
                     else filterLabel ?: "All Feeds",
                 inSelection = inSelection,
                 onOpenLeftDrawer = { sourcesDrawerScope.launch { sourcesDrawerState.open() } },
-                onOpenSettings = onOpenSettings,
+                onOpenSettings = { rightDrawerOpen = true },
                 onClearSelection = { selectedItems.clear() },
                 onMarkRead = {
                     viewModel.markReadBatch(selectedItems.filter { it.value }.keys)
@@ -221,7 +224,7 @@ fun TimelineScreen(
                     scope = feedScope,
                     onScopeChange = viewModel::setScope,
                     layout = layout,
-                    onLayoutChange = { layout = it },
+                    onLayoutChange = { viewModel.setDensity(com.sapphire.domain.settings.UiPrefsStore.FeedDensity(it == FeedLayout.DENSE)) },
                 )
             val searching = query.isNotBlank()
             Box(modifier = Modifier.fillMaxSize()) {
@@ -277,6 +280,15 @@ fun TimelineScreen(
         }
     }
     }
+    RightDrawer(
+        visible = rightDrawerOpen,
+        onDismiss = { rightDrawerOpen = false },
+        density = density,
+        onDensityChange = viewModel::setDensity,
+        translateView = translateView,
+        onTranslateViewChange = viewModel::setTranslateView,
+        onOpenSettings = onOpenSettings,
+    )
 }
 
 /**
