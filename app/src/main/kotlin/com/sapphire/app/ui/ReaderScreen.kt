@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,23 +38,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,14 +65,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sapphire.app.ui.design.PlatformBadge
 import com.sapphire.app.ui.design.SectionEyebrow
@@ -82,62 +82,84 @@ import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
 
 /**
- * PRD §3.4 Full-Screen Reader Sheet + §3.5 Context-Aware Dynamic AI Operations.
+ * PRD §3.4 Full-Screen Reader + §3.5 Context-Aware Dynamic AI Operations.
  *
- * The reading surface: warm paper-on-charcoal body, serif headline, a macro slot that
- * shimmers while Tier-1 classification runs (PRD §3.5), on-demand summary/translate
- * tools, and an always-interactive custom-prompt chat field at the base.
+ * Promoted from the old [ReaderSheet] overlay into a full navigation route so the reader
+ * participates in the back stack and survives process death. The reading surface itself is
+ * unchanged: warm paper-on-charcoal body, serif headline, a macro slot that shimmers while
+ * Tier-1 classification runs (PRD §3.5), on-demand summary/translate tools, and an
+ * always-interactive custom-prompt chat field at the base.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReaderSheet(
-    viewModel: ReaderViewModel,
-    onDismiss: () -> Unit,
+fun ReaderScreen(
+    itemId: String,
+    onBack: () -> Unit,
+    viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val palette = LocalSapphirePalette.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    ModalBottomSheet(
-        onDismissRequest = {
-            viewModel.dismissError()
-            onDismiss()
-        },
-        sheetState = sheetState,
-        containerColor = palette.ReaderPaper,
-        dragHandle = null,
-    ) {
-        // Claim full height on every branch so the ModalBottomSheet's drag anchors are
-        // computed from the expanded target on the FIRST layout pass. Otherwise the anchors
-        // lock to the tiny Loading spinner's height, and the sheet only ever pops up a short
-        // distance — even after content grows (a load-timing race).
-        Box(Modifier.fillMaxHeight()) {
-            when (val s = state) {
-                is ReaderUiState.Idle, is ReaderUiState.Loading -> Box(
-                    Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = palette.Accent)
+    LaunchedEffect(itemId) { viewModel.open(itemId) }
+
+    when (val s = state) {
+        is ReaderUiState.Idle, is ReaderUiState.Loading -> {
+            // full-screen loading with a back button
+            Box(Modifier.fillMaxSize()) {
+                ReaderTopBar(onBack = onBack)
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = LocalSapphirePalette.current.Accent,
+                    )
                 }
-                is ReaderUiState.Error -> Column(
+            }
+        }
+        is ReaderUiState.Error -> {
+            Box(Modifier.fillMaxSize()) {
+                ReaderTopBar(onBack = onBack)
+                Column(
                     Modifier.fillMaxSize().padding(24.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text(s.message, color = palette.Danger, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        s.message,
+                        color = LocalSapphirePalette.current.Danger,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
-                is ReaderUiState.Open -> ReaderContent(s, viewModel)
             }
+        }
+        is ReaderUiState.Open -> ReaderContent(s, viewModel, onBack)
+    }
+}
+
+/**
+ * Pinned back-only top bar. The body's [ActionRow] already carries bookmark /
+ * open-in-browser / translate / summarize, so the top bar stays minimal — just the affordance
+ * to leave the reader.
+ */
+@Composable
+private fun ReaderTopBar(onBack: () -> Unit) {
+    val palette = LocalSapphirePalette.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
         }
     }
 }
 
 @Composable
-private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel) {
+private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel, onBack: () -> Unit) {
     val palette = LocalSapphirePalette.current
     val item = state.item
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     Box(Modifier.fillMaxSize()) {
+        ReaderTopBar(onBack)
         Box(
             Modifier
                 .fillMaxSize()
@@ -149,17 +171,8 @@ private fun ReaderContent(state: ReaderUiState.Open, viewModel: ReaderViewModel)
             .widthIn(max = 720.dp)
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
-            .padding(top = 12.dp, bottom = 28.dp),
+            .padding(top = 56.dp, bottom = 28.dp),
     ) {
-        // Grabber
-        Box(
-            Modifier
-                .width(36.dp)
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(palette.InkStrokeStrong)
-                .align(Alignment.CenterHorizontally),
-        )
         Spacer(Modifier.height(16.dp))
 
         // Header metadata

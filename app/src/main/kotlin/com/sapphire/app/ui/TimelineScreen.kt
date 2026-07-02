@@ -102,6 +102,7 @@ private enum class FeedLayout(val label: String) {
 fun TimelineScreen(
     viewModel: FeedViewModel = hiltViewModel(),
     onBuildFeed: () -> Unit = {},
+    onOpenReader: (String) -> Unit = {},
     onOpenSaved: () -> Unit = {},
     onOpenExplore: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
@@ -128,7 +129,6 @@ fun TimelineScreen(
     }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
 
-    var openItemId by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Article selection state: itemId -> selected. Non-empty map = selection mode active.
     val selectedItems = remember { mutableStateMapOf<String, Boolean>() }
@@ -144,7 +144,7 @@ fun TimelineScreen(
             selectedItems[item.hashUuid] = !isSelected
         } else {
             viewModel.markReadOnOpen(item.hashUuid)
-            openItemId = item.hashUuid
+            onOpenReader(item.hashUuid)
         }
     }
     fun itemLongPress(item: com.sapphire.domain.model.FeedItem, isSelected: Boolean): () -> Unit = {
@@ -285,12 +285,6 @@ fun TimelineScreen(
                 )
             }
         }
-    }
-
-    openItemId?.let { itemId ->
-        val readerViewModel: ReaderViewModel = hiltViewModel()
-        LaunchedEffect(itemId) { readerViewModel.open(itemId) }
-        ReaderSheet(viewModel = readerViewModel, onDismiss = { openItemId = null })
     }
     }
 }
