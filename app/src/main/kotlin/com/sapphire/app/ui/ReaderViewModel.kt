@@ -4,7 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sapphire.domain.reader.ReaderItemStore
 import com.sapphire.domain.llm.LlmOutcome
-import com.sapphire.domain.llm.TranslateResponse
+import com.sapphire.domain.llm.TranslateRegions
+import com.sapphire.domain.llm.TranslateStreamFrame
 import com.sapphire.domain.model.FeedItem
 import com.sapphire.domain.reader.RichBlock
 import com.sapphire.domain.reader.RichContentParser
@@ -209,12 +210,39 @@ class ReaderViewModel @Inject constructor(
 
     fun translate() {
         val current = _state.value as? ReaderUiState.Open ?: return
+        // Translate every reader region in one pass: title, the AI summary bullets (if any
+        // have landed), the feed brief, and the extracted full article. The use case
+        // flattens these in document order and re-partitions the streamed targets back into
+        // regions; the UI renders each beneath its original.
+        val regions = TranslateRegions(
+            title = listOfNotNull(current.item.title.takeIf { it.isNotBlank() }),
+            summary = when (val s = current.summary) {
+                is SummaryState.Done -> s.bullets
+                is SummaryState.Streaming -> s.bullets
+                else -> emptyList()
+            },
+            brief = current.blocks.toPlainParagraphs(),
+            article = current.articleBlocks?.toPlainParagraphs() ?: emptyList(),
+        )
+        updateTranslate(TranslateState.Loading, visible = true)
         viewModelScope.launch {
-            updateTranslate(TranslateState.Loading, visible = true)
-            when (val outcome = readerOps.translate(current.item.hashUuid, targetLanguage, (current.articleBlocks ?: current.blocks).toPlainParagraphs())) {
-                is LlmOutcome.Err -> updateTranslate(TranslateState.Error(outcome.error.userMessage()), visible = true)
-                is LlmOutcome.Ok -> updateTranslate(TranslateState.Done(outcome.value), visible = true)
-            }
+            var errored = false
+            var lastFrame = TranslateStreamFrame()
+            readerOps
+                .translateStreaming(current.item.hashUuid, targetLanguage, regions)
+                .collect { outcome ->
+                    when (outcome) {
+                        is LlmOutcome.Err -> {
+                            errored = true
+                            updateTranslate(TranslateState.Error(outcome.error.userMessage()), visible = true)
+                        }
+                        is LlmOutcome.Ok -> {
+                            lastFrame = outcome.value
+                            updateTranslate(TranslateState.Streaming(outcome.value), visible = true)
+                        }
+                    }
+                }
+            if (!errored) updateTranslate(TranslateState.Done(lastFrame), visible = true)
         }
     }
 
@@ -303,7 +331,9 @@ sealed interface SummaryState {
 
 sealed interface TranslateState {
     data object Loading : TranslateState
-    data class Done(val response: TranslateResponse) : TranslateState
+    /** Regioned targets arriving progressively (title / summary / brief / article). */
+    data class Streaming(val frame: TranslateStreamFrame) : TranslateState
+    data class Done(val frame: TranslateStreamFrame) : TranslateState
     data class Error(val message: String) : TranslateState
 }
 
