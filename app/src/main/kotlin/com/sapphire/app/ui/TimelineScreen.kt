@@ -81,8 +81,8 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.runtime.derivedStateOf
 
 private enum class FeedLayout(val label: String) {
-    LIST("List"),
-    CARD("Card"),
+    DENSE("Dense"),
+    RICH("Rich"),
 }
 
 /**
@@ -117,7 +117,7 @@ fun TimelineScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val sourcesDrawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val sourcesDrawerScope = rememberCoroutineScope()
-    var layout by rememberSaveable { mutableStateOf(FeedLayout.LIST) }
+    var layout by rememberSaveable { mutableStateOf(FeedLayout.DENSE) }
 
     // Show the jump-to-top FAB only once the user has scrolled below the first item.
     val showJumpToTop by remember {
@@ -650,7 +650,7 @@ private fun FeedCardFor(
     onLongPress: () -> Unit,
 ) {
     when (layout) {
-        FeedLayout.LIST -> ListFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
-        FeedLayout.CARD -> CardFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
+        FeedLayout.DENSE -> ListFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
+        FeedLayout.RICH -> CardFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
     }
 }
