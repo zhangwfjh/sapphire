@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -75,6 +76,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -124,6 +126,8 @@ fun SourcesDrawer(
     onOpenSaved: () -> Unit = {},
     onOpenExplore: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    query: String,
+    onQueryChange: (String) -> Unit,
     content: @Composable () -> Unit,
 ) {
     val tree by viewModel.tree.collectAsStateWithLifecycle()
@@ -235,6 +239,8 @@ fun SourcesDrawer(
                     onOpenSettings = onOpenSettings,
                     onImportOpml = { importLauncher.launch(arrayOf("application/xml", "text/xml", "*/*")) },
                     onExportOpml = { viewModel.exportOpml() },
+                    query = query,
+                    onQueryChange = onQueryChange,
                 )
             },
         ) {
@@ -376,6 +382,8 @@ private fun DrawerSheetContent(
     onOpenSettings: () -> Unit,
     onImportOpml: () -> Unit,
     onExportOpml: () -> Unit,
+    query: String,
+    onQueryChange: (String) -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
     val expandedFolders = remember { mutableStateMapOf<String, Boolean>() }
@@ -383,6 +391,34 @@ private fun DrawerSheetContent(
         drawerContainerColor = palette.Ink,
         drawerContentColor = palette.OnInk,
     ) {
+        // Search field — the timeline's search now lives here
+        TextField(
+            value = query,
+            onValueChange = onQueryChange,
+            placeholder = { Text("Search feed…", color = palette.OnInkFaint, style = MaterialTheme.typography.bodyMedium) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = palette.OnInkFaint, modifier = Modifier.size(20.dp)) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { onQueryChange("") }, modifier = Modifier.size(20.dp)) {
+                        Icon(Icons.Filled.Close, contentDescription = "Clear", tint = palette.OnInkFaint, modifier = Modifier.size(16.dp))
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = palette.InkElevated,
+                unfocusedContainerColor = palette.InkElevated,
+                focusedIndicatorColor = palette.Accent,
+                unfocusedIndicatorColor = Color.Transparent,
+                cursorColor = palette.Accent,
+                focusedTextColor = palette.OnInk,
+                unfocusedTextColor = palette.OnInk,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()

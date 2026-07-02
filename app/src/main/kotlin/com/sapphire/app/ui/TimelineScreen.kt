@@ -24,12 +24,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Markunread
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -38,15 +37,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -78,6 +74,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.runtime.derivedStateOf
 
 private enum class FeedLayout(val label: String) {
@@ -127,8 +124,6 @@ fun TimelineScreen(
                 listState.firstVisibleItemScrollOffset > 400
         }
     }
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
-
 
     // Article selection state: itemId -> selected. Non-empty map = selection mode active.
     val selectedItems = remember { mutableStateMapOf<String, Boolean>() }
@@ -153,6 +148,8 @@ fun TimelineScreen(
 
     SourcesDrawer(
         drawerState = sourcesDrawerState,
+        query = query,
+        onQueryChange = viewModel::setQuery,
         onCategoryClick = { ids, label ->
             viewModel.setCategoryFilter(ids, label)
             sourcesDrawerScope.launch { sourcesDrawerState.close() }
@@ -181,9 +178,6 @@ fun TimelineScreen(
             onOpenSettings()
         },
     ) {
-    LaunchedEffect(searchExpanded) {
-        if (!searchExpanded) viewModel.setQuery("")
-    }
 
     Scaffold(
         containerColor = LocalSapphirePalette.current.Ink,
@@ -192,14 +186,8 @@ fun TimelineScreen(
                 title = if (inSelection) "${selectedItems.count { it.value }} selected"
                     else filterLabel ?: "All Feeds",
                 inSelection = inSelection,
-                searchExpanded = searchExpanded,
-                onToggleSearch = {
-                    searchExpanded = !searchExpanded
-                    if (!searchExpanded) viewModel.setQuery("")
-                },
-                onMarkAllRead = viewModel::markAllVisibleRead,
-                onBuildFeed = onBuildFeed,
-                onOpenSources = { sourcesDrawerScope.launch { sourcesDrawerState.open() } },
+                onOpenLeftDrawer = { sourcesDrawerScope.launch { sourcesDrawerState.open() } },
+                onOpenSettings = onOpenSettings,
                 onClearSelection = { selectedItems.clear() },
                 onMarkRead = {
                     viewModel.markReadBatch(selectedItems.filter { it.value }.keys)
@@ -215,6 +203,17 @@ fun TimelineScreen(
                 },
             )
         },
+        floatingActionButton = {
+            if (!inSelection) {
+                FloatingActionButton(
+                    onClick = onBuildFeed,
+                    containerColor = LocalSapphirePalette.current.Accent,
+                    contentColor = Color.White,
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Curate new topic")
+                }
+            }
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -224,16 +223,7 @@ fun TimelineScreen(
                     layout = layout,
                     onLayoutChange = { layout = it },
                 )
-            if (searchExpanded && hasAnyItems && !inSelection) {
-                SearchRow(
-                    query = query,
-                    onQueryChange = viewModel::setQuery,
-                    onClear = {
-                        viewModel.setQuery("")
-                    },
-                )
-            }
-            val searching = searchExpanded && query.isNotBlank()
+            val searching = query.isNotBlank()
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
                     !hasAnyItems -> EmptyTimeline(
@@ -243,7 +233,7 @@ fun TimelineScreen(
                     )
                     timeline.isEmpty() && searching -> NoSearchMatches(
                         query = query,
-                        onClear = { viewModel.setQuery(""); searchExpanded = false },
+                        onClear = { viewModel.setQuery("") },
                     )
                     else -> PullToRefreshBox(
                         // The pull gesture drives a silent streaming refresh; items appear
@@ -322,11 +312,8 @@ private fun JumpToTopFab(
 private fun TimelineTopBar(
     title: String,
     inSelection: Boolean,
-    searchExpanded: Boolean,
-    onToggleSearch: () -> Unit,
-    onMarkAllRead: () -> Unit,
-    onBuildFeed: () -> Unit,
-    onOpenSources: () -> Unit,
+    onOpenLeftDrawer: () -> Unit,
+    onOpenSettings: () -> Unit,
     onClearSelection: () -> Unit,
     onMarkRead: () -> Unit,
     onMarkUnread: () -> Unit,
@@ -335,10 +322,10 @@ private fun TimelineTopBar(
     val palette = LocalSapphirePalette.current
     TopAppBar(
         navigationIcon = {
-            IconButton(onClick = if (inSelection) onClearSelection else onOpenSources) {
+            IconButton(onClick = if (inSelection) onClearSelection else onOpenLeftDrawer) {
                 Icon(
                     if (inSelection) Icons.Filled.Close else Icons.Filled.Menu,
-                    contentDescription = if (inSelection) "Exit selection" else "Sources",
+                    contentDescription = if (inSelection) "Exit selection" else "Sources & search",
                     tint = palette.OnInkMuted,
                 )
             }
@@ -346,9 +333,9 @@ private fun TimelineTopBar(
         title = {
             Text(
                 title,
-                style = if (inSelection) SapphireMono.Label else MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium,
                 color = palette.OnInk,
-                fontWeight = if (inSelection) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -362,19 +349,11 @@ private fun TimelineTopBar(
                     Icon(Icons.Filled.Drafts, contentDescription = "Mark unread", tint = palette.OnInkMuted)
                 }
                 IconButton(onClick = onRemove) {
-                    Icon(Icons.Filled.DeleteOutline, contentDescription = "Remove", tint = palette.Danger)
+                    Icon(Icons.Outlined.DeleteOutline, contentDescription = "Remove", tint = palette.Danger)
                 }
             } else {
-                IconButton(onClick = onToggleSearch) {
-                    val icon = if (searchExpanded) Icons.Filled.Close else Icons.Outlined.Search
-                    val desc = if (searchExpanded) "Close search" else "Search feed"
-                    Icon(icon, contentDescription = desc, tint = palette.OnInkMuted)
-                }
-                IconButton(onClick = onMarkAllRead) {
-                    Icon(Icons.Filled.DoneAll, contentDescription = "Mark all as read", tint = palette.OnInkMuted)
-                }
-                IconButton(onClick = onBuildFeed) {
-                    Icon(Icons.Filled.Add, contentDescription = "Curate new topic", tint = palette.OnInkMuted)
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Filled.Tune, contentDescription = "View & preferences", tint = palette.OnInkMuted)
                 }
             }
         },
@@ -477,50 +456,6 @@ internal fun SecondaryActionButton(onClick: () -> Unit, text: String, modifier: 
     }
 }
 
-
-/**
- * Collapsible in-feed search field. Rendered beneath the top bar when the search toggle
- * is active. Styling follows the Sapphire dark-first identity.
- */
-@Composable
-private fun SearchRow(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onClear: () -> Unit,
-) {
-    val palette = LocalSapphirePalette.current
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        placeholder = {
-            Text("Search title · summary · author", style = SapphireMono.Label, color = palette.OnInkFaint)
-        },
-        leadingIcon = {
-            Icon(Icons.Outlined.Search, contentDescription = null, tint = palette.OnInkMuted)
-        },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = onClear) {
-                    Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = palette.OnInkMuted)
-                }
-            }
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(10.dp),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = palette.InkRaised,
-            unfocusedContainerColor = palette.InkElevated,
-            cursorColor = palette.Accent,
-            focusedIndicatorColor = palette.Accent,
-            unfocusedIndicatorColor = palette.InkStroke,
-            focusedTextColor = palette.OnInk,
-            unfocusedTextColor = palette.OnInk,
-        ),
-    )
-}
 
 /** Distinct empty state when the timeline has items but the query matched none. */
 @Composable
