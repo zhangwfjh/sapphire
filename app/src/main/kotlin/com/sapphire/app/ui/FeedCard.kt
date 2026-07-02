@@ -4,7 +4,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -51,7 +49,7 @@ import com.sapphire.domain.model.ReadState
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun ListFeedCard(
+fun DenseFeedCard(
     item: FeedItem,
     onToggleRead: () -> Unit,
     onOpen: () -> Unit,
@@ -90,7 +88,7 @@ fun ListFeedCard(
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun CardFeedCard(
+fun RichFeedCard(
     item: FeedItem,
     onToggleRead: () -> Unit,
     onOpen: () -> Unit,
@@ -210,9 +208,9 @@ private fun ListMeta(item: FeedItem, read: Boolean) {
 
 
 /**
- * Card container surface — hairline 1px stroke on elevated ink, subtle accent left-rule
- * for unread items (a 2dp accent bar pinned to the leading edge signals "new"). Alpha
- * animates on read transitions to soften batch sweeps. Selected cards get an accent border.
+ * Card container surface — borderless ink-elevated background; read state is conveyed by
+ * alpha alone (single signal). Selected cards get an accent checkmark badge (no border).
+ * Alpha animates on read transitions to soften batch sweeps.
  */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -236,23 +234,8 @@ private fun FeedCardSurface(
             .alpha(animatedAlpha)
             .clip(RoundedCornerShape(14.dp))
             .background(palette.InkElevated)
-            .border(
-                1.dp,
-                if (selected) palette.Accent else palette.InkStroke,
-                RoundedCornerShape(14.dp),
-            )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        if (!read) {
-            // Unread accent rail — a quiet 2dp sapphire bar on the leading edge.
-            Box(
-                Modifier
-                    .align(Alignment.CenterStart)
-                    .width(2.dp)
-                    .fillMaxSize()
-                    .background(palette.Accent),
-            )
-        }
         if (selected) {
             Box(
                 Modifier
@@ -281,7 +264,7 @@ private fun rememberFeedCardState(readState: ReadState): FeedCardState {
 
 private data class FeedCardState(val isRead: Boolean, val containerAlpha: Float)
 
-private const val READ_ALPHA = 0.75f
+private const val READ_ALPHA = 0.6f
 
 /** Crude relative-time formatter — enough for the card. */
 private fun relativeTime(epochMs: Long): String {

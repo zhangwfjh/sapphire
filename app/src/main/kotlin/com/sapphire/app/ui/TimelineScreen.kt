@@ -644,7 +644,7 @@ private fun FeedCardFor(
     onLongPress: () -> Unit,
 ) {
     when (layout) {
-        FeedLayout.DENSE -> ListFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
-        FeedLayout.RICH -> CardFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
+        FeedLayout.DENSE -> DenseFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
+        FeedLayout.RICH -> RichFeedCard(item, onToggleRead, onOpen, onLongPress, selected = selected)
     }
 }
