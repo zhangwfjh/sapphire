@@ -3,6 +3,7 @@ package com.sapphire.app.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,7 +100,7 @@ private enum class FeedLayout(val label: String) {
  *
  * Reader-sheet open overlays this screen.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TimelineScreen(
     viewModel: FeedViewModel = hiltViewModel(),
@@ -252,48 +253,54 @@ fun TimelineScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         // LIST / CARD — single column; only the card variant differs.
+                        val dayGroups = remember(timeline) { groupByDay(timeline) }
                         LazyColumn(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items(items = timeline, key = { it.hashUuid }) { item ->
-                                val isSelected = selectedItems[item.hashUuid] == true
-                                val dismissState = rememberSwipeToDismissBoxState(
-                                    confirmValueChange = { value ->
-                                        when (value) {
-                                            SwipeToDismissBoxValue.StartToEnd -> {
-                                                // Swipe right → toggle read/unread
-                                                viewModel.toggleRead(
-                                                    item.hashUuid,
-                                                    item.readState == com.sapphire.domain.model.ReadState.READ,
-                                                )
-                                                false // snap back
+                            dayGroups.forEach { group ->
+                                stickyHeader(key = "header_${group.label}") {
+                                    DayHeader(group.label)
+                                }
+                                items(items = group.items, key = { it.hashUuid }) { item ->
+                                    val isSelected = selectedItems[item.hashUuid] == true
+                                    val dismissState = rememberSwipeToDismissBoxState(
+                                        confirmValueChange = { value ->
+                                            when (value) {
+                                                SwipeToDismissBoxValue.StartToEnd -> {
+                                                    // Swipe right → toggle read/unread
+                                                    viewModel.toggleRead(
+                                                        item.hashUuid,
+                                                        item.readState == com.sapphire.domain.model.ReadState.READ,
+                                                    )
+                                                    false // snap back
+                                                }
+                                                SwipeToDismissBoxValue.EndToStart -> {
+                                                    // Swipe left → toggle save/unsave
+                                                    viewModel.toggleSaved(item.hashUuid, item.savedLater)
+                                                    false // snap back
+                                                }
+                                                else -> false
                                             }
-                                            SwipeToDismissBoxValue.EndToStart -> {
-                                                // Swipe left → toggle save/unsave
-                                                viewModel.toggleSaved(item.hashUuid, item.savedLater)
-                                                false // snap back
-                                            }
-                                            else -> false
-                                        }
-                                    },
-                                )
-                                SwipeToDismissBox(
-                                    state = dismissState,
-                                    backgroundContent = { SwipeBackground(dismissState.dismissDirection) },
-                                    content = {
-                                        FeedCardFor(
-                                            layout = layout,
-                                            item = item,
-                                            selected = isSelected,
-                                            onToggleRead = itemToggleRead(item),
-                                            onOpen = itemOpen(item, isSelected),
-                                            onLongPress = itemLongPress(item, isSelected),
-                                        )
-                                    },
-                                )
+                                        },
+                                    )
+                                    SwipeToDismissBox(
+                                        state = dismissState,
+                                        backgroundContent = { SwipeBackground(dismissState.dismissDirection) },
+                                        content = {
+                                            FeedCardFor(
+                                                layout = layout,
+                                                item = item,
+                                                selected = isSelected,
+                                                onToggleRead = itemToggleRead(item),
+                                                onOpen = itemOpen(item, isSelected),
+                                                onLongPress = itemLongPress(item, isSelected),
+                                            )
+                                        },
+                                    )
+                                }
                             }
                             item { Spacer(Modifier.height(96.dp)) }
                         }
@@ -661,5 +668,48 @@ private fun SwipeBackground(direction: SwipeToDismissBoxValue) {
         if (icon != null) {
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
         }
+    }
+}
+
+private data class DayGroup(val label: String, val items: List<com.sapphire.domain.model.FeedItem>)
+
+private fun groupByDay(items: List<com.sapphire.domain.model.FeedItem>): List<DayGroup> {
+    val now = java.time.LocalDate.now()
+    return items
+        .groupBy { item ->
+            val ts = item.publishedAt ?: return@groupBy 0L
+            java.time.Instant.ofEpochMilli(ts)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toLocalDate()
+                .toEpochDay()
+        }
+        .toSortedMap(reverseOrder())
+        .map { (epochDay, groupItems) ->
+            val date = java.time.LocalDate.ofEpochDay(epochDay)
+            val label = when {
+                date == now -> "Today"
+                date == now.minusDays(1) -> "Yesterday"
+                date.isAfter(now.minusDays(7)) ->
+                    date.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())
+                else -> "${date.month.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())} ${date.dayOfMonth}"
+            }
+            DayGroup(label, groupItems)
+        }
+}
+
+@Composable
+private fun DayHeader(label: String) {
+    val palette = LocalSapphirePalette.current
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(palette.Ink)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        Text(
+            label,
+            style = SapphireMono.Label,
+            color = palette.OnInkFaint,
+        )
     }
 }
