@@ -186,6 +186,8 @@ abstract class RepositoryBindingsModule {
     @Binds @javax.inject.Singleton
     abstract fun bindThemeConfigStore(impl: com.sapphire.data.settings.SharedPrefsThemeConfigStore): com.sapphire.domain.settings.ThemeConfigStore
     @Binds @javax.inject.Singleton
+    abstract fun bindUiPrefsStore(impl: com.sapphire.data.settings.SharedPrefsUiPrefsStore): com.sapphire.domain.settings.UiPrefsStore
+    @Binds @javax.inject.Singleton
     abstract fun bindDataClearUseCase(impl: com.sapphire.data.settings.RoomDataClearUseCase): com.sapphire.domain.settings.DataClearUseCase
 }
 
