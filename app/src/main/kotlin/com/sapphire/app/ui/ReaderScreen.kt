@@ -30,6 +30,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -354,7 +355,7 @@ private fun ReaderContent(
             DropdownMenu(
                 expanded = aiMenuExpanded,
                 onDismissRequest = { aiMenuExpanded = false },
-                modifier = Modifier.background(palette.Ink),
+                modifier = Modifier.background(palette.Ink).width(280.dp),
             ) {
                 // Context ops as menu items
                 when (state.classification) {
@@ -363,6 +364,7 @@ private fun ReaderContent(
                             text = { Text("Analyzing…", color = palette.OnInkFaint, style = MaterialTheme.typography.bodySmall) },
                             onClick = {},
                             enabled = false,
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         )
                     }
                     is ClassificationState.Error -> {
@@ -370,6 +372,7 @@ private fun ReaderContent(
                             text = { Text("Classification unavailable", color = palette.OnInkFaint) },
                             onClick = {},
                             enabled = false,
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         )
                     }
                     is ClassificationState.Done -> {
@@ -378,12 +381,14 @@ private fun ReaderContent(
                                 text = { Text(state.classification.label.uppercase(), color = palette.OnInkMuted, style = SapphireMono.Label) },
                                 onClick = {},
                                 enabled = false,
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                             )
                         } else {
                             state.macros.forEach { macro ->
                                 DropdownMenuItem(
                                     text = { Text(macro.label, color = palette.OnInk) },
                                     onClick = { aiMenuExpanded = false },
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
                         }
@@ -391,7 +396,9 @@ private fun ReaderContent(
                 }
                 HorizontalDivider(color = palette.InkStroke)
                 // Ask AI bar
-                CustomPromptField()
+                Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    CustomPromptField()
+                }
             }
         }
     }
@@ -662,22 +669,23 @@ private fun CustomPromptField() {
         Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
             .background(palette.InkElevated)
             .border(1.dp, palette.InkStroke, RoundedCornerShape(24.dp))
-            .padding(horizontal = 4.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             Icons.Filled.AutoAwesome,
             contentDescription = null,
             tint = palette.OnInkFaint,
-            modifier = Modifier.padding(start = 12.dp).size(18.dp),
+            modifier = Modifier.padding(start = 12.dp).size(16.dp),
         )
         OutlinedTextField(
             value = prompt,
             onValueChange = { prompt = it },
             placeholder = {
-                Text("Ask AI about this article…", style = MaterialTheme.typography.bodySmall, color = palette.OnInkFaint)
+                Text("Ask AI…", style = MaterialTheme.typography.bodySmall, color = palette.OnInkFaint)
             },
             textStyle = MaterialTheme.typography.bodySmall.copy(color = palette.ReaderInk),
+            singleLine = true,
             modifier = Modifier.weight(1f),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
@@ -688,7 +696,7 @@ private fun CustomPromptField() {
             ),
         )
         Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(50))
+            Modifier.size(32.dp).clip(RoundedCornerShape(50))
                 .background(if (prompt.isNotBlank()) palette.Accent else palette.InkRaised)
                 .clickable(enabled = prompt.isNotBlank()) { prompt = ""; keyboard?.hide() },
             contentAlignment = Alignment.Center,
