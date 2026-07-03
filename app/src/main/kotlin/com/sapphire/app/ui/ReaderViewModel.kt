@@ -47,6 +47,7 @@ class ReaderViewModel @Inject constructor(
     private val articleExtractor: ArticleExtractor,
     private val articleBodyStore: ArticleBodyStore,
     private val uiPrefsStore: com.sapphire.domain.settings.UiPrefsStore,
+    private val themeConfigStore: com.sapphire.domain.settings.ThemeConfigStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Idle)
@@ -56,6 +57,18 @@ class ReaderViewModel @Inject constructor(
     val translateViewMode: StateFlow<com.sapphire.domain.settings.TranslateViewMode> =
         uiPrefsStore.observeTranslateView()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.sapphire.domain.settings.TranslateViewMode.BILINGUAL)
+
+    fun setTranslateView(mode: com.sapphire.domain.settings.TranslateViewMode) {
+        viewModelScope.launch { uiPrefsStore.setTranslateView(mode) }
+    }
+
+    val themePreference: StateFlow<com.sapphire.domain.settings.ThemePreference> =
+        themeConfigStore.observe()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.sapphire.domain.settings.ThemePreference.DARK)
+
+    fun setTheme(pref: com.sapphire.domain.settings.ThemePreference) {
+        viewModelScope.launch { themeConfigStore.set(pref) }
+    }
     /** Default translate target — resolved from the device locale by the caller. */
     private var targetLanguage: String = "zh"
 

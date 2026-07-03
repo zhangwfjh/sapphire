@@ -31,6 +31,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -38,6 +42,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -59,6 +64,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,6 +86,8 @@ import com.sapphire.app.ui.design.SectionEyebrow
 import com.sapphire.app.ui.design.ShimmerBlock
 import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
+import com.sapphire.domain.settings.TranslateViewMode
+import com.sapphire.domain.settings.UiPrefsStore
 
 /**
  * PRD §3.4 Full-Screen Reader + §3.5 Context-Aware Dynamic AI Operations.
@@ -97,42 +105,59 @@ fun ReaderScreen(
     onBack: () -> Unit,
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
+    val palette = LocalSapphirePalette.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val translateViewMode by viewModel.translateViewMode.collectAsStateWithLifecycle()
+    val themePreference by viewModel.themePreference.collectAsStateWithLifecycle()
+    var rightDrawerOpen by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(itemId) { viewModel.open(itemId) }
 
     when (val s = state) {
         is ReaderUiState.Idle, is ReaderUiState.Loading -> {
             // full-screen loading with a back button
-            Box(Modifier.fillMaxSize()) {
-                ReaderTopBar(onBack = onBack)
+            Box(Modifier.fillMaxSize().background(palette.ReaderPaper)) {
+                ReaderTopBar(onBack = onBack, onOpenRightDrawer = { rightDrawerOpen = true })
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(
                         Modifier.size(22.dp),
                         strokeWidth = 2.dp,
-                        color = LocalSapphirePalette.current.Accent,
+                        color = palette.Accent,
                     )
                 }
             }
         }
         is ReaderUiState.Error -> {
-            Box(Modifier.fillMaxSize()) {
-                ReaderTopBar(onBack = onBack)
+            Box(Modifier.fillMaxSize().background(palette.ReaderPaper)) {
+                ReaderTopBar(onBack = onBack, onOpenRightDrawer = { rightDrawerOpen = true })
                 Column(
                     Modifier.fillMaxSize().padding(24.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
                         s.message,
-                        color = LocalSapphirePalette.current.Danger,
+                        color = palette.Danger,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
         }
-        is ReaderUiState.Open -> ReaderContent(s, viewModel, onBack, translateViewMode)
+        is ReaderUiState.Open -> ReaderContent(
+            s, viewModel, onBack, translateViewMode,
+            onOpenRightDrawer = { rightDrawerOpen = true },
+        )
     }
+    RightDrawer(
+        visible = rightDrawerOpen,
+        onDismiss = { rightDrawerOpen = false },
+        density = UiPrefsStore.FeedDensity(true),
+        onDensityChange = {},
+        themePreference = themePreference,
+        onThemeChange = viewModel::setTheme,
+        translateView = translateViewMode,
+        onTranslateViewChange = viewModel::setTranslateView,
+        onOpenSettings = {},
+    )
 }
 
 /**
@@ -141,14 +166,18 @@ fun ReaderScreen(
  * to leave the reader.
  */
 @Composable
-private fun ReaderTopBar(onBack: () -> Unit) {
+private fun ReaderTopBar(onBack: () -> Unit, onOpenRightDrawer: () -> Unit) {
     val palette = LocalSapphirePalette.current
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
+        }
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onOpenRightDrawer) {
+            Icon(Icons.Filled.Tune, contentDescription = "View & preferences", tint = palette.OnInkMuted)
         }
     }
 }
@@ -159,6 +188,7 @@ private fun ReaderContent(
     viewModel: ReaderViewModel,
     onBack: () -> Unit,
     translateViewMode: com.sapphire.domain.settings.TranslateViewMode,
+    onOpenRightDrawer: () -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
     val item = state.item
@@ -168,124 +198,156 @@ private fun ReaderContent(
     // originals are hidden when a translation is present (TRANSLATION mode only).
     val effectiveTranslateVisible = state.translateVisible && translateViewMode != com.sapphire.domain.settings.TranslateViewMode.ORIGIN
     val hideOriginals = translateViewMode == com.sapphire.domain.settings.TranslateViewMode.TRANSLATION && effectiveTranslateVisible
-    Box(Modifier.fillMaxSize()) {
-        ReaderTopBar(onBack)
+    Column(Modifier.fillMaxSize().background(palette.ReaderPaper)) {
+        ReaderTopBar(onBack, onOpenRightDrawer)
         Box(
             Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .verticalScroll(scrollState),
             contentAlignment = Alignment.TopCenter,
         ) {
+            Column(
+                Modifier
+                    .widthIn(max = 720.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 8.dp, bottom = 28.dp),
+            ) {
+                Spacer(Modifier.height(16.dp))
+
+                // Header metadata
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val platformTag = item.platformTag
+                    if (!platformTag.isNullOrBlank()) {
+                        PlatformBadge(platformTag, read = false)
+                    }
+                    item.authorHandle?.takeIf { it.isNotBlank() }?.let { author ->
+                        Text(
+                            "@$author",
+                            style = SapphireMono.Label,
+                            color = palette.OnInkMuted,
+                        )
+                    }
+                    item.publishedAt?.let {
+                        Text("· " + formatRelativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                // Translate-view mode: BILINGUAL shows origin + translation; ORIGIN hides translations;
+                // TRANSLATION hides originals and promotes the translated title to the primary headline.
+                val tFrame = (state.translate as? TranslateState.Done)?.frame
+                    ?: (state.translate as? TranslateState.Streaming)?.frame
+                val translatedTitle = tFrame?.title?.takeIf { it.isNotEmpty() }
+                if (!(hideOriginals && translatedTitle != null)) {
+                    Text(
+                        item.title,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = palette.ReaderInk,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 33.sp,
+                    )
+                }
+                if (effectiveTranslateVisible && translatedTitle != null) {
+                    Spacer(Modifier.height(4.dp))
+                    if (hideOriginals) {
+                        // TRANSLATION mode: translated title becomes the primary headline.
+                        Text(
+                            translatedTitle,
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = palette.ReaderInk,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 33.sp,
+                        )
+                    } else {
+                        // BILINGUAL: italic accent translation beneath the original.
+                        Text(
+                            translatedTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontStyle = FontStyle.Italic,
+                            color = palette.AccentBright,
+                        )
+                    }
+                }
+
+                // Macro slot — shimmer while classifying, chips once done (PRD §3.5)
+                Spacer(Modifier.height(16.dp))
+                MacroSlot(state)
+
+                // Summary block pinned beneath header once produced (PRD §3.4)
+                state.summary?.let { sum ->
+                    Spacer(Modifier.height(16.dp))
+                    SummaryBlock(
+                        sum = sum,
+                        summaryTargets = if (effectiveTranslateVisible) {
+                            (state.translate as? TranslateState.Done)?.frame?.summary
+                                ?: (state.translate as? TranslateState.Streaming)?.frame?.summary
+                        } else null,
+                    )
+                }
+                // Brief — the original feed body, always visible (PRD §3.4).
+                Spacer(Modifier.height(20.dp))
+                BriefBlock(state, effectiveTranslateVisible, hideOriginals)
+
+                // Full article — extracted body appended below the brief behind a divider.
+                // Rendered only once the article resolves; omitted while fetching and on
+                // no-URL/extraction fail.
+                if (state.articleBlocks != null) {
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider(color = palette.InkStrokeStrong.copy(alpha = 0.5f))
+                    Spacer(Modifier.height(16.dp))
+                    ArticleBlock(state, effectiveTranslateVisible, hideOriginals)
+                }
+                Spacer(Modifier.height(20.dp))
+            }
+            // Floating jump-to-top / jump-to-bottom controls overlaid on the scrolling body.
+            ReaderJumpButtons(
+                scrollState = scrollState,
+                onJumpToTop = { scope.launch { scrollState.animateScrollBy(-scrollState.value.toFloat()) } },
+                onJumpToBottom = { scope.launch { scrollState.animateScrollBy((scrollState.maxValue - scrollState.value).toFloat()) } },
+            )
+        }
+        // Docked AI ops panel pinned at the bottom — action row, translate status, custom prompt.
+        AiDockPanel(state, viewModel, effectiveTranslateVisible)
+    }
+}
+
+/**
+ * Pinned bottom panel hosting the reader's AI operations: the [ActionRow] tools, the
+ * hoisted [TranslateStatus] indicator, and the [CustomPromptField]. Rounded top corners,
+ * a drag handle, and an elevated surface visually separate it from the scrolling body.
+ * Navigation-bar inset padding keeps the input clear of the gesture nav bar.
+ */
+@Composable
+private fun AiDockPanel(
+    state: ReaderUiState.Open,
+    viewModel: ReaderViewModel,
+    effectiveTranslateVisible: Boolean,
+) {
+    val palette = LocalSapphirePalette.current
     Column(
         Modifier
-            .widthIn(max = 720.dp)
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(top = 56.dp, bottom = 28.dp),
+            .background(palette.InkElevated)
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        Spacer(Modifier.height(16.dp))
-
-        // Header metadata
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val platformTag = item.platformTag
-            if (!platformTag.isNullOrBlank()) {
-                PlatformBadge(platformTag, read = false)
-            }
-            item.authorHandle?.takeIf { it.isNotBlank() }?.let { author ->
-                Text(
-                    "@$author",
-                    style = SapphireMono.Label,
-                    color = palette.OnInkMuted,
-                )
-            }
-            item.publishedAt?.let {
-                Text("· " + formatRelativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint)
-            }
-        }
+        // Drag handle
+        Box(
+            Modifier
+                .width(36.dp)
+                .height(4.dp)
+                .align(Alignment.CenterHorizontally)
+                .clip(RoundedCornerShape(2.dp))
+                .background(palette.InkStrokeStrong),
+        )
         Spacer(Modifier.height(10.dp))
-        // Translate-view mode: BILINGUAL shows origin + translation; ORIGIN hides translations;
-        // TRANSLATION hides originals and promotes the translated title to the primary headline.
-        val tFrame = (state.translate as? TranslateState.Done)?.frame
-            ?: (state.translate as? TranslateState.Streaming)?.frame
-        val translatedTitle = tFrame?.title?.takeIf { it.isNotEmpty() }
-        if (!(hideOriginals && translatedTitle != null)) {
-            Text(
-                item.title,
-                style = MaterialTheme.typography.headlineMedium,
-                color = palette.ReaderInk,
-                fontWeight = FontWeight.SemiBold,
-                lineHeight = 33.sp,
-            )
-        }
-        if (effectiveTranslateVisible && translatedTitle != null) {
-            Spacer(Modifier.height(4.dp))
-            if (hideOriginals) {
-                // TRANSLATION mode: translated title becomes the primary headline.
-                Text(
-                    translatedTitle,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = palette.ReaderInk,
-                    fontWeight = FontWeight.SemiBold,
-                    lineHeight = 33.sp,
-                )
-            } else {
-                // BILINGUAL: italic accent translation beneath the original.
-                Text(
-                    translatedTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontStyle = FontStyle.Italic,
-                    color = palette.AccentBright,
-                )
-            }
-        }
-
-        // Action row (PRD §3.4 tools) — pinned near the top for instant reach
-        Spacer(Modifier.height(14.dp))
         ActionRow(state, viewModel)
-        // Translate indicator (shimmer while loading, caret while streaming, error) — hoisted
-        // here because translate now spans the title, summary, brief, and full article.
         TranslateStatus(state.translate, effectiveTranslateVisible)
-
-        // Macro slot — shimmer while classifying, chips once done (PRD §3.5)
-        Spacer(Modifier.height(16.dp))
-        MacroSlot(state)
-
-        // Summary block pinned beneath header once produced (PRD §3.4)
-        state.summary?.let { sum ->
-            Spacer(Modifier.height(16.dp))
-            SummaryBlock(
-                sum = sum,
-                summaryTargets = if (effectiveTranslateVisible) {
-                    (state.translate as? TranslateState.Done)?.frame?.summary
-                        ?: (state.translate as? TranslateState.Streaming)?.frame?.summary
-                } else null,
-            )
-        }
-        // Brief — the original feed body, always visible (PRD §3.4).
-        Spacer(Modifier.height(20.dp))
-        BriefBlock(state, effectiveTranslateVisible, hideOriginals)
-
-        // Full article — extracted body appended below the brief behind a divider, sitting
-        // directly above the custom prompt field. Rendered only once the article resolves;
-        // omitted while fetching (the brief is the focus then) and on no-URL/extraction fail.
-        if (state.articleBlocks != null) {
-            Spacer(Modifier.height(16.dp))
-            HorizontalDivider(color = palette.InkStrokeStrong.copy(alpha = 0.5f))
-            Spacer(Modifier.height(16.dp))
-            ArticleBlock(state, effectiveTranslateVisible, hideOriginals)
-        }
-
-        // Custom prompt field (PRD §3.5 — interactive from launch)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         CustomPromptField()
-        Spacer(Modifier.height(20.dp))
-    }
-    }
-    ReaderJumpButtons(
-        scrollState = scrollState,
-        onJumpToTop = { scope.launch { scrollState.animateScrollBy(-scrollState.value.toFloat()) } },
-        onJumpToBottom = { scope.launch { scrollState.animateScrollBy((scrollState.maxValue - scrollState.value).toFloat()) } },
-    )
+        // Keep the dock clear of the system navigation bar.
+        Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
     }
 }
 

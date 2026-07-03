@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -193,6 +195,7 @@ fun TimelineScreen(
 
     Scaffold(
         containerColor = LocalSapphirePalette.current.Ink,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TimelineTopBar(
                 title = if (inSelection) "${selectedItems.count { it.value }} selected"
@@ -228,7 +231,7 @@ fun TimelineScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(padding)) {
                 ScopeChipsRow(
                     scope = feedScope,
                     onScopeChange = viewModel::setScope,
@@ -395,6 +398,7 @@ private fun TimelineTopBar(
 ) {
     val palette = LocalSapphirePalette.current
     TopAppBar(
+        windowInsets = WindowInsets(0, 0, 0, 0),
         navigationIcon = {
             IconButton(onClick = if (inSelection) onClearSelection else onOpenLeftDrawer) {
                 Icon(
