@@ -345,12 +345,12 @@ private fun ReaderContent(
                 .align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 24.dp),
         ) {
-            FloatingActionButton(
+            SmallFloatingActionButton(
                 onClick = { aiMenuExpanded = true },
                 containerColor = palette.Accent,
                 contentColor = Color.White,
             ) {
-                Icon(Icons.Filled.AutoAwesome, contentDescription = "AI ops")
+                Icon(Icons.Filled.AutoAwesome, contentDescription = "AI ops", modifier = Modifier.size(20.dp))
             }
             DropdownMenu(
                 expanded = aiMenuExpanded,
