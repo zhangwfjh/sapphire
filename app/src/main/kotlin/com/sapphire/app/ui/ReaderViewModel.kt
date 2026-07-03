@@ -289,6 +289,11 @@ class ReaderViewModel @Inject constructor(
     private fun updateSummary(s: SummaryState?) {
         val current = _state.value as? ReaderUiState.Open ?: return
         _state.value = current.copy(summary = s)
+        // When summary completes and translate is visible, re-fire translate to include
+        // the new summary bullets in the translate regions.
+        if (s is SummaryState.Done && current.translateVisible) {
+            translate()
+        }
     }
 
     private fun updateTranslate(t: TranslateState, visible: Boolean) {

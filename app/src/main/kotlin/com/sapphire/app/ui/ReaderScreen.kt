@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -335,76 +336,30 @@ private fun ReaderContent(
             onJumpToBottom = { scope.launch { scrollState.animateScrollBy((scrollState.maxValue - scrollState.value).toFloat()) } },
         )
 
-        // Floating AI button — bottom-start, pops up a context ops + prompt panel
-        var aiPanelOpen by remember { mutableStateOf(false) }
-        FloatingActionButton(
-            onClick = { aiPanelOpen = true },
-            containerColor = palette.Accent,
-            contentColor = Color.White,
-            modifier = Modifier
+        // Floating AI button — bottom-start, shows a popup menu
+        var aiMenuExpanded by remember { mutableStateOf(false) }
+        Box(
+            Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 24.dp),
         ) {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = "AI ops")
-        }
-        if (aiPanelOpen) {
-            AiPopupPanel(
-                state = state,
-                viewModel = viewModel,
-                onDismiss = { aiPanelOpen = false },
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AiPopupPanel(
-    state: ReaderUiState.Open,
-    viewModel: ReaderViewModel,
-    onDismiss: () -> Unit,
-) {
-    val palette = LocalSapphirePalette.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = palette.Ink,
-        dragHandle = null,
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            // Drag handle
-            Box(
-                Modifier.width(36.dp).height(4.dp)
-                    .align(Alignment.CenterHorizontally)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(palette.InkStrokeStrong),
-            )
-
-            // Context ops (classification macros)
-            MacroSlot(state)
-
-            // Summarize button
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(palette.InkElevated)
-                    .clickable { viewModel.summarize() }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            FloatingActionButton(
+                onClick = { aiMenuExpanded = true },
+                containerColor = palette.Accent,
+                contentColor = Color.White,
             ) {
-                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.Accent, modifier = Modifier.size(18.dp))
-                Text("Summarize", style = MaterialTheme.typography.bodyMedium, color = palette.OnInk, fontWeight = FontWeight.Medium)
+                Icon(Icons.Filled.AutoAwesome, contentDescription = "AI ops")
             }
-
-            // Ask AI bar
-            CustomPromptField()
-
-            Spacer(Modifier.height(8.dp))
+            DropdownMenu(
+                expanded = aiMenuExpanded,
+                onDismissRequest = { aiMenuExpanded = false },
+                modifier = Modifier.background(palette.Ink),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MacroSlot(state)
+                    CustomPromptField()
+                }
+            }
         }
     }
 }
