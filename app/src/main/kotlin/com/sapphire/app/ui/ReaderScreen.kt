@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Markunread
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -338,69 +339,105 @@ private fun ReaderContent(
             onJumpToBottom = { scope.launch { scrollState.animateScrollBy((scrollState.maxValue - scrollState.value).toFloat()) } },
         )
 
-        // Floating AI button — bottom-start, shows a popup menu
-        var aiMenuExpanded by remember { mutableStateOf(false) }
-        Box(
+        // Floating AI button — bottom-start, pops up discrete action buttons
+        var aiExpanded by remember { mutableStateOf(false) }
+        if (aiExpanded) {
+            // Scrim to dismiss
+            Box(
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f))
+                    .clickable { aiExpanded = false },
+            )
+        }
+        Column(
             Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 24.dp),
+            horizontalAlignment = Alignment.Start,
         ) {
-            SmallFloatingActionButton(
-                onClick = { aiMenuExpanded = true },
-                containerColor = palette.Accent,
-                contentColor = Color.White,
+            // Speed-dial actions (shown above the FAB)
+            AnimatedVisibility(
+                visible = aiExpanded,
+                enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
             ) {
-                Icon(Icons.Filled.AutoAwesome, contentDescription = "AI ops", modifier = Modifier.size(20.dp))
-            }
-            DropdownMenu(
-                expanded = aiMenuExpanded,
-                onDismissRequest = { aiMenuExpanded = false },
-                modifier = Modifier.background(palette.Ink).width(280.dp),
-            ) {
-                // Context ops as menu items
-                when (state.classification) {
-                    is ClassificationState.Loading -> {
-                        DropdownMenuItem(
-                            text = { Text("Analyzing…", color = palette.OnInkFaint, style = MaterialTheme.typography.bodySmall) },
-                            onClick = {},
-                            enabled = false,
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
-                    is ClassificationState.Error -> {
-                        DropdownMenuItem(
-                            text = { Text("Classification unavailable", color = palette.OnInkFaint) },
-                            onClick = {},
-                            enabled = false,
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
-                    is ClassificationState.Done -> {
-                        if (state.macros.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text(state.classification.label.uppercase(), color = palette.OnInkMuted, style = SapphireMono.Label) },
-                                onClick = {},
-                                enabled = false,
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            )
-                        } else {
-                            state.macros.forEach { macro ->
-                                DropdownMenuItem(
-                                    text = { Text(macro.label, color = palette.OnInk) },
-                                    onClick = { aiMenuExpanded = false },
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp), horizontalAlignment = Alignment.Start) {
+                    // Context ops
+                    if (state.classification is ClassificationState.Done && state.macros.isNotEmpty()) {
+                        state.macros.forEach { macro ->
+                            AiActionPill(label = macro.label) {
+                                aiExpanded = false
                             }
                         }
                     }
-                }
-                HorizontalDivider(color = palette.InkStroke)
-                // Ask AI bar
-                Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    CustomPromptField()
+                    // Ask AI
+                    var askText by remember { mutableStateOf("") }
+                    val keyboard = LocalSoftwareKeyboardController.current
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(palette.InkElevated)
+                            .border(1.dp, palette.InkStroke, RoundedCornerShape(20.dp))
+                            .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedTextField(
+                            value = askText,
+                            onValueChange = { askText = it },
+                            placeholder = { Text("Ask AI…", style = MaterialTheme.typography.bodySmall, color = palette.OnInkFaint) },
+                            textStyle = MaterialTheme.typography.bodySmall.copy(color = palette.ReaderInk),
+                            singleLine = true,
+                            modifier = Modifier.width(160.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                cursorColor = palette.Accent,
+                            ),
+                        )
+                        Box(
+                            Modifier.size(28.dp).clip(RoundedCornerShape(50))
+                                .background(if (askText.isNotBlank()) palette.Accent else palette.InkRaised)
+                                .clickable(enabled = askText.isNotBlank()) { askText = ""; keyboard?.hide() },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = if (askText.isNotBlank()) Color.White else palette.OnInkFaint, modifier = Modifier.size(14.dp))
+                        }
+                    }
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            // The AI FAB itself
+            SmallFloatingActionButton(
+                onClick = { aiExpanded = !aiExpanded },
+                containerColor = if (aiExpanded) palette.InkRaised else palette.Accent,
+                contentColor = if (aiExpanded) palette.OnInk else Color.White,
+            ) {
+                Icon(
+                    if (aiExpanded) Icons.Filled.Close else Icons.Filled.AutoAwesome,
+                    contentDescription = "AI ops",
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun AiActionPill(label: String, onClick: () -> Unit) {
+    val palette = LocalSapphirePalette.current
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(palette.InkElevated)
+            .border(1.dp, palette.InkStroke, RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.Accent, modifier = Modifier.size(14.dp))
+        Text(label, style = MaterialTheme.typography.bodySmall, color = palette.OnInk, fontWeight = FontWeight.Medium)
     }
 }
 
