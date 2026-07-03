@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -115,7 +116,7 @@ fun ReaderScreen(
     when (val s = state) {
         is ReaderUiState.Idle, is ReaderUiState.Loading -> {
             Box(Modifier.fillMaxSize().background(palette.ReaderPaper)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
                     }
@@ -127,7 +128,7 @@ fun ReaderScreen(
         }
         is ReaderUiState.Error -> {
             Box(Modifier.fillMaxSize().background(palette.ReaderPaper)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
                     }
@@ -169,7 +170,7 @@ private fun ReaderTopBar(
     val context = androidx.compose.ui.platform.LocalContext.current
     val palette = LocalSapphirePalette.current
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+        Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {

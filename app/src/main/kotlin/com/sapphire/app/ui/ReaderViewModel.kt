@@ -21,6 +21,7 @@ import com.sapphire.domain.reader.ArticleExtractor
 import com.sapphire.domain.reader.ExtractionOutcome
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -195,9 +196,16 @@ class ReaderViewModel @Inject constructor(
         if (wordCount > SUMMARY_MIN_WORDS) summarize()
     }
 
-    /** Auto-translate when the translate-view mode is BILINGUAL or TRANSLATION (not ORIGIN). */
+    /** Auto-translate when the translate-view mode is BILINGUAL or TRANSLATION (not ORIGIN).
+     *  Waits for auto-summarize to resolve first so the translate regions include summary bullets. */
     private fun autoTranslateIfWarranted() {
-        if (translateViewMode.value != com.sapphire.domain.settings.TranslateViewMode.ORIGIN) {
+        if (translateViewMode.value == com.sapphire.domain.settings.TranslateViewMode.ORIGIN) return
+        viewModelScope.launch {
+            // If summary is loading, wait for it to land so translate captures the bullets.
+            _state.first { s ->
+                val open = s as? ReaderUiState.Open ?: return@first true
+                open.summary !is SummaryState.Loading
+            }
             translate()
         }
     }
