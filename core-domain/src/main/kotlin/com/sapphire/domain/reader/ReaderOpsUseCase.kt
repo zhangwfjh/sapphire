@@ -270,12 +270,14 @@ class ReaderOpsUseCase(
         if (text.isBlank()) return emptyList()
         val primary = text.split(TranslateResponse.STREAM_DELIMITER)
             .map(String::trim)
+            .map { it.trimEnd('|').trim() }
             .filter(String::isNotEmpty)
         if (expected <= 1 || primary.size >= expected) return primary
 
         // Blank-line separated paragraphs — the most common natural fallback.
         val byBlankLine = text.split(Regex("\\n[\\t ]*\\n"))
             .map(String::trim)
+            .map { it.trimEnd('|').trim() }
             .filter(String::isNotEmpty)
         if (byBlankLine.size in (primary.size + 1)..expected) return byBlankLine
 
@@ -283,6 +285,7 @@ class ReaderOpsUseCase(
         // than dumping every paragraph under the title.
         val byNewline = text.split('\n')
             .map(String::trim)
+            .map { it.trimEnd('|').trim() }
             .filter(String::isNotEmpty)
         if (byNewline.size in (primary.size + 1)..expected) return byNewline
 

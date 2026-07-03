@@ -58,6 +58,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -355,10 +356,42 @@ private fun ReaderContent(
                 onDismissRequest = { aiMenuExpanded = false },
                 modifier = Modifier.background(palette.Ink),
             ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    MacroSlot(state)
-                    CustomPromptField()
+                // Context ops as menu items
+                when (state.classification) {
+                    is ClassificationState.Loading -> {
+                        DropdownMenuItem(
+                            text = { Text("Analyzing…", color = palette.OnInkFaint, style = MaterialTheme.typography.bodySmall) },
+                            onClick = {},
+                            enabled = false,
+                        )
+                    }
+                    is ClassificationState.Error -> {
+                        DropdownMenuItem(
+                            text = { Text("Classification unavailable", color = palette.OnInkFaint) },
+                            onClick = {},
+                            enabled = false,
+                        )
+                    }
+                    is ClassificationState.Done -> {
+                        if (state.macros.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text(state.classification.label.uppercase(), color = palette.OnInkMuted, style = SapphireMono.Label) },
+                                onClick = {},
+                                enabled = false,
+                            )
+                        } else {
+                            state.macros.forEach { macro ->
+                                DropdownMenuItem(
+                                    text = { Text(macro.label, color = palette.OnInk) },
+                                    onClick = { aiMenuExpanded = false },
+                                )
+                            }
+                        }
+                    }
                 }
+                HorizontalDivider(color = palette.InkStroke)
+                // Ask AI bar
+                CustomPromptField()
             }
         }
     }
