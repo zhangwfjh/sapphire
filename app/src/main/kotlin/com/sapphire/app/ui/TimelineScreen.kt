@@ -43,6 +43,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.TopAppBar
@@ -271,16 +273,35 @@ fun TimelineScreen(
                                         confirmValueChange = { value ->
                                             when (value) {
                                                 SwipeToDismissBoxValue.StartToEnd -> {
-                                                    // Swipe right → toggle read/unread
-                                                    viewModel.toggleRead(
-                                                        item.hashUuid,
-                                                        item.readState == com.sapphire.domain.model.ReadState.READ,
-                                                    )
+                                                    // Swipe right → toggle read/unread + undo
+                                                    val wasRead = item.readState == com.sapphire.domain.model.ReadState.READ
+                                                    viewModel.toggleRead(item.hashUuid, wasRead)
+                                                    sourcesDrawerScope.launch {
+                                                        val result = snackbarHostState.showSnackbar(
+                                                            message = if (wasRead) "Marked unread" else "Marked read",
+                                                            actionLabel = "Undo",
+                                                            duration = SnackbarDuration.Short,
+                                                        )
+                                                        if (result == SnackbarResult.ActionPerformed) {
+                                                            viewModel.toggleRead(item.hashUuid, !wasRead)
+                                                        }
+                                                    }
                                                     false // snap back
                                                 }
                                                 SwipeToDismissBoxValue.EndToStart -> {
-                                                    // Swipe left → toggle save/unsave
-                                                    viewModel.toggleSaved(item.hashUuid, item.savedLater)
+                                                    // Swipe left → toggle save/unsave + undo
+                                                    val wasSaved = item.savedLater
+                                                    viewModel.toggleSaved(item.hashUuid, wasSaved)
+                                                    sourcesDrawerScope.launch {
+                                                        val result = snackbarHostState.showSnackbar(
+                                                            message = if (wasSaved) "Removed from saved" else "Saved",
+                                                            actionLabel = "Undo",
+                                                            duration = SnackbarDuration.Short,
+                                                        )
+                                                        if (result == SnackbarResult.ActionPerformed) {
+                                                            viewModel.toggleSaved(item.hashUuid, !wasSaved)
+                                                        }
+                                                    }
                                                     false // snap back
                                                 }
                                                 else -> false
