@@ -36,6 +36,7 @@ class FeedViewModel @Inject constructor(
     private val refreshService: FeedRefreshService,
     private val uiPrefsStore: UiPrefsStore,
     private val savedItemRepository: com.sapphire.domain.save.SavedItemRepository,
+    private val themeConfigStore: com.sapphire.domain.settings.ThemeConfigStore,
 ) : ViewModel() {
 
     /** In-feed free-text search query. Blank = full timeline. */
@@ -82,6 +83,14 @@ class FeedViewModel @Inject constructor(
 
     fun setTranslateView(mode: TranslateViewMode) {
         viewModelScope.launch { uiPrefsStore.setTranslateView(mode) }
+    }
+
+    val themePreference: StateFlow<com.sapphire.domain.settings.ThemePreference> =
+        themeConfigStore.observe()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.sapphire.domain.settings.ThemePreference.DARK)
+
+    fun setTheme(pref: com.sapphire.domain.settings.ThemePreference) {
+        viewModelScope.launch { themeConfigStore.set(pref) }
     }
     fun setSourceFilter(sourceId: String, label: String) {
         _filter.value = FeedFilter.BySource(sourceId)

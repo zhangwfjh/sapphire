@@ -36,6 +36,8 @@ fun RightDrawer(
     onDismiss: () -> Unit,
     density: UiPrefsStore.FeedDensity,
     onDensityChange: (UiPrefsStore.FeedDensity) -> Unit,
+    themePreference: com.sapphire.domain.settings.ThemePreference,
+    onThemeChange: (com.sapphire.domain.settings.ThemePreference) -> Unit,
     translateView: TranslateViewMode,
     onTranslateViewChange: (TranslateViewMode) -> Unit,
     onOpenSettings: () -> Unit,
@@ -91,6 +93,20 @@ fun RightDrawer(
                     optionValue = { it.second },
                     optionLabel = { it.first },
                     onSelect = { onDensityChange(UiPrefsStore.FeedDensity(it)) },
+                )
+
+                // Theme
+                PrefSectionLabel("Theme")
+                SegmentedRow(
+                    options = listOf(
+                        "System" to com.sapphire.domain.settings.ThemePreference.SYSTEM,
+                        "Dark" to com.sapphire.domain.settings.ThemePreference.DARK,
+                        "Light" to com.sapphire.domain.settings.ThemePreference.LIGHT,
+                    ),
+                    selected = themePreference,
+                    optionValue = { it.second },
+                    optionLabel = { it.first },
+                    onSelect = { onThemeChange(it) },
                 )
 
                 HorizontalDivider(color = palette.InkStroke.copy(alpha = 0.5f))

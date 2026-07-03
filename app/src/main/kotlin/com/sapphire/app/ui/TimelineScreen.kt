@@ -125,6 +125,7 @@ fun TimelineScreen(
     val density by viewModel.density.collectAsStateWithLifecycle()
     val layout = if (density.isDense) FeedLayout.DENSE else FeedLayout.RICH
     val translateView by viewModel.translateView.collectAsStateWithLifecycle()
+    val themePreference by viewModel.themePreference.collectAsStateWithLifecycle()
 
     // Show the jump-to-top FAB only once the user has scrolled below the first item.
     val showJumpToTop by remember {
@@ -323,6 +324,8 @@ fun TimelineScreen(
         onDismiss = { rightDrawerOpen = false },
         density = density,
         onDensityChange = viewModel::setDensity,
+        themePreference = themePreference,
+        onThemeChange = viewModel::setTheme,
         translateView = translateView,
         onTranslateViewChange = viewModel::setTranslateView,
         onOpenSettings = onOpenSettings,
