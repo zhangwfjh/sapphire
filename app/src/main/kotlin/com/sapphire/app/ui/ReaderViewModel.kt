@@ -3,10 +3,13 @@ package com.sapphire.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sapphire.domain.reader.ReaderItemStore
+import com.sapphire.domain.feed.FeedRepository
 import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.llm.TranslateRegions
 import com.sapphire.domain.llm.TranslateStreamFrame
 import com.sapphire.domain.model.FeedItem
+import com.sapphire.domain.model.ReadMechanism
+import com.sapphire.domain.model.ReadState
 import com.sapphire.domain.reader.RichBlock
 import com.sapphire.domain.reader.RichContentParser
 import com.sapphire.domain.reader.toPlainParagraphs
@@ -35,6 +38,7 @@ import javax.inject.Inject
  *   the macro slot shows shimmer (PRD §3.5); the chat input is interactive immediately.
  * - [summarize] / [translate] fire Tier-2 on tap. Results are cached by the use case, so
  *   a re-open or re-tap is a free cache hit (PRD §4.2 idempotent).
+ * - When translate-view mode is BILINGUAL or TRANSLATION, translate auto-fires on open.
  *
  * The macros set is derived from the classification via [ReaderMacro.forClassification].
  */
@@ -43,6 +47,7 @@ class ReaderViewModel @Inject constructor(
     private val items: ReaderItemStore,
     private val readerOps: ReaderOpsUseCase,
     private val savedItems: SavedItemRepository,
+    private val feedRepository: FeedRepository,
     private val richContentParser: RichContentParser,
     private val articleExtractor: ArticleExtractor,
     private val articleBodyStore: ArticleBodyStore,
@@ -69,6 +74,7 @@ class ReaderViewModel @Inject constructor(
     fun setTheme(pref: com.sapphire.domain.settings.ThemePreference) {
         viewModelScope.launch { themeConfigStore.set(pref) }
     }
+
     /** Default translate target — resolved from the device locale by the caller. */
     private var targetLanguage: String = "zh"
 
@@ -77,28 +83,11 @@ class ReaderViewModel @Inject constructor(
         _state.value = ReaderUiState.Loading
         viewModelScope.launch {
             val item = items.item(itemId)
-        if (item == null) {
-            _state.value = ReaderUiState.Error("Item not found.")
-            return@launch
-        }
+            if (item == null) {
+                _state.value = ReaderUiState.Error("Item not found.")
+                return@launch
+            }
 
-            // The reader shows TWO body regions (PRD §3.4):
-            //  1. the brief — the feed body, always visible; and
-            //  2. the full article — the extracted readable body, appended below the brief
-            //     behind a divider once extraction lands (omitted when there is no URL or
-            //     extraction fails). `blocks` is always the brief; `articleBlocks` carries
-            //     the extracted body and is null until it resolves.
-            //
-            // LLM ops (classify/summarize/translate) run on the full article when available
-            // and fall back to the brief — see [currentParagraphs]. The paragraph-aligned
-            // translate contract (block i <-> translate paragraph i) holds because the op
-            // and its rendering always use the same block list.
-            //
-            // Readability drops images the feed body carried (lead/hero imgs outside the
-            // scored region, lazy-loaded imgs with blank `src`). To keep them visible, feed
-            // images are merged back into the extracted article as a dedup union: any feed
-            // image whose URL is not already in the extracted blocks is prepended (lead
-            // first). Images are non-text blocks, so they never consume a translate slot.
             val feedBlocks = richContentParser.parse(item.bodyRaw ?: item.summary ?: item.title)
 
             val cachedHtml = articleBodyStore.get(itemId)
@@ -107,6 +96,7 @@ class ReaderViewModel @Inject constructor(
                 publish(item, feedBlocks, cachedArticle, ExtractionState.Done)
                 classify(itemId)
                 autoSummarizeIfLongEnough(cachedArticle)
+                autoTranslateIfWarranted()
                 return@launch
             }
 
@@ -114,11 +104,10 @@ class ReaderViewModel @Inject constructor(
             if (url.isNullOrBlank()) {
                 publish(item, feedBlocks, null, ExtractionState.Idle)
                 classify(itemId)
+                autoTranslateIfWarranted()
                 return@launch
             }
 
-            // Show the brief while the full article is fetched/extracted. Classification is
-            // deferred until the resolved article lands below.
             publish(item, feedBlocks, null, ExtractionState.Extracting)
             val (article, extraction) = when (val outcome = articleExtractor.extract(url)) {
                 is ExtractionOutcome.Ok -> {
@@ -127,24 +116,15 @@ class ReaderViewModel @Inject constructor(
                 }
                 is ExtractionOutcome.Err -> null to ExtractionState.Failed
             }
-            // Late write: only if the user hasn't dismissed or opened a different item.
             if ((_state.value as? ReaderUiState.Open)?.item?.hashUuid == itemId) {
                 publish(item, feedBlocks, article, extraction)
                 classify(itemId)
                 autoSummarizeIfLongEnough(article)
+                autoTranslateIfWarranted()
             }
         }
     }
 
-    /**
-     * Emits the resolved [ReaderUiState.Open] state (does not kick classification).
-     *
-     * A re-publish for the same item (e.g. the full article landing after the brief was
-     * already shown) preserves the classification/macros/summary the user already has so
-     * the slot doesn't flicker; translate is reset because its paragraph alignment is tied
-     * to whichever body (brief vs full article) was translated and would break across the
-     * transition.
-     */
     private fun publish(
         item: com.sapphire.domain.model.FeedItem,
         blocks: List<RichBlock>,
@@ -166,13 +146,6 @@ class ReaderViewModel @Inject constructor(
         )
     }
 
-    /**
-     * Dedup union: prepends every feed-body image whose URL is not already present in the
-     * extracted [RichBlock] body. Readability frequently drops images (lead/hero imgs outside
-     * the scored region, lazy-loaded imgs with blank `src`); this restores them so images do
-     * not "disappear" once extraction lands. Blank-URL feed images are skipped (they would
-     * render nothing). Images are non-text blocks and never disturb translate alignment.
-     */
     private fun mergeFeedImages(extracted: List<RichBlock>, feedBlocks: List<RichBlock>): List<RichBlock> {
         val present = extracted.mapNotNull { (it as? RichBlock.Image)?.url?.takeIf(String::isNotBlank) }.toHashSet()
         val missing = feedBlocks.filterIsInstance<RichBlock.Image>()
@@ -192,7 +165,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private fun summarize() {
+    fun summarize() {
         val current = _state.value as? ReaderUiState.Open ?: return
         updateSummary(SummaryState.Loading)
         viewModelScope.launch {
@@ -216,24 +189,21 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Auto-triggers the streaming summary once the full article body lands, but only when it
-     * is substantial enough to warrant one (> [SUMMARY_MIN_WORDS] words). Short articles and
-     * items with no extractable body are left alone. The use case is cache-first, so a
-     * re-open of an already-summarized item renders instantly without re-streaming.
-     */
     private fun autoSummarizeIfLongEnough(articleBlocks: List<RichBlock>?) {
         if (articleBlocks == null) return
         val wordCount = articleBlocks.toPlainParagraphs().sumOf { it.split(Regex("\\s+")).count { w -> w.isNotBlank() } }
         if (wordCount > SUMMARY_MIN_WORDS) summarize()
     }
 
+    /** Auto-translate when the translate-view mode is BILINGUAL or TRANSLATION (not ORIGIN). */
+    private fun autoTranslateIfWarranted() {
+        if (translateViewMode.value != com.sapphire.domain.settings.TranslateViewMode.ORIGIN) {
+            translate()
+        }
+    }
+
     fun translate() {
         val current = _state.value as? ReaderUiState.Open ?: return
-        // Translate every reader region in one pass: title, the AI summary bullets (if any
-        // have landed), the feed brief, and the extracted full article. The use case
-        // flattens these in document order and re-partitions the streamed targets back into
-        // regions; the UI renders each beneath its original.
         val regions = TranslateRegions(
             title = listOfNotNull(current.item.title.takeIf { it.isNotBlank() }),
             summary = when (val s = current.summary) {
@@ -271,11 +241,6 @@ class ReaderViewModel @Inject constructor(
         return (open.articleBlocks ?: open.blocks).toPlainParagraphs()
     }
 
-    /**
-     * S07 (PRD §3.4 [📁 Save Later]): promote/unsave the current item. Idempotent — the
-     * repository transactionally writes the `saved_item` row + flips `feed_item.saved_later`.
-     * Default folder is "Inbox"; relabeling/filing lands with the saved-items screen.
-     */
     fun toggleSave() {
         val current = _state.value as? ReaderUiState.Open ?: return
         viewModelScope.launch {
@@ -285,6 +250,20 @@ class ReaderViewModel @Inject constructor(
                 savedItems.save(current.item.hashUuid, folder = DEFAULT_SAVE_FOLDER)
             }
             _state.value = current.copy(savedLater = !current.savedLater)
+        }
+    }
+
+    /** Toggle read/unread for the current item. */
+    fun toggleRead() {
+        val current = _state.value as? ReaderUiState.Open ?: return
+        val isRead = current.item.readState == ReadState.READ
+        viewModelScope.launch {
+            if (isRead) {
+                feedRepository.markUnread(current.item.hashUuid)
+            } else {
+                feedRepository.markRead(current.item.hashUuid, ReadMechanism.MANUAL)
+            }
+            _state.value = current.copy(item = current.item.copy(readState = if (isRead) ReadState.UNREAD else ReadState.READ))
         }
     }
 
@@ -310,8 +289,6 @@ class ReaderViewModel @Inject constructor(
 
     private companion object {
         const val DEFAULT_SAVE_FOLDER = "Inbox"
-
-        /** Articles at/under this word count are too short to auto-summarize. */
         const val SUMMARY_MIN_WORDS = 300
     }
 }
@@ -343,7 +320,6 @@ sealed interface ClassificationState {
 
 sealed interface SummaryState {
     data object Loading : SummaryState
-    /** Tokens are arriving: [bullets] are complete lines, [current] is the line being typed. */
     data class Streaming(val bullets: List<String>, val current: String) : SummaryState
     data class Done(val bullets: List<String>) : SummaryState
     data class Error(val message: String) : SummaryState
@@ -351,7 +327,6 @@ sealed interface SummaryState {
 
 sealed interface TranslateState {
     data object Loading : TranslateState
-    /** Regioned targets arriving progressively (title / summary / brief / article). */
     data class Streaming(val frame: TranslateStreamFrame) : TranslateState
     data class Done(val frame: TranslateStreamFrame) : TranslateState
     data class Error(val message: String) : TranslateState

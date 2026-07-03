@@ -6,6 +6,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -31,10 +33,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -43,13 +41,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Drafts
+import androidx.compose.material.icons.filled.Markunread
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -86,17 +85,17 @@ import com.sapphire.app.ui.design.SectionEyebrow
 import com.sapphire.app.ui.design.ShimmerBlock
 import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
+import com.sapphire.domain.model.ReadState
 import com.sapphire.domain.settings.TranslateViewMode
 import com.sapphire.domain.settings.UiPrefsStore
 
 /**
  * PRD §3.4 Full-Screen Reader + §3.5 Context-Aware Dynamic AI Operations.
  *
- * Promoted from the old [ReaderSheet] overlay into a full navigation route so the reader
- * participates in the back stack and survives process death. The reading surface itself is
- * unchanged: warm paper-on-charcoal body, serif headline, a macro slot that shimmers while
- * Tier-1 classification runs (PRD §3.5), on-demand summary/translate tools, and an
- * always-interactive custom-prompt chat field at the base.
+ * Full navigation route (promoted from the old ReaderSheet overlay). The top toolbar carries
+ * back, read/unread, save, open-in-browser, AI summarize, and preferences — and auto-hides
+ * on scroll-down / shows on scroll-up. Translate auto-fires when the view mode is BILINGUAL
+ * or TRANSLATION. A search-style custom prompt sits at the end of the scrolling body.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,30 +114,26 @@ fun ReaderScreen(
 
     when (val s = state) {
         is ReaderUiState.Idle, is ReaderUiState.Loading -> {
-            // full-screen loading with a back button
             Box(Modifier.fillMaxSize().background(palette.ReaderPaper)) {
-                ReaderTopBar(onBack = onBack, onOpenRightDrawer = { rightDrawerOpen = true })
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
+                    }
+                }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(
-                        Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
-                        color = palette.Accent,
-                    )
+                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = palette.Accent)
                 }
             }
         }
         is ReaderUiState.Error -> {
             Box(Modifier.fillMaxSize().background(palette.ReaderPaper)) {
-                ReaderTopBar(onBack = onBack, onOpenRightDrawer = { rightDrawerOpen = true })
-                Column(
-                    Modifier.fillMaxSize().padding(24.dp),
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(
-                        s.message,
-                        color = palette.Danger,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
+                    }
+                }
+                Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+                    Text(s.message, color = palette.Danger, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -161,21 +156,49 @@ fun ReaderScreen(
 }
 
 /**
- * Pinned back-only top bar. The body's [ActionRow] already carries bookmark /
- * open-in-browser / translate / summarize, so the top bar stays minimal — just the affordance
- * to leave the reader.
+ * Reader top toolbar — back, read/unread toggle, save, open-in-browser, AI summarize,
+ * preferences. Auto-hides on scroll-down, shows on scroll-up.
  */
 @Composable
-private fun ReaderTopBar(onBack: () -> Unit, onOpenRightDrawer: () -> Unit) {
+private fun ReaderTopBar(
+    state: ReaderUiState.Open,
+    viewModel: ReaderViewModel,
+    onBack: () -> Unit,
+    onOpenRightDrawer: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val palette = LocalSapphirePalette.current
     Row(
-        Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
         }
         Spacer(Modifier.weight(1f))
+        IconButton(onClick = viewModel::toggleRead) {
+            Icon(
+                if (state.item.readState == ReadState.READ) Icons.Filled.Drafts else Icons.Filled.Markunread,
+                contentDescription = if (state.item.readState == ReadState.READ) "Mark unread" else "Mark read",
+                tint = palette.OnInkMuted,
+            )
+        }
+        IconButton(onClick = viewModel::toggleSave) {
+            Icon(
+                if (state.savedLater) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                contentDescription = if (state.savedLater) "Saved" else "Save",
+                tint = palette.OnInkMuted,
+            )
+        }
+        val url = state.item.url
+        if (!url.isNullOrBlank()) {
+            IconButton(onClick = { openInAppBrowser(context, url) }) {
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open", tint = palette.OnInkMuted)
+            }
+        }
+        IconButton(onClick = viewModel::summarize) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = "Summarize", tint = palette.OnInkMuted)
+        }
         IconButton(onClick = onOpenRightDrawer) {
             Icon(Icons.Filled.Tune, contentDescription = "View & preferences", tint = palette.OnInkMuted)
         }
@@ -187,35 +210,42 @@ private fun ReaderContent(
     state: ReaderUiState.Open,
     viewModel: ReaderViewModel,
     onBack: () -> Unit,
-    translateViewMode: com.sapphire.domain.settings.TranslateViewMode,
+    translateViewMode: TranslateViewMode,
     onOpenRightDrawer: () -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
     val item = state.item
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
-    // Translate-view mode governs whether translations render at all, and whether the
-    // originals are hidden when a translation is present (TRANSLATION mode only).
-    val effectiveTranslateVisible = state.translateVisible && translateViewMode != com.sapphire.domain.settings.TranslateViewMode.ORIGIN
-    val hideOriginals = translateViewMode == com.sapphire.domain.settings.TranslateViewMode.TRANSLATION && effectiveTranslateVisible
-    Column(Modifier.fillMaxSize().background(palette.ReaderPaper)) {
-        ReaderTopBar(onBack, onOpenRightDrawer)
+    val effectiveTranslateVisible = state.translateVisible && translateViewMode != TranslateViewMode.ORIGIN
+    val hideOriginals = translateViewMode == TranslateViewMode.TRANSLATION && effectiveTranslateVisible
+
+    // Auto-hide top bar on scroll-down, show on scroll-up
+    var prevScroll by remember { mutableStateOf(0) }
+    var topBarVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(scrollState.value) {
+        val delta = scrollState.value - prevScroll
+        if (scrollState.value <= 0) {
+            topBarVisible = true
+        } else if (delta > 12) {
+            topBarVisible = false
+        } else if (delta < -12) {
+            topBarVisible = true
+        }
+        prevScroll = scrollState.value
+    }
+
+    Box(Modifier.fillMaxSize().background(palette.ReaderPaper)) {
+        // Scrollable body
         Box(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(scrollState),
+            Modifier.fillMaxSize().verticalScroll(scrollState),
             contentAlignment = Alignment.TopCenter,
         ) {
             Column(
-                Modifier
-                    .widthIn(max = 720.dp)
-                    .fillMaxWidth()
+                Modifier.widthIn(max = 720.dp).fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .padding(top = 8.dp, bottom = 28.dp),
+                    .padding(top = 56.dp, bottom = 28.dp),
             ) {
-                Spacer(Modifier.height(16.dp))
-
                 // Header metadata
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val platformTag = item.platformTag
@@ -223,19 +253,15 @@ private fun ReaderContent(
                         PlatformBadge(platformTag, read = false)
                     }
                     item.authorHandle?.takeIf { it.isNotBlank() }?.let { author ->
-                        Text(
-                            "@$author",
-                            style = SapphireMono.Label,
-                            color = palette.OnInkMuted,
-                        )
+                        Text("@$author", style = SapphireMono.Label, color = palette.OnInkMuted)
                     }
                     item.publishedAt?.let {
                         Text("· " + formatRelativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint)
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                // Translate-view mode: BILINGUAL shows origin + translation; ORIGIN hides translations;
-                // TRANSLATION hides originals and promotes the translated title to the primary headline.
+
+                // Title (with translate-view handling)
                 val tFrame = (state.translate as? TranslateState.Done)?.frame
                     ?: (state.translate as? TranslateState.Streaming)?.frame
                 val translatedTitle = tFrame?.title?.takeIf { it.isNotEmpty() }
@@ -251,30 +277,22 @@ private fun ReaderContent(
                 if (effectiveTranslateVisible && translatedTitle != null) {
                     Spacer(Modifier.height(4.dp))
                     if (hideOriginals) {
-                        // TRANSLATION mode: translated title becomes the primary headline.
-                        Text(
-                            translatedTitle,
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = palette.ReaderInk,
-                            fontWeight = FontWeight.SemiBold,
-                            lineHeight = 33.sp,
-                        )
+                        Text(translatedTitle, style = MaterialTheme.typography.headlineMedium,
+                            color = palette.ReaderInk, fontWeight = FontWeight.SemiBold, lineHeight = 33.sp)
                     } else {
-                        // BILINGUAL: italic accent translation beneath the original.
-                        Text(
-                            translatedTitle,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontStyle = FontStyle.Italic,
-                            color = palette.AccentBright,
-                        )
+                        Text(translatedTitle, style = MaterialTheme.typography.titleMedium,
+                            fontStyle = FontStyle.Italic, color = palette.AccentBright)
                     }
                 }
 
-                // Macro slot — shimmer while classifying, chips once done (PRD §3.5)
+                // Translate indicator
+                TranslateStatus(state.translate, effectiveTranslateVisible)
+
+                // Macro slot
                 Spacer(Modifier.height(16.dp))
                 MacroSlot(state)
 
-                // Summary block pinned beneath header once produced (PRD §3.4)
+                // Summary
                 state.summary?.let { sum ->
                     Spacer(Modifier.height(16.dp))
                     SummaryBlock(
@@ -283,71 +301,47 @@ private fun ReaderContent(
                             (state.translate as? TranslateState.Done)?.frame?.summary
                                 ?: (state.translate as? TranslateState.Streaming)?.frame?.summary
                         } else null,
+                        hideOriginals = hideOriginals,
                     )
                 }
-                // Brief — the original feed body, always visible (PRD §3.4).
+
+                // Brief
                 Spacer(Modifier.height(20.dp))
                 BriefBlock(state, effectiveTranslateVisible, hideOriginals)
 
-                // Full article — extracted body appended below the brief behind a divider.
-                // Rendered only once the article resolves; omitted while fetching and on
-                // no-URL/extraction fail.
+                // Full article
                 if (state.articleBlocks != null) {
                     Spacer(Modifier.height(16.dp))
                     HorizontalDivider(color = palette.InkStrokeStrong.copy(alpha = 0.5f))
                     Spacer(Modifier.height(16.dp))
                     ArticleBlock(state, effectiveTranslateVisible, hideOriginals)
                 }
+
+                // Custom prompt (search-style) at end of scroll
+                Spacer(Modifier.height(16.dp))
+                CustomPromptField()
                 Spacer(Modifier.height(20.dp))
             }
-            // Floating jump-to-top / jump-to-bottom controls overlaid on the scrolling body.
-            ReaderJumpButtons(
-                scrollState = scrollState,
-                onJumpToTop = { scope.launch { scrollState.animateScrollBy(-scrollState.value.toFloat()) } },
-                onJumpToBottom = { scope.launch { scrollState.animateScrollBy((scrollState.maxValue - scrollState.value).toFloat()) } },
-            )
         }
-        // Docked AI ops panel pinned at the bottom — action row, translate status, custom prompt.
-        AiDockPanel(state, viewModel, effectiveTranslateVisible)
-    }
-}
 
-/**
- * Pinned bottom panel hosting the reader's AI operations: the [ActionRow] tools, the
- * hoisted [TranslateStatus] indicator, and the [CustomPromptField]. Rounded top corners,
- * a drag handle, and an elevated surface visually separate it from the scrolling body.
- * Navigation-bar inset padding keeps the input clear of the gesture nav bar.
- */
-@Composable
-private fun AiDockPanel(
-    state: ReaderUiState.Open,
-    viewModel: ReaderViewModel,
-    effectiveTranslateVisible: Boolean,
-) {
-    val palette = LocalSapphirePalette.current
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(palette.InkElevated)
-            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-    ) {
-        // Drag handle
-        Box(
-            Modifier
-                .width(36.dp)
-                .height(4.dp)
-                .align(Alignment.CenterHorizontally)
-                .clip(RoundedCornerShape(2.dp))
-                .background(palette.InkStrokeStrong),
+        // Auto-hiding top bar overlay
+        AnimatedVisibility(
+            visible = topBarVisible,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
+            Box(Modifier.fillMaxWidth().background(palette.ReaderPaper)) {
+                ReaderTopBar(state, viewModel, onBack, onOpenRightDrawer)
+            }
+        }
+
+        // Jump-to-top / jump-to-bottom (bottom-right)
+        ReaderJumpButtons(
+            scrollState = scrollState,
+            onJumpToTop = { scope.launch { scrollState.animateScrollBy(-scrollState.value.toFloat()) } },
+            onJumpToBottom = { scope.launch { scrollState.animateScrollBy((scrollState.maxValue - scrollState.value).toFloat()) } },
         )
-        Spacer(Modifier.height(10.dp))
-        ActionRow(state, viewModel)
-        TranslateStatus(state.translate, effectiveTranslateVisible)
-        Spacer(Modifier.height(8.dp))
-        CustomPromptField()
-        // Keep the dock clear of the system navigation bar.
-        Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
     }
 }
 
@@ -396,6 +390,7 @@ private fun ReaderJumpButtons(
         }
     }
 }
+
 @Composable
 private fun MacroSlot(state: ReaderUiState.Open) {
     val palette = LocalSapphirePalette.current
@@ -409,24 +404,14 @@ private fun MacroSlot(state: ReaderUiState.Open) {
                 }
             }
             is ClassificationState.Error -> {
-                Text(
-                    "Classification unavailable",
-                    style = SapphireMono.Body,
-                    color = palette.OnInkFaint,
-                )
+                Text("Classification unavailable", style = SapphireMono.Body, color = palette.OnInkFaint)
             }
             is ClassificationState.Done -> {
                 if (state.macros.isEmpty()) {
-                    Text(
-                        state.classification.label.uppercase(),
-                        style = SapphireMono.Label,
-                        color = palette.OnInkMuted,
-                    )
+                    Text(state.classification.label.uppercase(), style = SapphireMono.Label, color = palette.OnInkMuted)
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        state.macros.forEach { macro ->
-                            MacroChip(label = macro.label)
-                        }
+                        state.macros.forEach { macro -> MacroChip(label = macro.label) }
                     }
                 }
             }
@@ -438,8 +423,7 @@ private fun MacroSlot(state: ReaderUiState.Open) {
 private fun MacroChip(label: String) {
     val palette = LocalSapphirePalette.current
     Row(
-        Modifier
-            .clip(RoundedCornerShape(6.dp))
+        Modifier.clip(RoundedCornerShape(6.dp))
             .background(palette.Accent.copy(alpha = 0.12f))
             .border(1.dp, palette.Accent.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
             .clickable {}
@@ -448,22 +432,15 @@ private fun MacroChip(label: String) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.AccentBright, modifier = Modifier.size(12.dp))
-        Text(
-            label,
-            style = SapphireMono.Label,
-            color = palette.AccentBright,
-            fontWeight = FontWeight.SemiBold,
-        )
+        Text(label, style = SapphireMono.Label, color = palette.AccentBright, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-private fun SummaryBlock(sum: SummaryState, summaryTargets: List<String>? = null) {
+private fun SummaryBlock(sum: SummaryState, summaryTargets: List<String>? = null, hideOriginals: Boolean = false) {
     val palette = LocalSapphirePalette.current
     Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
             .background(palette.Accent.copy(alpha = 0.07f))
             .border(1.dp, palette.Accent.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
             .padding(14.dp),
@@ -481,22 +458,31 @@ private fun SummaryBlock(sum: SummaryState, summaryTargets: List<String>? = null
             is SummaryState.Error -> Text(sum.message, style = MaterialTheme.typography.bodySmall, color = palette.Danger)
             is SummaryState.Streaming -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 sum.bullets.forEachIndexed { i, bullet ->
-                    SummaryBullet(bullet)
-                    summaryTargets?.getOrNull(i)?.takeIf { it.isNotEmpty() }?.let { SummaryTranslation(it) }
+                    val target = summaryTargets?.getOrNull(i)?.takeIf { it.isNotEmpty() }
+                    if (hideOriginals && target != null) {
+                        SummaryBullet(target)
+                    } else {
+                        SummaryBullet(bullet)
+                        target?.let { SummaryTranslation(it) }
+                    }
                 }
                 if (sum.current.isNotEmpty()) SummaryBullet(sum.current, streaming = true)
             }
             is SummaryState.Done -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 sum.bullets.forEachIndexed { i, bullet ->
-                    SummaryBullet(bullet)
-                    summaryTargets?.getOrNull(i)?.takeIf { it.isNotEmpty() }?.let { SummaryTranslation(it) }
+                    val target = summaryTargets?.getOrNull(i)?.takeIf { it.isNotEmpty() }
+                    if (hideOriginals && target != null) {
+                        SummaryBullet(target)
+                    } else {
+                        SummaryBullet(bullet)
+                        target?.let { SummaryTranslation(it) }
+                    }
                 }
             }
         }
     }
 }
 
-/** Italic accent translation line rendered beneath a summary bullet (matches the body style). */
 @Composable
 private fun SummaryTranslation(text: String) {
     val palette = LocalSapphirePalette.current
@@ -506,12 +492,10 @@ private fun SummaryTranslation(text: String) {
 @Composable
 private fun SummaryBullet(text: String, streaming: Boolean = false) {
     val palette = LocalSapphirePalette.current
-    // Blink the caret only while the bullet is still being typed.
     val caretAlpha by if (streaming) {
         val transition = rememberInfiniteTransition(label = "summary-caret")
         transition.animateFloat(
-            initialValue = 1f,
-            targetValue = 0f,
+            initialValue = 1f, targetValue = 0f,
             animationSpec = infiniteRepeatable(tween(500, easing = LinearEasing), RepeatMode.Reverse),
             label = "caret-alpha",
         )
@@ -537,8 +521,6 @@ private fun BriefBlock(
     effectiveTranslateVisible: Boolean,
     hideOriginals: Boolean,
 ) {
-    // The brief is always a translate region (PRD §3.4); its targets arrive as
-    // frame.brief, paragraph-aligned with the feed body's text blocks.
     val briefTargets = if (effectiveTranslateVisible) {
         (state.translate as? TranslateState.Done)?.frame?.brief
             ?: (state.translate as? TranslateState.Streaming)?.frame?.brief
@@ -554,33 +536,17 @@ private fun ArticleBlock(
 ) {
     val palette = LocalSapphirePalette.current
     val article = state.articleBlocks ?: return
-    // Collapsed by default — the full article only renders once the user taps the toggle.
-    // The state is keyed on the item id so it resets when the reader opens a different item.
-    // Translate never forces expansion: it runs on the full article regardless, and its
-    // targets render interleaved only once the user chooses to expand.
     var expanded by remember(state.item.hashUuid) { mutableStateOf(false) }
-
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // Collapsible toggle (PRD §3.4) — "Show full article" / "Hide full article".
         Row(
-            Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .clickable { expanded = !expanded }
-                .padding(vertical = 4.dp),
+            Modifier.clip(RoundedCornerShape(6.dp)).clickable { expanded = !expanded }.padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(
-                Icons.Filled.KeyboardArrowDown,
-                contentDescription = null,
-                tint = palette.Accent,
-                modifier = Modifier.size(16.dp),
-            )
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = palette.Accent, modifier = Modifier.size(16.dp))
             Text(
                 if (expanded) "Hide full article" else "Show full article",
-                style = SapphireMono.Label,
-                color = palette.Accent,
-                fontWeight = FontWeight.SemiBold,
+                style = SapphireMono.Label, color = palette.Accent, fontWeight = FontWeight.SemiBold,
             )
         }
         if (expanded) {
@@ -593,11 +559,6 @@ private fun ArticleBlock(
     }
 }
 
-/**
- * Inline translate indicator: shimmer skeletons while the first token is in flight (mirrors
- * the classification macro slot), a blinking caret while targets stream in, and an error line
- * on failure. Rendered once by whichever block is the active translate target.
- */
 @Composable
 private fun TranslateStatus(translate: TranslateState?, visible: Boolean) {
     if (!visible) return
@@ -614,7 +575,6 @@ private fun TranslateStatus(translate: TranslateState?, visible: Boolean) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(Icons.Filled.Language, contentDescription = null, tint = palette.Accent, modifier = Modifier.size(14.dp))
             StreamingCaretLabel(text = "TRANSLATING", color = palette.Accent)
         }
         is TranslateState.Error -> Text(translate.message, color = palette.Danger, style = MaterialTheme.typography.bodySmall)
@@ -622,12 +582,10 @@ private fun TranslateStatus(translate: TranslateState?, visible: Boolean) {
     }
 }
 
-/** A short label with a soft blinking caret — used for the streaming translate/summary states. */
 @Composable
 private fun StreamingCaretLabel(text: String, color: Color) {
     val caretAlpha by rememberInfiniteTransition(label = "stream-caret").animateFloat(
-        initialValue = 1f,
-        targetValue = 0f,
+        initialValue = 1f, targetValue = 0f,
         animationSpec = infiniteRepeatable(tween(500, easing = LinearEasing), RepeatMode.Reverse),
         label = "stream-caret-alpha",
     )
@@ -636,142 +594,70 @@ private fun StreamingCaretLabel(text: String, color: Color) {
             append(text)
             withStyle(SpanStyle(color = color.copy(alpha = caretAlpha))) { append(" ▏") }
         },
-        style = SapphireMono.Label,
-        color = color,
-        fontWeight = FontWeight.SemiBold,
+        style = SapphireMono.Label, color = color, fontWeight = FontWeight.SemiBold,
     )
 }
 
-@Composable
-private fun ActionRow(state: ReaderUiState.Open, viewModel: ReaderViewModel) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ToolButton(
-            onClick = viewModel::translate,
-            enabled = state.translate !is TranslateState.Loading && state.translate !is TranslateState.Streaming,
-            icon = Icons.Filled.Language,
-            label = "Translate",
-        )
-        ToolButton(
-            onClick = viewModel::toggleSave,
-            enabled = true,
-            icon = if (state.savedLater) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-            label = if (state.savedLater) "Saved" else "Save",
-        )
-        val url = state.item.url
-        if (!url.isNullOrBlank()) {
-            ToolButton(
-                onClick = { openInAppBrowser(context, url) },
-                enabled = true,
-                icon = Icons.AutoMirrored.Filled.OpenInNew,
-                label = "Open",
-            )
-        }
-    }
-}
-
-
-@Composable
-private fun ToolButton(
-    onClick: () -> Unit,
-    enabled: Boolean,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-) {
-    val palette = LocalSapphirePalette.current
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (enabled) palette.InkRaised else palette.InkElevated)
-            .border(1.dp, palette.InkStroke, RoundedCornerShape(8.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(icon, contentDescription = null, tint = if (enabled) palette.Accent else palette.OnInkFaint, modifier = Modifier.size(14.dp))
-        Text(
-            label.uppercase(),
-            style = SapphireMono.Label,
-            color = if (enabled) palette.OnInk else palette.OnInkFaint,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
+/**
+ * Search-style AI prompt field — pill-shaped, sparkle leading icon, send button.
+ */
 @Composable
 private fun CustomPromptField() {
     val palette = LocalSapphirePalette.current
     var prompt by remember { mutableStateOf("") }
     val keyboard = LocalSoftwareKeyboardController.current
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionEyebrow("CUSTOM INSTRUCTION")
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(palette.InkElevated)
-                .border(1.dp, palette.InkStroke, RoundedCornerShape(10.dp))
-                .padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+            .background(palette.InkElevated)
+            .border(1.dp, palette.InkStroke, RoundedCornerShape(24.dp))
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = palette.OnInkFaint,
+            modifier = Modifier.padding(start = 12.dp).size(18.dp),
+        )
+        OutlinedTextField(
+            value = prompt,
+            onValueChange = { prompt = it },
+            placeholder = {
+                Text("Ask AI about this article…", style = MaterialTheme.typography.bodySmall, color = palette.OnInkFaint)
+            },
+            textStyle = MaterialTheme.typography.bodySmall.copy(color = palette.ReaderInk),
+            modifier = Modifier.weight(1f),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                focusedBorderColor = Color.Transparent,
+                unfocusedBorderColor = Color.Transparent,
+                cursorColor = palette.Accent,
+            ),
+        )
+        Box(
+            Modifier.size(36.dp).clip(RoundedCornerShape(50))
+                .background(if (prompt.isNotBlank()) palette.Accent else palette.InkRaised)
+                .clickable(enabled = prompt.isNotBlank()) { prompt = ""; keyboard?.hide() },
+            contentAlignment = Alignment.Center,
         ) {
-            OutlinedTextField(
-                value = prompt,
-                onValueChange = { prompt = it },
-                placeholder = {
-                    Text(
-                        "Instruct AI to run a custom operation on this text…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = palette.OnInkFaint,
-                    )
-                },
-                textStyle = MaterialTheme.typography.bodySmall.copy(color = palette.ReaderInk),
-                modifier = Modifier.weight(1f),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedBorderColor = Color.Transparent,
-                    unfocusedBorderColor = Color.Transparent,
-                    cursorColor = palette.Accent,
-                ),
+            Icon(
+                Icons.AutoMirrored.Filled.Send,
+                contentDescription = "Send",
+                tint = if (prompt.isNotBlank()) Color.White else palette.OnInkFaint,
+                modifier = Modifier.size(16.dp),
             )
-            Box(
-                Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (prompt.isNotBlank()) palette.Accent else palette.InkRaised)
-                    .clickable(enabled = prompt.isNotBlank()) {
-                        prompt = ""
-                        keyboard?.hide()
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Run",
-                    tint = if (prompt.isNotBlank()) Color.White else palette.OnInkFaint,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
         }
     }
 }
 
-/**
- * Launches the article's canonical URL in an in-app browser (Chrome Custom Tabs) — overlays
- * the app with a themed, dismissible browser session so the user stays in-task. Falls back
- * silently if no browser is available to handle the intent.
- */
 private fun openInAppBrowser(context: android.content.Context, url: String) {
     val customTabsIntent = androidx.browser.customtabs.CustomTabsIntent.Builder()
         .setShowTitle(true)
         .build()
-    runCatching {
-        customTabsIntent.launchUrl(context, url.toUri())
-    }
+    runCatching { customTabsIntent.launchUrl(context, url.toUri()) }
 }
 
-/** Compact relative-time formatter for the reader header (e.g. "3h", "2d"). */
 private fun formatRelativeTime(epochMs: Long): String {
     val mins = (System.currentTimeMillis() - epochMs) / 60_000
     return when {

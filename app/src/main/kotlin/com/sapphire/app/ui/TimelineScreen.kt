@@ -195,7 +195,7 @@ fun TimelineScreen(
 
     Scaffold(
         containerColor = LocalSapphirePalette.current.Ink,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+
         topBar = {
             TimelineTopBar(
                 title = if (inSelection) "${selectedItems.count { it.value }} selected"
@@ -231,7 +231,7 @@ fun TimelineScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(padding)) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 ScopeChipsRow(
                     scope = feedScope,
                     onScopeChange = viewModel::setScope,
@@ -398,7 +398,6 @@ private fun TimelineTopBar(
 ) {
     val palette = LocalSapphirePalette.current
     TopAppBar(
-        windowInsets = WindowInsets(0, 0, 0, 0),
         navigationIcon = {
             IconButton(onClick = if (inSelection) onClearSelection else onOpenLeftDrawer) {
                 Icon(
