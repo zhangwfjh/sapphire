@@ -197,14 +197,15 @@ class ReaderViewModel @Inject constructor(
     }
 
     /** Auto-translate when the translate-view mode is BILINGUAL or TRANSLATION (not ORIGIN).
-     *  Waits for auto-summarize to resolve first so the translate regions include summary bullets. */
+     *  Waits for auto-summarize to fully resolve (Done/Error/null) so translate captures all
+     *  summary bullets — not just the partial Streaming ones. */
     private fun autoTranslateIfWarranted() {
         if (translateViewMode.value == com.sapphire.domain.settings.TranslateViewMode.ORIGIN) return
         viewModelScope.launch {
-            // If summary is loading, wait for it to land so translate captures the bullets.
             _state.first { s ->
                 val open = s as? ReaderUiState.Open ?: return@first true
-                open.summary !is SummaryState.Loading
+                val sum = open.summary
+                sum == null || sum is SummaryState.Done || sum is SummaryState.Error
             }
             translate()
         }

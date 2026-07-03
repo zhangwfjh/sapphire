@@ -12,6 +12,9 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -197,9 +200,6 @@ private fun ReaderTopBar(
                 Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open", tint = palette.OnInkMuted)
             }
         }
-        IconButton(onClick = viewModel::summarize) {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = "Summarize", tint = palette.OnInkMuted)
-        }
         IconButton(onClick = onOpenRightDrawer) {
             Icon(Icons.Filled.Tune, contentDescription = "View & preferences", tint = palette.OnInkMuted)
         }
@@ -289,10 +289,6 @@ private fun ReaderContent(
                 // Translate indicator
                 TranslateStatus(state.translate, effectiveTranslateVisible)
 
-                // Macro slot
-                Spacer(Modifier.height(16.dp))
-                MacroSlot(state)
-
                 // Summary
                 state.summary?.let { sum ->
                     Spacer(Modifier.height(16.dp))
@@ -317,14 +313,9 @@ private fun ReaderContent(
                     Spacer(Modifier.height(16.dp))
                     ArticleBlock(state, effectiveTranslateVisible, hideOriginals)
                 }
-
-                // Custom prompt (search-style) at end of scroll
-                Spacer(Modifier.height(16.dp))
-                CustomPromptField()
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(80.dp))
             }
         }
-
         // Auto-hiding top bar overlay
         AnimatedVisibility(
             visible = topBarVisible,
@@ -343,6 +334,78 @@ private fun ReaderContent(
             onJumpToTop = { scope.launch { scrollState.animateScrollBy(-scrollState.value.toFloat()) } },
             onJumpToBottom = { scope.launch { scrollState.animateScrollBy((scrollState.maxValue - scrollState.value).toFloat()) } },
         )
+
+        // Floating AI button — bottom-start, pops up a context ops + prompt panel
+        var aiPanelOpen by remember { mutableStateOf(false) }
+        FloatingActionButton(
+            onClick = { aiPanelOpen = true },
+            containerColor = palette.Accent,
+            contentColor = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 24.dp),
+        ) {
+            Icon(Icons.Filled.AutoAwesome, contentDescription = "AI ops")
+        }
+        if (aiPanelOpen) {
+            AiPopupPanel(
+                state = state,
+                viewModel = viewModel,
+                onDismiss = { aiPanelOpen = false },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AiPopupPanel(
+    state: ReaderUiState.Open,
+    viewModel: ReaderViewModel,
+    onDismiss: () -> Unit,
+) {
+    val palette = LocalSapphirePalette.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = palette.Ink,
+        dragHandle = null,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            // Drag handle
+            Box(
+                Modifier.width(36.dp).height(4.dp)
+                    .align(Alignment.CenterHorizontally)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(palette.InkStrokeStrong),
+            )
+
+            // Context ops (classification macros)
+            MacroSlot(state)
+
+            // Summarize button
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(palette.InkElevated)
+                    .clickable { viewModel.summarize() }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.Accent, modifier = Modifier.size(18.dp))
+                Text("Summarize", style = MaterialTheme.typography.bodyMedium, color = palette.OnInk, fontWeight = FontWeight.Medium)
+            }
+
+            // Ask AI bar
+            CustomPromptField()
+
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }
 
