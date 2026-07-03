@@ -69,6 +69,7 @@ fun RichBlockList(
     blocks: List<RichBlock>,
     modifier: Modifier = Modifier,
     translateTargets: List<String>? = null,
+    hideOriginals: Boolean = false,
 ) {
     val palette = LocalSapphirePalette.current
     var textIndex = 0
@@ -80,27 +81,42 @@ fun RichBlockList(
             // the index — otherwise it steals the next paragraph's translation and renders it
             // in the wrong place (e.g. inside an empty quote box, above the real original).
             val translated = if (block.isTextBlock()) translateTargets?.getOrNull(textIndex) else null
-            RichBlockView(block, translated = translated)
+            RichBlockView(block, translated = translated, hideOriginals = hideOriginals)
             if (block.isTextBlock()) textIndex++
         }
     }
 }
 
 @Composable
-private fun RichBlockView(block: RichBlock, translated: String? = null) {
+private fun RichBlockView(block: RichBlock, translated: String? = null, hideOriginals: Boolean = false) {
     val palette = LocalSapphirePalette.current
+    // In TRANSLATION mode with a translation available, show only the translation as the
+    // primary text; otherwise show the original (with translation appended in bilingual mode).
+    val showTranslationAsPrimary = hideOriginals && !translated.isNullOrEmpty()
     when (block) {
         is RichBlock.Paragraph -> Column {
-            RichSpanText(block.spans, color = palette.ReaderInk)
-            TranslatedText(translated)
+            if (showTranslationAsPrimary) {
+                RichSpanText(listOf(RichSpan.Text(translated!!)), color = palette.ReaderInk)
+            } else {
+                RichSpanText(block.spans, color = palette.ReaderInk)
+                TranslatedText(translated)
+            }
         }
         is RichBlock.Heading -> Column {
-            RichSpanText(
-                spans = block.spans,
-                color = palette.OnInk,
-                base = headingStyle(block.level),
-            )
-            TranslatedText(translated)
+            if (showTranslationAsPrimary) {
+                RichSpanText(
+                    spans = listOf(RichSpan.Text(translated!!)),
+                    color = palette.OnInk,
+                    base = headingStyle(block.level),
+                )
+            } else {
+                RichSpanText(
+                    spans = block.spans,
+                    color = palette.OnInk,
+                    base = headingStyle(block.level),
+                )
+                TranslatedText(translated)
+            }
         }
         is RichBlock.ListItem -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -110,8 +126,12 @@ private fun RichBlockView(block: RichBlock, translated: String? = null) {
                 modifier = Modifier.width(18.dp),
             )
             Column(Modifier.weight(1f)) {
-                RichSpanText(block.spans, color = palette.ReaderInk)
-                TranslatedText(translated)
+                if (showTranslationAsPrimary) {
+                    RichSpanText(listOf(RichSpan.Text(translated!!)), color = palette.ReaderInk)
+                } else {
+                    RichSpanText(block.spans, color = palette.ReaderInk)
+                    TranslatedText(translated)
+                }
             }
         }
         is RichBlock.Quote -> Column(
@@ -141,25 +161,34 @@ private fun RichBlockView(block: RichBlock, translated: String? = null) {
                     lineHeight = 28.sp,
                 ),
             )
-            RichSpanText(
-                block.spans,
-                color = palette.OnInkMuted,
-                base = TextStyle(
-                    fontFamily = SapphireFonts.display,
-                    fontStyle = FontStyle.Italic,
-                    fontSize = 16.sp,
-                    lineHeight = 24.sp,
-                ),
-            )
-            // Translation renders INSIDE the quote box, after the original — no quote
-            // mark, no italic, so it reads as a plain gloss rather than a second quote.
-            if (!translated.isNullOrEmpty()) {
-                Spacer(Modifier.height(6.dp))
+            if (showTranslationAsPrimary) {
+                // TRANSLATION mode: show only the translated text in the quote.
                 Text(
-                    translated,
+                    translated!!,
                     style = MaterialTheme.typography.bodyMedium,
                     color = palette.AccentBright,
                 )
+            } else {
+                RichSpanText(
+                    block.spans,
+                    color = palette.OnInkMuted,
+                    base = TextStyle(
+                        fontFamily = SapphireFonts.display,
+                        fontStyle = FontStyle.Italic,
+                        fontSize = 16.sp,
+                        lineHeight = 24.sp,
+                    ),
+                )
+                // Translation renders INSIDE the quote box, after the original — no quote
+                // mark, no italic, so it reads as a plain gloss rather than a second quote.
+                if (!translated.isNullOrEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        translated,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = palette.AccentBright,
+                    )
+                }
             }
         }
         is RichBlock.Code -> Column(
@@ -204,6 +233,8 @@ private fun RichBlockView(block: RichBlock, translated: String? = null) {
                 Spacer(Modifier.height(6.dp))
                 Text(cap, style = SapphireMono.Label, color = palette.OnInkFaint)
             }
+            // Images always show their alt-text translation if present (captions are part of
+            // the translate stream); hideOriginals doesn't suppress media captions.
             TranslatedText(translated)
         }
     }

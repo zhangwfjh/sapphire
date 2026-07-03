@@ -473,7 +473,7 @@ private fun SummaryBullet(text: String, streaming: Boolean = false) {
 private fun BriefBlock(
     state: ReaderUiState.Open,
     effectiveTranslateVisible: Boolean,
-    @Suppress("UNUSED_PARAMETER") hideOriginals: Boolean,
+    hideOriginals: Boolean,
 ) {
     // The brief is always a translate region (PRD §3.4); its targets arrive as
     // frame.brief, paragraph-aligned with the feed body's text blocks.
@@ -481,16 +481,14 @@ private fun BriefBlock(
         (state.translate as? TranslateState.Done)?.frame?.brief
             ?: (state.translate as? TranslateState.Streaming)?.frame?.brief
     } else null
-    // TODO: hide originals in TRANSLATION mode — RichBlockList/RichBlockRenderer renders
-    //  origin + translation inline; threading hideOriginals through requires renderer support.
-    RichBlockList(blocks = state.blocks, translateTargets = briefTargets)
+    RichBlockList(blocks = state.blocks, translateTargets = briefTargets, hideOriginals = hideOriginals)
 }
 
 @Composable
 private fun ArticleBlock(
     state: ReaderUiState.Open,
     effectiveTranslateVisible: Boolean,
-    @Suppress("UNUSED_PARAMETER") hideOriginals: Boolean,
+    hideOriginals: Boolean,
 ) {
     val palette = LocalSapphirePalette.current
     val article = state.articleBlocks ?: return
@@ -524,13 +522,11 @@ private fun ArticleBlock(
             )
         }
         if (expanded) {
-            // TODO: hide originals in TRANSLATION mode — RichBlockList/RichBlockRenderer renders
-            //  origin + translation inline; threading hideOriginals requires renderer support.
             val articleTargets = if (effectiveTranslateVisible) {
                 (state.translate as? TranslateState.Done)?.frame?.article
                     ?: (state.translate as? TranslateState.Streaming)?.frame?.article
             } else null
-            RichBlockList(blocks = article, translateTargets = articleTargets)
+            RichBlockList(blocks = article, translateTargets = articleTargets, hideOriginals = hideOriginals)
         }
     }
 }
