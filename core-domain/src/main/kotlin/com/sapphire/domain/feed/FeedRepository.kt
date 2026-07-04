@@ -73,4 +73,9 @@ interface FeedRepository {
 
     /** Count of unread items, for the app badge / empty-state copy. */
     fun observeUnreadCount(): Flow<Int>
+    /**
+     * Cheap "is the timeline non-empty?" — drives the empty-vs-no-search-matches UI branch
+     * without subscribing to a full-timeline Flow. Backed by `SELECT EXISTS(...)`.
+     */
+    fun observeHasAny(): Flow<Boolean>
 }

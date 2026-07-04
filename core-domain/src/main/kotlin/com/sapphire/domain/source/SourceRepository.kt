@@ -77,6 +77,15 @@ interface SourceRepository {
     suspend fun moveSource(id: String, toCategoryId: String): Outcome
 
     suspend fun deleteSource(id: String)
+    /**
+     * Batch-move [ids] into [toCategoryId] in a single transaction. URLs already present
+     * in the target (by a source outside the batch) are skipped; returns the count skipped
+     * so the UI can surface a conflict message. Replaces N per-source transactions.
+     */
+    suspend fun moveSources(ids: Set<String>, toCategoryId: String): Int
+
+    /** Batch-delete [ids] in one pass. */
+    suspend fun deleteSources(ids: Set<String>)
 
     suspend fun addCategory(topicId: String, name: String): String
 

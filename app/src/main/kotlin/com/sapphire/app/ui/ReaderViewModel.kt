@@ -192,7 +192,7 @@ class ReaderViewModel @Inject constructor(
 
     private fun autoSummarizeIfLongEnough(articleBlocks: List<RichBlock>?) {
         if (articleBlocks == null) return
-        val wordCount = articleBlocks.toPlainParagraphs().sumOf { it.split(Regex("\\s+")).count { w -> w.isNotBlank() } }
+        val wordCount = articleBlocks.toPlainParagraphs().sumOf { it.split(WS_REGEX).count { w -> w.isNotBlank() } }
         if (wordCount > SUMMARY_MIN_WORDS) summarize()
     }
 
@@ -304,6 +304,7 @@ class ReaderViewModel @Inject constructor(
     private companion object {
         const val DEFAULT_SAVE_FOLDER = "Inbox"
         const val SUMMARY_MIN_WORDS = 300
+        val WS_REGEX = Regex("\\s+")
     }
 }
 

@@ -139,6 +139,12 @@ class RoomSourceRepository @Inject constructor(
     override suspend fun deleteSource(id: String) = withContext(Dispatchers.IO) {
         dao.deleteSource(id)
     }
+    override suspend fun moveSources(ids: Set<String>, toCategoryId: String): Int =
+        withContext(Dispatchers.IO) { dao.moveSourcesInto(ids.toList(), toCategoryId) }
+
+    override suspend fun deleteSources(ids: Set<String>) = withContext(Dispatchers.IO) {
+        if (ids.isNotEmpty()) dao.deleteSourcesBatch(ids.toList())
+    }
 
     override suspend fun addCategory(topicId: String, name: String): String = withContext(Dispatchers.IO) {
         val sortOrder = dao.maxSortOrder(topicId) + 1

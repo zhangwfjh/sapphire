@@ -79,16 +79,11 @@ class SourcesDrawerViewModel @Inject constructor(
         }
     }
 
-    /** Batch-move a set of sources into [toCategoryId]. Conflicting URLs are skipped. */
+    /** Batch-move a set of sources into [toCategoryId] in one transaction. Conflicting
+     *  URLs are skipped; the count is surfaced via the conflict snackbar. */
     fun moveSources(ids: Set<String>, toCategoryId: String) {
         viewModelScope.launch {
-            var conflicts = 0
-            for (id in ids) {
-                when (repository.moveSource(id, toCategoryId)) {
-                    is Outcome.Ok -> Unit
-                    is Outcome.Conflict -> conflicts++
-                }
-            }
+            val conflicts = repository.moveSources(ids, toCategoryId)
             if (conflicts > 0) {
                 _conflict.value = "$conflicts source(s) skipped — URL already in target folder."
             }
@@ -99,11 +94,9 @@ class SourcesDrawerViewModel @Inject constructor(
         viewModelScope.launch { repository.deleteSource(id) }
     }
 
-    /** Batch-delete a set of sources. */
+    /** Batch-delete a set of sources in one pass. */
     fun deleteSources(ids: Set<String>) {
-        viewModelScope.launch {
-            for (id in ids) repository.deleteSource(id)
-        }
+        viewModelScope.launch { repository.deleteSources(ids) }
     }
 
     fun addCategory(topicId: String, name: String) {

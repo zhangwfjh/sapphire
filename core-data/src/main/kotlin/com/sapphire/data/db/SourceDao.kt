@@ -86,6 +86,43 @@ interface SourceDao {
 
     @Query("DELETE FROM source WHERE id = :id")
     suspend fun deleteSource(id: String)
+    // ---- Batch writes (Sources drawer multi-select) ----
+
+    @Query("SELECT * FROM source WHERE id IN (:ids)")
+    suspend fun sourcesByIds(ids: List<String>): List<SourceEntity>
+
+    /**
+     * URLs from [urls] already present in [categoryId] under a source NOT in [excludeIds].
+     * One batched probe that replaces the per-source `urlTakenInCategory` loop in a batch move.
+     */
+    @Query("""
+        SELECT url FROM source
+        WHERE category_id = :categoryId AND url IN (:urls) AND id NOT IN (:excludeIds)
+    """)
+    suspend fun conflictingUrls(categoryId: String, urls: List<String>, excludeIds: List<String>): List<String>
+
+    @Query("UPDATE source SET category_id = :toCategoryId WHERE id IN (:ids)")
+    suspend fun moveSourcesBatch(ids: List<String>, toCategoryId: String)
+
+    @Query("DELETE FROM source WHERE id IN (:ids)")
+    suspend fun deleteSourcesBatch(ids: List<String>)
+
+    /**
+     * Move every id in [ids] into [toCategoryId] in ONE transaction. Sources whose URL is
+     * already taken in the target (by a source outside the batch) are skipped; returns the
+     * count skipped so the UI can surface "N sources skipped — URL already in target".
+     * Replaces N separate transactions + N conflict probes with 2 queries.
+     */
+    @Transaction
+    suspend fun moveSourcesInto(ids: List<String>, toCategoryId: String): Int {
+        if (ids.isEmpty()) return 0
+        val moving = sourcesByIds(ids)
+        if (moving.isEmpty()) return 0
+        val taken = conflictingUrls(toCategoryId, moving.map { it.url }, ids).toSet()
+        val movable = moving.filter { it.url !in taken }
+        if (movable.isNotEmpty()) moveSourcesBatch(movable.map { it.id }, toCategoryId)
+        return moving.size - movable.size
+    }
 
     @Query("SELECT category_id FROM source WHERE id = :id")
     suspend fun sourceCategoryId(id: String): String?

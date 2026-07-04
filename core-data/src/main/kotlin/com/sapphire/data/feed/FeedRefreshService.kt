@@ -9,6 +9,9 @@ import com.sapphire.domain.model.HealthState
 import com.sapphire.domain.model.SourceKind
 import com.sapphire.domain.util.FeedItemId
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -76,38 +79,51 @@ class FeedRefreshService @Inject constructor(
         val skippedNoFetcher: Int = 0,
     )
 
-    suspend fun refreshAll(): RefreshOutcome = withContext(Dispatchers.IO) {
-        val all = sources.allSources()
-        if (all.isEmpty()) return@withContext RefreshOutcome(
+    /**
+     * Aggregated refresh — concurrent twin of [refreshStreaming]. Fans out one coroutine
+     * per source on IO (total wall-time ≈ the slowest source, not the sum) and folds the
+     * per-source outcomes into a single [RefreshOutcome]. Kept for callers that want a
+     * one-shot aggregate rather than a live event stream.
+     */
+    suspend fun refreshAll(): RefreshOutcome = coroutineScope {
+        val all = try {
+            withContext(Dispatchers.IO) { sources.allSources() }
+        } catch (t: Throwable) {
+            return@coroutineScope RefreshOutcome(
+                totalNew = 0,
+                errors = listOf(t.message ?: "source query failed"),
+                sourceCount = 0,
+            )
+        }
+        if (all.isEmpty()) return@coroutineScope RefreshOutcome(
             totalNew = 0, errors = emptyList(), sourceCount = 0,
         )
+
+        val results = all.map { source ->
+            async(Dispatchers.IO) {
+                val event = try {
+                    fetchSourceEvent(source)
+                } catch (ce: kotlinx.coroutines.CancellationException) {
+                    throw ce
+                } catch (t: Throwable) {
+                    StreamEvent.SourceError(source.id, t.message ?: "unknown error")
+                }
+                FetchAttempt(fetchers.forKind(source.kind) != null, source.url, event)
+            }
+        }.awaitAll()
 
         var totalNew = 0
         var fetchedSources = 0
         var skippedNoFetcher = 0
         val errors = mutableListOf<String>()
-        for (source in all) {
-            val fetcher = fetchers.forKind(source.kind)
-            if (fetcher == null) {
-                // AGENT_* are not S02 fetchers; skip without erroring.
-                skippedNoFetcher++
-                continue
-            }
-            val now = System.currentTimeMillis()
-            when (val res = fetcher.fetch(source.url, source.configJson)) {
-                is FetchResult.Success -> {
-                    val newIds = persist(source.id, source.categoryId, res.items, now)
-                    totalNew += newIds
-                    fetchedSources++
-                    sources.updateSourceFetchState(source.id, HealthState.OK, now, errorAt = null)
+        for (r in results) {
+            when (r.event) {
+                is StreamEvent.SourceDone -> {
+                    totalNew += r.event.newCount
+                    if (r.hadFetcher) fetchedSources++ else skippedNoFetcher++
                 }
-                is FetchResult.TransientError -> {
-                    errors += "${source.url}: ${res.message}"
-                }
-                is FetchResult.PersistentFailure -> {
-                    errors += "${source.url}: ${res.message}"
-                    sources.updateSourceFetchState(source.id, HealthState.FAILED, now, errorAt = now)
-                }
+                is StreamEvent.SourceError -> errors += "${r.url}: ${r.event.message}"
+                StreamEvent.AllDone -> Unit
             }
         }
         RefreshOutcome(
@@ -118,6 +134,12 @@ class FeedRefreshService @Inject constructor(
             skippedNoFetcher = skippedNoFetcher,
         )
     }
+
+    private data class FetchAttempt(
+        val hadFetcher: Boolean,
+        val url: String,
+        val event: StreamEvent,
+    )
 
     /**
      * Streaming variant: fetches sources concurrently (bounded) and emits a [StreamEvent]

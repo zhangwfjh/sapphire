@@ -16,7 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -29,7 +30,7 @@ import javax.inject.Inject
  * ([markReadOnOpen]) or the manual mark-read button / batch mark-read. There is no
  * scroll-to-mark-read; scrolling never changes read state.
  */
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 @HiltViewModel
 class FeedViewModel @Inject constructor(
     private val repository: FeedRepository,
@@ -65,7 +66,9 @@ class FeedViewModel @Inject constructor(
                 is FeedFilter.ByCategory -> repository.observeCategories(f.categoryIds)
             }
         },
-        _query,
+        // Debounce keystrokes so we don't refilter the whole timeline (O(N), 3 lowercase
+        // allocations per item) on every character. Also dedups consecutive equal queries.
+        _query.debounce(QUERY_DEBOUNCE_MS).distinctUntilChanged(),
         _scope,
     ) { items, q, scope -> items.filterByQuery(q).filterByScope(scope) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -119,8 +122,7 @@ class FeedViewModel @Inject constructor(
 
     /** True when the raw (unfiltered) timeline has at least one item. Lets the UI tell
      *  "no items at all" (→ onboarding empty state) apart from "search yields nothing". */
-    val hasAnyItems: StateFlow<Boolean> = repository.observeTimeline()
-        .map { it.isNotEmpty() }
+    val hasAnyItems: StateFlow<Boolean> = repository.observeHasAny()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     /** True while a refresh pass is in flight (manual or auto). Drives the spinner only. */
@@ -183,6 +185,7 @@ class FeedViewModel @Inject constructor(
 
     private companion object {
         const val DEFAULT_SAVE_FOLDER = "Inbox"
+        const val QUERY_DEBOUNCE_MS = 250L
     }
 
     /** Batch-mark the selected items READ. */

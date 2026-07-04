@@ -46,6 +46,7 @@ class RoomFeedRepository @Inject constructor(
         }
 
     override fun observeUnreadCount(): Flow<Int> = feedDao.observeUnreadCountRaw()
+    override fun observeHasAny(): Flow<Boolean> = feedDao.observeHasAny()
 
     override suspend fun markRead(itemId: String, mechanism: ReadMechanism) = withContext(Dispatchers.IO) {
         feedDao.markRead(itemId, mechanism, System.currentTimeMillis())

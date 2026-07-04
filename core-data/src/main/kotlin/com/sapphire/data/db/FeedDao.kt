@@ -13,6 +13,12 @@ import kotlinx.coroutines.flow.Flow
  * Timeline + read-state mutations for [FeedItemEntity]. The PK `hash_uuid` is the ingest
  * dedup guard: `INSERT OR IGNORE` drops a re-fetched duplicate without throwing (PRD §3.2
  * global hash identity). S02 dedup is hash-only; semantic embedding dedup lands in S04.
+ *
+ * **Timeline bound.** Every `observe*` query is capped at [TIMELINE_LIMIT] rows (newest
+ * first). Only READ items are retention-purged; UNREAD items never expire, so without a
+ * bound an active user's timeline grows without limit and re-materializes in full on every
+ * single-row change. The limit is generous (a typical mobile feed ceiling); full paging is
+ * a future slice.
  */
 @Dao
 interface FeedDao {
@@ -21,6 +27,7 @@ interface FeedDao {
     @Query("""
         SELECT * FROM feed_item
         ORDER BY COALESCE(published_at, fetched_at) DESC, fetched_at DESC
+        LIMIT $TIMELINE_LIMIT
     """)
     fun observeTimeline(): Flow<List<FeedItemEntity>>
 
@@ -29,6 +36,7 @@ interface FeedDao {
         SELECT * FROM feed_item
         WHERE category_id = :categoryId
         ORDER BY COALESCE(published_at, fetched_at) DESC, fetched_at DESC
+        LIMIT $TIMELINE_LIMIT
     """)
     fun observeCategory(categoryId: String): Flow<List<FeedItemEntity>>
 
@@ -37,6 +45,7 @@ interface FeedDao {
         SELECT * FROM feed_item
         WHERE category_id IN (:categoryIds)
         ORDER BY COALESCE(published_at, fetched_at) DESC, fetched_at DESC
+        LIMIT $TIMELINE_LIMIT
     """)
     fun observeCategories(categoryIds: List<String>): Flow<List<FeedItemEntity>>
 
@@ -45,6 +54,7 @@ interface FeedDao {
         SELECT * FROM feed_item
         WHERE source_id = :sourceId
         ORDER BY COALESCE(published_at, fetched_at) DESC, fetched_at DESC
+        LIMIT $TIMELINE_LIMIT
     """)
     fun observeBySource(sourceId: String): Flow<List<FeedItemEntity>>
 
@@ -53,6 +63,7 @@ interface FeedDao {
         SELECT * FROM feed_item
         WHERE source_id IN (:sourceIds)
         ORDER BY COALESCE(published_at, fetched_at) DESC, fetched_at DESC
+        LIMIT $TIMELINE_LIMIT
     """)
     fun observeBySources(sourceIds: List<String>): Flow<List<FeedItemEntity>>
 
@@ -62,6 +73,7 @@ interface FeedDao {
         SELECT f.*, s.title AS source_title
         FROM feed_item f LEFT JOIN source s ON f.source_id = s.id
         ORDER BY COALESCE(f.published_at, f.fetched_at) DESC, f.fetched_at DESC
+        LIMIT $TIMELINE_LIMIT
     """)
     fun observeTimelineWithSource(): Flow<List<FeedItemWithSource>>
 
@@ -70,6 +82,7 @@ interface FeedDao {
         FROM feed_item f LEFT JOIN source s ON f.source_id = s.id
         WHERE f.category_id IN (:categoryIds)
         ORDER BY COALESCE(f.published_at, f.fetched_at) DESC, f.fetched_at DESC
+        LIMIT $TIMELINE_LIMIT
     """)
     fun observeCategoriesWithSource(categoryIds: List<String>): Flow<List<FeedItemWithSource>>
 
@@ -78,6 +91,7 @@ interface FeedDao {
         FROM feed_item f LEFT JOIN source s ON f.source_id = s.id
         WHERE f.source_id = :sourceId
         ORDER BY COALESCE(f.published_at, f.fetched_at) DESC, f.fetched_at DESC
+        LIMIT $TIMELINE_LIMIT
     """)
     fun observeBySourceWithSource(sourceId: String): Flow<List<FeedItemWithSource>>
 
@@ -86,11 +100,17 @@ interface FeedDao {
         FROM feed_item f LEFT JOIN source s ON f.source_id = s.id
         WHERE f.source_id IN (:sourceIds)
         ORDER BY COALESCE(f.published_at, f.fetched_at) DESC, f.fetched_at DESC
+        LIMIT $TIMELINE_LIMIT
     """)
     fun observeBySourcesWithSource(sourceIds: List<String>): Flow<List<FeedItemWithSource>>
 
     @Query("SELECT COUNT(*) FROM feed_item WHERE read_state = 'UNREAD'")
     fun observeUnreadCountRaw(): Flow<Int>
+
+    /** Cheap "is the timeline non-empty?" probe — avoids a full SELECT * just to derive a boolean. */
+    @Query("SELECT EXISTS(SELECT 1 FROM feed_item)")
+    fun observeHasAny(): Flow<Boolean>
+
     /** Per-category item counts for the sources tree. */
     @Query("""
         SELECT category_id AS categoryId,
@@ -138,6 +158,14 @@ interface FeedDao {
     suspend fun countItems(): Int
 
     /**
+     * Single-query batched read-state probe: returns the subset of [ids] whose current
+     * [state] matches. Used by the batch mutations below to avoid one `readStateOf` SELECT
+     * per id (was N+1 inside a single transaction — O(N) round-trips holding the write lock).
+     */
+    @Query("SELECT hash_uuid FROM feed_item WHERE hash_uuid IN (:ids) AND read_state = :state")
+    suspend fun idsInState(ids: List<String>, state: ReadState): List<String>
+
+    /**
      * Mark [itemId] READ and append a [ReadLogEntity] row in one transaction. Idempotent:
      * re-marking a READ item just sets the same state; the ReadLog IGNORE PK guard isn't
      * applicable (autoGenerate) so we gate the insert on the prior state to avoid dup rows.
@@ -162,7 +190,10 @@ interface FeedDao {
 
     @Transaction
     suspend fun markReadBatch(itemIds: List<String>, now: Long) {
-        val fresh = itemIds.filter { readStateOf(it) != ReadState.READ }
+        if (itemIds.isEmpty()) return
+        // One batched probe instead of one SELECT per id.
+        val alreadyRead = idsInState(itemIds, ReadState.READ).toSet()
+        val fresh = itemIds - alreadyRead
         if (fresh.isEmpty()) return
         setReadStateBatch(fresh, ReadState.READ)
         insertReadLog(fresh.map { ReadLogEntity(itemId = it, markedAt = now, mechanism = ReadMechanism.MANUAL) })
@@ -170,7 +201,8 @@ interface FeedDao {
 
     @Transaction
     suspend fun markUnreadBatch(itemIds: List<String>, now: Long) {
-        val toRevert = itemIds.filter { readStateOf(it) == ReadState.READ }
+        if (itemIds.isEmpty()) return
+        val toRevert = idsInState(itemIds, ReadState.READ)
         if (toRevert.isEmpty()) return
         setReadStateBatch(toRevert, ReadState.UNREAD)
         insertReadLog(toRevert.map { ReadLogEntity(itemId = it, markedAt = now, mechanism = ReadMechanism.MANUAL) })
@@ -178,7 +210,8 @@ interface FeedDao {
 
     @Transaction
     suspend fun undoBatch(itemIds: List<String>, now: Long) {
-        val toRevert = itemIds.filter { readStateOf(it) == ReadState.READ }
+        if (itemIds.isEmpty()) return
+        val toRevert = idsInState(itemIds, ReadState.READ)
         if (toRevert.isEmpty()) return
         setReadStateBatch(toRevert, ReadState.UNREAD)
         insertReadLog(toRevert.map { ReadLogEntity(itemId = it, markedAt = now, mechanism = ReadMechanism.MANUAL) })
@@ -246,6 +279,7 @@ interface FeedDao {
     /** S03 reader: persist the Tier-1 classification onto the row (PRD §3.5 macro source). */
     @Query("UPDATE feed_item SET classification = :classification WHERE hash_uuid = :itemId")
     suspend fun setClassification(itemId: String, classification: String)
+
     /** S07 reader: flip the Save Later flag on an item (PRD §3.4 [📁 Save Later]). */
     @Query("UPDATE feed_item SET saved_later = :saved WHERE hash_uuid = :itemId")
     suspend fun setSavedLater(itemId: String, saved: Boolean)
@@ -270,3 +304,4 @@ interface FeedDao {
     suspend fun deleteAllFeedItems(): Int
 }
 
+private const val TIMELINE_LIMIT = 1000
