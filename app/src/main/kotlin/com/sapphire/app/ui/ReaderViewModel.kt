@@ -223,6 +223,21 @@ class ReaderViewModel @Inject constructor(
             brief = current.blocks.toPlainParagraphs(),
             article = current.articleBlocks?.toPlainParagraphs() ?: emptyList(),
         )
+        // Skip the Tier-2 call when the article is already in the target language.
+        // Today only Simplified Chinese is detected (Traditional/Japanese/Korean still
+        // translate). On skip we surface the originals as-is: no translate block, no
+        // loading state. (PRD §3.4: translate is opt-in per article.)
+        val sourceText = buildString {
+            regions.title.forEach { append(it); append(' ') }
+            regions.brief.forEach { append(it); append(' ') }
+            regions.article.forEach { append(it); append(' ') }
+        }
+        if (com.sapphire.domain.reader.SimplifiedChineseDetector
+                .shouldSkipTranslate(sourceText, targetLanguage)
+        ) {
+            _state.value = current.copy(translate = null, translateVisible = false)
+            return
+        }
         updateTranslate(TranslateState.Loading, visible = true)
         viewModelScope.launch {
             var errored = false
