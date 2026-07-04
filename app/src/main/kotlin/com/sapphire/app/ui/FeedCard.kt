@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,12 +27,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -202,48 +203,14 @@ private fun ListTitle(text: String, read: Boolean) {
 @Composable
 private fun ListMeta(item: FeedItem, read: Boolean) {
     val palette = LocalSapphirePalette.current
-    val origin = item.agentTag
-        ?: item.platformTag?.let { com.sapphire.app.ui.design.PlatformLabels.forTag(it) }
-        ?: item.authorHandle?.let { "@$it" }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-
-
-        if (!origin.isNullOrBlank()) {
-            Text(
-                origin,
-                style = SapphireMono.Label,
-                color = if (read) palette.OnInkFaint else palette.OnInkMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        item.publishedAt?.let {
-            if (!origin.isNullOrBlank()) {
-                Text(
-                    " · ",
-                    style = SapphireMono.Label,
-                    color = palette.OnInkFaint,
-                )
-            }
-            Text(
-                relativeTime(it),
-                style = SapphireMono.Label,
-                color = palette.OnInkFaint,
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DenseMeta(item: FeedItem, read: Boolean) {
-    val palette = LocalSapphirePalette.current
-    val source = item.agentTag
+    val source = item.sourceTitle
+        ?: item.agentTag
         ?: item.platformTag?.let { com.sapphire.app.ui.design.PlatformLabels.forTag(it) }
     val author = item.authorHandle?.takeIf { it.isNotBlank() }?.let { "@$it" }
     val sep = " · "
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (!source.isNullOrBlank()) {
+            Icon(Icons.Filled.RssFeed, contentDescription = null, tint = if (read) palette.OnInkFaint else palette.Accent, modifier = Modifier.size(12.dp))
             Text(source, style = SapphireMono.Label, color = if (read) palette.OnInkFaint else palette.OnInkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (!author.isNullOrBlank()) {
@@ -252,6 +219,28 @@ private fun DenseMeta(item: FeedItem, read: Boolean) {
         }
         item.publishedAt?.let {
             if (!source.isNullOrBlank() || !author.isNullOrBlank()) Text(sep, style = SapphireMono.Label, color = palette.OnInkFaint)
+            Text(relativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun DenseMeta(item: FeedItem, read: Boolean) {
+    val palette = LocalSapphirePalette.current
+    val source = item.sourceTitle
+        ?: item.agentTag
+        ?: item.platformTag?.let { com.sapphire.app.ui.design.PlatformLabels.forTag(it) }
+    val author = item.authorHandle?.takeIf { it.isNotBlank() }?.let { "@$it" }
+    val sep = " · "
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (!source.isNullOrBlank()) {
+            Icon(Icons.Filled.RssFeed, contentDescription = null, tint = if (read) palette.OnInkFaint else palette.Accent, modifier = Modifier.size(12.dp))
+            Text(source, style = SapphireMono.Label, color = if (read) palette.OnInkFaint else palette.OnInkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (!author.isNullOrBlank()) {
+            Text(author, style = SapphireMono.Label, color = if (read) palette.OnInkFaint else palette.OnInkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        item.publishedAt?.let {
             Text(relativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint, maxLines = 1)
         }
     }

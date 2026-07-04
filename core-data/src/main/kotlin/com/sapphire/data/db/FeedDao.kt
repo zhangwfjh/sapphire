@@ -56,6 +56,39 @@ interface FeedDao {
     """)
     fun observeBySources(sourceIds: List<String>): Flow<List<FeedItemEntity>>
 
+    // ---- Source-joined variants (for dense cards that show source title) ----
+
+    @Query("""
+        SELECT f.*, s.title AS source_title
+        FROM feed_item f LEFT JOIN source s ON f.source_id = s.id
+        ORDER BY COALESCE(f.published_at, f.fetched_at) DESC, f.fetched_at DESC
+    """)
+    fun observeTimelineWithSource(): Flow<List<FeedItemWithSource>>
+
+    @Query("""
+        SELECT f.*, s.title AS source_title
+        FROM feed_item f LEFT JOIN source s ON f.source_id = s.id
+        WHERE f.category_id IN (:categoryIds)
+        ORDER BY COALESCE(f.published_at, f.fetched_at) DESC, f.fetched_at DESC
+    """)
+    fun observeCategoriesWithSource(categoryIds: List<String>): Flow<List<FeedItemWithSource>>
+
+    @Query("""
+        SELECT f.*, s.title AS source_title
+        FROM feed_item f LEFT JOIN source s ON f.source_id = s.id
+        WHERE f.source_id = :sourceId
+        ORDER BY COALESCE(f.published_at, f.fetched_at) DESC, f.fetched_at DESC
+    """)
+    fun observeBySourceWithSource(sourceId: String): Flow<List<FeedItemWithSource>>
+
+    @Query("""
+        SELECT f.*, s.title AS source_title
+        FROM feed_item f LEFT JOIN source s ON f.source_id = s.id
+        WHERE f.source_id IN (:sourceIds)
+        ORDER BY COALESCE(f.published_at, f.fetched_at) DESC, f.fetched_at DESC
+    """)
+    fun observeBySourcesWithSource(sourceIds: List<String>): Flow<List<FeedItemWithSource>>
+
     @Query("SELECT COUNT(*) FROM feed_item WHERE read_state = 'UNREAD'")
     fun observeUnreadCountRaw(): Flow<Int>
     /** Per-category item counts for the sources tree. */

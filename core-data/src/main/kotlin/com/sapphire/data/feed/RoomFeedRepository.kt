@@ -23,7 +23,7 @@ class RoomFeedRepository @Inject constructor(
 ) : FeedRepository {
 
     override fun observeTimeline(): Flow<List<FeedItem>> =
-        feedDao.observeTimeline().map { rows -> rows.map { it.toDomain() } }
+        feedDao.observeTimelineWithSource().map { rows -> rows.map { it.toDomain() } }
 
     override fun observeCategory(categoryId: String): Flow<List<FeedItem>> =
         feedDao.observeCategory(categoryId).map { rows -> rows.map { it.toDomain() } }
@@ -32,17 +32,17 @@ class RoomFeedRepository @Inject constructor(
         if (categoryIds.isEmpty()) {
             kotlinx.coroutines.flow.flowOf(emptyList())
         } else {
-            feedDao.observeCategories(categoryIds.toList()).map { rows -> rows.map { it.toDomain() } }
+            feedDao.observeCategoriesWithSource(categoryIds.toList()).map { rows -> rows.map { it.toDomain() } }
         }
 
     override fun observeBySource(sourceId: String): Flow<List<FeedItem>> =
-        feedDao.observeBySource(sourceId).map { rows -> rows.map { it.toDomain() } }
+        feedDao.observeBySourceWithSource(sourceId).map { rows -> rows.map { it.toDomain() } }
 
     override fun observeBySources(sourceIds: Set<String>): Flow<List<FeedItem>> =
         if (sourceIds.isEmpty()) {
             kotlinx.coroutines.flow.flowOf(emptyList())
         } else {
-            feedDao.observeBySources(sourceIds.toList()).map { rows -> rows.map { it.toDomain() } }
+            feedDao.observeBySourcesWithSource(sourceIds.toList()).map { rows -> rows.map { it.toDomain() } }
         }
 
     override fun observeUnreadCount(): Flow<Int> = feedDao.observeUnreadCountRaw()

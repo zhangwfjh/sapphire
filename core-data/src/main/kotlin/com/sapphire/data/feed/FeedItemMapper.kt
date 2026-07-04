@@ -1,6 +1,7 @@
 package com.sapphire.data.feed
 
 import com.sapphire.data.db.FeedItemEntity
+import com.sapphire.data.db.FeedItemWithSource
 import com.sapphire.domain.model.FeedItem
 /**
  * Entity ↔ domain mapping for feed items. Domain [FeedItem] is the timeline/UI shape;
@@ -32,3 +33,6 @@ internal fun FeedItemEntity.toDomain(): FeedItem = FeedItem(
     agentTag = agentTag,
     url = url,
 )
+
+internal fun FeedItemWithSource.toDomain(): FeedItem =
+    item.toDomain().copy(sourceTitle = sourceTitle)
