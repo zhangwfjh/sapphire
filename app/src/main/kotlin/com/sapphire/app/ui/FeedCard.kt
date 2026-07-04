@@ -68,7 +68,7 @@ fun DenseFeedCard(
     Box(
         modifier
             .alpha(animatedAlpha)
-            .background(palette.Ink)
+            .background(if (selected) palette.Accent.copy(alpha = 0.12f) else palette.Ink)
             .combinedClickable(onClick = onOpen, onLongClick = onLongPress),
     ) {
         Row(
@@ -77,12 +77,6 @@ fun DenseFeedCard(
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Unread dot
-            Box(
-                Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(if (state.isRead) palette.InkStroke else palette.Accent),
-            )
-            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 ListTitle(item.title, read = state.isRead)
                 Spacer(Modifier.height(2.dp))
@@ -94,16 +88,6 @@ fun DenseFeedCard(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp)
                 .background(palette.InkStroke.copy(alpha = 0.5f)),
         )
-        if (selected) {
-            Box(
-                Modifier.align(Alignment.TopEnd).padding(8.dp).size(18.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(palette.Accent),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.White, modifier = Modifier.size(12.dp))
-            }
-        }
     }
 }
 
@@ -275,22 +259,9 @@ private fun FeedCardSurface(
         modifier
             .alpha(animatedAlpha)
             .clip(RoundedCornerShape(14.dp))
-            .background(palette.InkElevated)
+            .background(if (selected) palette.Accent.copy(alpha = 0.12f) else palette.InkElevated)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        if (selected) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-                    .size(18.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(palette.Accent),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.White, modifier = Modifier.size(12.dp))
-            }
-        }
         content()
     }
 }
