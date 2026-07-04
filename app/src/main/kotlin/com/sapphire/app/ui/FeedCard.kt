@@ -77,6 +77,16 @@ fun DenseFeedCard(
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Leading indicator: checkmark when selected, unread dot otherwise.
+            if (selected) {
+                Icon(Icons.Filled.Check, contentDescription = "Selected", tint = palette.Accent, modifier = Modifier.size(16.dp))
+            } else {
+                Box(
+                    Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(if (state.isRead) palette.InkStroke else palette.Accent),
+                )
+            }
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 ListTitle(item.title, read = state.isRead)
                 Spacer(Modifier.height(2.dp))
