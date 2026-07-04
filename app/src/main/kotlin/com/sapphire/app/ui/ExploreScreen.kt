@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -97,10 +99,57 @@ fun ExploreScreen(
     val searchError by viewModel.searchError.collectAsStateWithLifecycle()
     val subscribeResult by viewModel.subscribeResult.collectAsStateWithLifecycle()
     val previewState by viewModel.previewState.collectAsStateWithLifecycle()
+    val importState by viewModel.importState.collectAsStateWithLifecycle()
+    val exportXml by viewModel.exportXml.collectAsStateWithLifecycle()
 
     var query by rememberSaveable { mutableStateOf("") }
     var pickingFeed by remember { mutableStateOf<ExploreFeed?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // SAF: OPML import
+    val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                viewModel.importOpml(stream)
+            }
+        }
+    }
+
+    // SAF: OPML export
+    val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/xml"),
+    ) { uri ->
+        val xml = exportXml
+        if (uri != null && xml != null) {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                out.write(xml.toByteArray(Charsets.UTF_8))
+            }
+            viewModel.consumeExport()
+        }
+    }
+
+    LaunchedEffect(importState) {
+        when (val s = importState) {
+            is ImportState.Done -> {
+                snackbarHostState.showSnackbar("Imported ${s.sourcesImported} sources.")
+                viewModel.dismissImportState()
+            }
+            is ImportState.Error -> {
+                snackbarHostState.showSnackbar("Import failed: ${s.message}")
+                viewModel.dismissImportState()
+            }
+            else -> Unit
+        }
+    }
+
+    LaunchedEffect(exportXml) {
+        if (exportXml != null) {
+            exportLauncher.launch("sapphire-sources.opml")
+        }
+    }
 
     LaunchedEffect(subscribeResult) {
         when (val r = subscribeResult) {
@@ -130,6 +179,14 @@ fun ExploreScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { importLauncher.launch(arrayOf("application/xml", "text/xml", "*/*")) }) {
+                        Icon(Icons.Filled.FileDownload, contentDescription = "Import OPML", tint = palette.OnInkMuted)
+                    }
+                    IconButton(onClick = { viewModel.exportOpml() }) {
+                        Icon(Icons.Filled.FileUpload, contentDescription = "Export OPML", tint = palette.OnInkMuted)
                     }
                 },
             )

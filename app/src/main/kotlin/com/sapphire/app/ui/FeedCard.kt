@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
@@ -41,13 +42,12 @@ import com.sapphire.domain.model.ReadState
 
 
 /**
- * Compact list variant — Inoreader-style dense one-line-per-item row for high-density
- * scanning. Two lines only: a single-line title (semibold unread / regular-muted read) over
- * a monospace meta line (origin label · relative time). The unread accent rail from
- * [FeedCardSurface] carries read state; no per-row toggle button keeps the row tight.
- * Same selection / open semantics as [FeedCard].
+ * Dense list variant — flat borderless row separated by hairline dividers (no card
+ * background). Two lines: single-line title (semibold unread / regular-muted read) over a
+ * meta line showing feed source + author + relative time. An unread dot carries read
+ * state at a glance; alpha dims read items.
  */
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DenseFeedCard(
     item: FeedItem,
@@ -58,22 +58,49 @@ fun DenseFeedCard(
     selected: Boolean = false,
 ) {
     val state = rememberFeedCardState(item.readState)
-    FeedCardSurface(
-        read = state.isRead,
-        alpha = state.containerAlpha,
-        selected = selected,
-        onClick = onOpen,
-        onLongClick = onLongPress,
-        modifier = modifier,
+    val palette = LocalSapphirePalette.current
+    val animatedAlpha by animateFloatAsState(
+        targetValue = state.containerAlpha,
+        animationSpec = tween(durationMillis = 220),
+        label = "dense-alpha",
+    )
+    Box(
+        modifier
+            .alpha(animatedAlpha)
+            .background(palette.Ink)
+            .combinedClickable(onClick = onOpen, onLongClick = onLongPress),
     ) {
         Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Unread dot
+            Box(
+                Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(if (state.isRead) palette.InkStroke else palette.Accent),
+            )
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 ListTitle(item.title, read = state.isRead)
-                Spacer(Modifier.height(3.dp))
-                ListMeta(item, read = state.isRead)
+                Spacer(Modifier.height(2.dp))
+                DenseMeta(item, read = state.isRead)
+            }
+        }
+        // Hairline divider at the bottom
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp)
+                .background(palette.InkStroke.copy(alpha = 0.5f)),
+        )
+        if (selected) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(8.dp).size(18.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(palette.Accent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.White, modifier = Modifier.size(12.dp))
             }
         }
     }
@@ -179,6 +206,8 @@ private fun ListMeta(item: FeedItem, read: Boolean) {
         ?: item.platformTag?.let { com.sapphire.app.ui.design.PlatformLabels.forTag(it) }
         ?: item.authorHandle?.let { "@$it" }
     Row(verticalAlignment = Alignment.CenterVertically) {
+
+
         if (!origin.isNullOrBlank()) {
             Text(
                 origin,
@@ -202,6 +231,28 @@ private fun ListMeta(item: FeedItem, read: Boolean) {
                 color = palette.OnInkFaint,
                 maxLines = 1,
             )
+        }
+    }
+}
+
+@Composable
+private fun DenseMeta(item: FeedItem, read: Boolean) {
+    val palette = LocalSapphirePalette.current
+    val source = item.agentTag
+        ?: item.platformTag?.let { com.sapphire.app.ui.design.PlatformLabels.forTag(it) }
+    val author = item.authorHandle?.takeIf { it.isNotBlank() }?.let { "@$it" }
+    val sep = " · "
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (!source.isNullOrBlank()) {
+            Text(source, style = SapphireMono.Label, color = if (read) palette.OnInkFaint else palette.OnInkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (!author.isNullOrBlank()) {
+            if (!source.isNullOrBlank()) Text(sep, style = SapphireMono.Label, color = palette.OnInkFaint)
+            Text(author, style = SapphireMono.Label, color = if (read) palette.OnInkFaint else palette.OnInkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        item.publishedAt?.let {
+            if (!source.isNullOrBlank() || !author.isNullOrBlank()) Text(sep, style = SapphireMono.Label, color = palette.OnInkFaint)
+            Text(relativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint, maxLines = 1)
         }
     }
 }

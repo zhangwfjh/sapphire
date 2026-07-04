@@ -195,51 +195,6 @@ class SourcesDrawerViewModel @Inject constructor(
         if (itemIds.isEmpty()) return
         viewModelScope.launch { feedRepository.undoMarkRead(itemIds) }
     }
-    private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
-    val importState: StateFlow<ImportState> = _importState.asStateFlow()
-
-    private val _exportXml = MutableStateFlow<String?>(null)
-    val exportXml: StateFlow<String?> = _exportXml.asStateFlow()
-
-    /**
-     * Import an arbitrary OPML 2.0 stream. Emits [ImportState] transitions; the UI owns
-     * opening the stream (SAF picker or the bundled asset).
-     */
-    fun importOpml(stream: java.io.InputStream) {
-        viewModelScope.launch {
-            _importState.value = ImportState.Importing
-            try {
-                val count = repository.importFromOpml(stream)
-                _importState.value = ImportState.Done(count)
-            } catch (e: Exception) {
-                _importState.value = ImportState.Error(e.message ?: "Import failed")
-            }
-        }
-    }
-
-    /**
-     * Build the OPML 2.0 export of the current tree and emit it on [exportXml]. The UI
-     * observes the flow and writes it to the user-chosen SAF document, then calls
-     * [consumeExport] once written.
-     */
-    fun exportOpml() {
-        viewModelScope.launch {
-            try {
-                _exportXml.value = repository.exportToOpml()
-            } catch (e: Exception) {
-                _importState.value = ImportState.Error(e.message ?: "Export failed")
-            }
-        }
-    }
-
-    /** Clear the pending export payload after the UI has written it out. */
-    fun consumeExport() {
-        _exportXml.value = null
-    }
-
-    fun dismissImportState() {
-        _importState.value = ImportState.Idle
-    }
 }
 
 sealed interface ImportState {

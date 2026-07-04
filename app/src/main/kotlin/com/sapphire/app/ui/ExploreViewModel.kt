@@ -234,4 +234,38 @@ class ExploreViewModel @Inject constructor(
     }
 
     fun clearPreview() { _previewState.value = PreviewState.Idle }
+
+    // ---- OPML import/export ----
+
+    private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
+    val importState: StateFlow<ImportState> = _importState.asStateFlow()
+
+    private val _exportXml = MutableStateFlow<String?>(null)
+    val exportXml: StateFlow<String?> = _exportXml.asStateFlow()
+
+    fun importOpml(stream: java.io.InputStream) {
+        viewModelScope.launch {
+            _importState.value = ImportState.Importing
+            try {
+                val count = sourceRepository.importFromOpml(stream)
+                _importState.value = ImportState.Done(count)
+            } catch (e: Exception) {
+                _importState.value = ImportState.Error(e.message ?: "Import failed")
+            }
+        }
+    }
+
+    fun exportOpml() {
+        viewModelScope.launch {
+            try {
+                _exportXml.value = sourceRepository.exportToOpml()
+            } catch (e: Exception) {
+                _importState.value = ImportState.Error(e.message ?: "Export failed")
+            }
+        }
+    }
+
+    fun consumeExport() { _exportXml.value = null }
+
+    fun dismissImportState() { _importState.value = ImportState.Idle }
 }

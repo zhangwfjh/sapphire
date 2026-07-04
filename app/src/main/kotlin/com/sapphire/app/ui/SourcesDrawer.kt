@@ -154,54 +154,6 @@ fun SourcesDrawer(
         }
     }
 
-    val importState by viewModel.importState.collectAsStateWithLifecycle()
-    LaunchedEffect(importState) {
-        when (val s = importState) {
-            is ImportState.Done -> {
-                snackbarHostState.showSnackbar("Imported ${s.sourcesImported} sources.")
-                viewModel.dismissImportState()
-            }
-            is ImportState.Error -> {
-                snackbarHostState.showSnackbar("Import failed: ${s.message}")
-                viewModel.dismissImportState()
-            }
-            else -> Unit
-        }
-    }
-
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val exportXml by viewModel.exportXml.collectAsStateWithLifecycle()
-
-    // SAF: pick an .opml file to import.
-    val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) {
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                viewModel.importOpml(stream)
-            }
-        }
-    }
-
-    // SAF: choose a destination to write the OPML export.
-    val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/xml"),
-    ) { uri ->
-        val xml = exportXml
-        if (uri != null && xml != null) {
-            context.contentResolver.openOutputStream(uri)?.use { out ->
-                out.write(xml.toByteArray(Charsets.UTF_8))
-            }
-            viewModel.consumeExport()
-        }
-    }
-
-    // When export XML is ready, prompt the user for a save location.
-    LaunchedEffect(exportXml) {
-        if (exportXml != null) {
-            exportLauncher.launch("sapphire-sources.opml")
-        }
-    }
 
     var dialog by remember { mutableStateOf<DrawerDialog?>(null) }
     val selectedSources = remember { mutableStateMapOf<String, Boolean>() }
@@ -237,8 +189,7 @@ fun SourcesDrawer(
     onOpenSaved = onOpenSaved,
                     onOpenExplore = onOpenExplore,
                     onOpenSettings = onOpenSettings,
-                    onImportOpml = { importLauncher.launch(arrayOf("application/xml", "text/xml", "*/*")) },
-                    onExportOpml = { viewModel.exportOpml() },
+
                     query = query,
                     onQueryChange = onQueryChange,
                 )
@@ -380,8 +331,7 @@ private fun DrawerSheetContent(
     onOpenSaved: () -> Unit,
     onOpenExplore: () -> Unit,
     onOpenSettings: () -> Unit,
-    onImportOpml: () -> Unit,
-    onExportOpml: () -> Unit,
+
     query: String,
     onQueryChange: (String) -> Unit,
 ) {
@@ -444,22 +394,6 @@ private fun DrawerSheetContent(
                     Icon(Icons.Filled.Check, contentDescription = "Done", tint = palette.OnInkMuted, modifier = Modifier.size(18.dp))
                 }
             } else {
-                IconButton(onClick = onImportOpml, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        Icons.Filled.FileDownload,
-                        contentDescription = "Import OPML",
-                        tint = palette.Accent,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                IconButton(onClick = onExportOpml, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        Icons.Filled.FileUpload,
-                        contentDescription = "Export OPML",
-                        tint = palette.Accent,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
                 IconButton(onClick = onAddTopLevelFolder, modifier = Modifier.size(28.dp)) {
                     Icon(
                         Icons.Filled.CreateNewFolder,
