@@ -129,39 +129,50 @@ fun RichFeedCard(
         onLongClick = onLongPress,
         modifier = modifier,
     ) {
-        Column {
-            if (mediaUrl != null) {
-                // Hero image — 16:9, full bleed. Top corners rounded by the surface clip.
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .background(palette.InkRaised),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    AsyncImage(
-                        model = mediaUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+        Box {
+            Column {
+                if (mediaUrl != null) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .background(palette.InkRaised),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AsyncImage(
+                            model = mediaUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                Column(Modifier.padding(12.dp)) {
+                    Title(item.title, read = state.isRead, maxLines = if (mediaUrl != null) 2 else 3)
+                    val summary = item.summary
+                    if (!summary.isNullOrBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            summary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    ListMeta(item, read = state.isRead)
                 }
             }
-            Column(Modifier.padding(12.dp)) {
-                Title(item.title, read = state.isRead, maxLines = if (mediaUrl != null) 2 else 3)
-                val summary = item.summary
-                if (!summary.isNullOrBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        summary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+            if (selected) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(8.dp).size(20.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(palette.Accent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.White, modifier = Modifier.size(14.dp))
                 }
-                Spacer(Modifier.height(6.dp))
-                ListMeta(item, read = state.isRead)
             }
         }
     }
