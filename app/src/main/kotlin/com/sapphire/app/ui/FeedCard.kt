@@ -232,15 +232,17 @@ private fun DenseMeta(item: FeedItem, read: Boolean) {
         ?: item.platformTag?.let { com.sapphire.app.ui.design.PlatformLabels.forTag(it) }
     val author = item.authorHandle?.takeIf { it.isNotBlank() }?.let { "@$it" }
     val sep = " · "
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         if (!source.isNullOrBlank()) {
             Icon(Icons.Filled.RssFeed, contentDescription = null, tint = if (read) palette.OnInkFaint else palette.Accent, modifier = Modifier.size(12.dp))
             Text(source, style = SapphireMono.Label, color = if (read) palette.OnInkFaint else palette.OnInkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (!author.isNullOrBlank()) {
+            if (!source.isNullOrBlank()) Text(sep, style = SapphireMono.Label, color = palette.OnInkFaint)
             Text(author, style = SapphireMono.Label, color = if (read) palette.OnInkFaint else palette.OnInkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         item.publishedAt?.let {
+            if (!source.isNullOrBlank() || !author.isNullOrBlank()) Text(sep, style = SapphireMono.Label, color = palette.OnInkFaint)
             Text(relativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint, maxLines = 1)
         }
     }
