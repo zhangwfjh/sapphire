@@ -23,9 +23,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            // collectAsState seeds DARK (the dark-first identity) until the one-shot prefs
-            // flow emits the persisted value — effectively the first frame.
-            val pref by themeConfigStore.observe().collectAsState(initial = ThemePreference.DARK)
+            // Seed with SYSTEM so the first frame follows the device theme — no flash.
+            val pref by themeConfigStore.observe().collectAsState(initial = ThemePreference.SYSTEM)
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (pref) {
                 ThemePreference.SYSTEM -> systemDark
