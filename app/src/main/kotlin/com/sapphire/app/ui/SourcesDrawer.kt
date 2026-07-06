@@ -26,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -34,7 +33,6 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.RssFeed
 import androidx.compose.material.icons.filled.FileUpload
@@ -107,8 +105,8 @@ private sealed interface DrawerDialog {
  * menu button. Renders the single-level folder list (folders → sources). Tapping a folder
  * or source filters the timeline; "All Feeds" clears it. Read Later is a drawer destination.
  *
- * Source row gestures: long-press or swipe-right opens a context menu (Edit / Move / Select
- * / Remove); swipe-left marks all of the source's items as read, surfaced with an Undo
+ * Source row gestures: long-press or swipe-left opens a context menu (Edit / Move / Select
+ * / Remove); swipe-right marks all of the source's items as read, surfaced with an Undo
  * snackbar. Folders keep their inline Add/Rename/Delete buttons and show an unread badge.
  * Counts shown everywhere are unread-only.
  */
@@ -125,9 +123,6 @@ fun SourcesDrawer(
     onClearFilter: () -> Unit = {},
     onOpenSaved: () -> Unit = {},
     onOpenExplore: () -> Unit = {},
-    onOpenSettings: () -> Unit = {},
-    query: String,
-    onQueryChange: (String) -> Unit,
     content: @Composable () -> Unit,
 ) {
     val tree by viewModel.tree.collectAsStateWithLifecycle()
@@ -188,10 +183,6 @@ fun SourcesDrawer(
     onClearFilter = onClearFilter,
     onOpenSaved = onOpenSaved,
                     onOpenExplore = onOpenExplore,
-                    onOpenSettings = onOpenSettings,
-
-                    query = query,
-                    onQueryChange = onQueryChange,
                 )
             },
         ) {
@@ -330,10 +321,6 @@ private fun DrawerSheetContent(
     onClearFilter: () -> Unit,
     onOpenSaved: () -> Unit,
     onOpenExplore: () -> Unit,
-    onOpenSettings: () -> Unit,
-
-    query: String,
-    onQueryChange: (String) -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
     val expandedFolders = remember { mutableStateMapOf<String, Boolean>() }
@@ -341,34 +328,6 @@ private fun DrawerSheetContent(
         drawerContainerColor = palette.Ink,
         drawerContentColor = palette.OnInk,
     ) {
-        // Search field — the timeline's search now lives here
-        TextField(
-            value = query,
-            onValueChange = onQueryChange,
-            placeholder = { Text("Search feed…", color = palette.OnInkFaint, style = MaterialTheme.typography.bodyMedium) },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = palette.OnInkFaint, modifier = Modifier.size(20.dp)) },
-            trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { onQueryChange("") }, modifier = Modifier.size(20.dp)) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear", tint = palette.OnInkFaint, modifier = Modifier.size(16.dp))
-                    }
-                }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = palette.InkElevated,
-                unfocusedContainerColor = palette.InkElevated,
-                focusedIndicatorColor = palette.Accent,
-                unfocusedIndicatorColor = Color.Transparent,
-                cursorColor = palette.Accent,
-                focusedTextColor = palette.OnInk,
-                unfocusedTextColor = palette.OnInk,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -392,15 +351,6 @@ private fun DrawerSheetContent(
                 }
                 IconButton(onClick = onClearSelection, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Filled.Check, contentDescription = "Done", tint = palette.OnInkMuted, modifier = Modifier.size(18.dp))
-                }
-            } else {
-                IconButton(onClick = onAddTopLevelFolder, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        Icons.Filled.CreateNewFolder,
-                        contentDescription = "New folder",
-                        tint = palette.Accent,
-                        modifier = Modifier.size(18.dp),
-                    )
                 }
             }
         }
@@ -429,9 +379,6 @@ private fun DrawerSheetContent(
             }
             item(key = "read-later") {
                 ReadLaterRow(onClick = onOpenSaved)
-            }
-            item(key = "settings") {
-                SettingsRow(onClick = onOpenSettings)
             }
             tree.forEach { folder ->
                 val isExpanded = expandedFolders[folder.category.id] == true
@@ -554,6 +501,9 @@ private fun DrawerSheetContent(
                     }
                 }
             }
+            item(key = "new-folder") {
+                AddFolderRow(onClick = onAddTopLevelFolder)
+            }
         }
     }
 }
@@ -639,26 +589,26 @@ private fun ReadLaterRow(onClick: () -> Unit) {
 }
 
 @Composable
-private fun SettingsRow(onClick: () -> Unit) {
+private fun AddFolderRow(onClick: () -> Unit) {
     val palette = LocalSapphirePalette.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            Icons.Filled.Settings,
+            Icons.Filled.CreateNewFolder,
             contentDescription = null,
             tint = palette.OnInkMuted,
             modifier = Modifier.size(16.dp),
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            "Settings",
+            "New folder",
             style = MaterialTheme.typography.labelLarge,
-            color = palette.OnInk,
+            color = palette.OnInkMuted,
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -812,7 +762,7 @@ private fun DomainGroupHeader(
 
 /**
  * Source row. Inline action buttons are gone — per-source actions live in a context menu
- * (long-press, or swipe right past the threshold). Swipe LEFT past the threshold marks all
+ * (long-press, or swipe left past the threshold). Swipe RIGHT past the threshold marks all
  * of the source's items as read (the drawer-wide undo snackbar follows).
  *
  * The swipe threshold is a sixth of the row width — a short, deliberate gesture. The
@@ -864,24 +814,24 @@ private fun SourceRow(
     ) {
         // Action surfaces revealed by swipe. The row slides toward the swipe direction,
         // so the label sits in the gap that opens on the OPPOSITE side:
-        //  - swipe left (mark read)  → row moves left   → gap + label on the RIGHT
-        //  - swipe right (menu)      → row moves right  → gap + label on the LEFT
+        //  - swipe left (menu)       → row moves left   → gap + label on the RIGHT
+        //  - swipe right (mark read) → row moves right  → gap + label on the LEFT
         if (leftProgress > 0f) {
             SwipeActionSurface(
-                background = palette.Accent.copy(alpha = 0.28f * leftProgress),
-                tint = palette.Accent,
-                icon = Icons.Filled.DoneAll,
-                label = "Mark read",
+                background = palette.InkRaised.copy(alpha = 0.30f * leftProgress),
+                tint = palette.OnInkMuted,
+                icon = Icons.Filled.MoreVert,
+                label = "Menu",
                 contentAlignment = Alignment.CenterEnd,
                 labelFirst = false,
             )
         }
         if (rightProgress > 0f) {
             SwipeActionSurface(
-                background = palette.InkRaised.copy(alpha = 0.30f * rightProgress),
-                tint = palette.OnInkMuted,
-                icon = Icons.Filled.MoreVert,
-                label = "Menu",
+                background = palette.Accent.copy(alpha = 0.28f * rightProgress),
+                tint = palette.Accent,
+                icon = Icons.Filled.DoneAll,
+                label = "Mark read",
                 contentAlignment = Alignment.CenterStart,
                 labelFirst = true,
             )
@@ -901,8 +851,8 @@ private fun SourceRow(
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             when {
-                                swipeOffset <= -threshold -> onMarkAllRead()
-                                swipeOffset >= threshold -> menuOpen = true
+                                swipeOffset <= -threshold -> menuOpen = true
+                                swipeOffset >= threshold -> onMarkAllRead()
                             }
                             swipeOffset = 0f
                         },

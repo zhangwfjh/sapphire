@@ -32,10 +32,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
 import com.sapphire.domain.model.FeedItem
@@ -68,6 +72,7 @@ fun DenseFeedCard(
     Box(
         modifier
             .alpha(animatedAlpha)
+            .semantics { stateDescription = if (state.isRead) "Read" else "Unread" }
             .background(if (selected) palette.Accent.copy(alpha = 0.12f) else palette.Ink)
             .combinedClickable(onClick = onOpen, onLongClick = onLongPress),
     ) {
@@ -77,20 +82,20 @@ fun DenseFeedCard(
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Leading indicator: checkmark when selected, unread dot otherwise.
-            if (selected) {
-                Icon(Icons.Filled.Check, contentDescription = "Selected", tint = palette.Accent, modifier = Modifier.size(16.dp))
-            } else {
-                Box(
+            // Leading indicator: accent check when selected, accent dot when unread. Read state is
+            // conveyed by alpha + title weight alone — no redundant read badge.
+            when {
+                selected -> Icon(Icons.Filled.Check, contentDescription = "Selected", tint = palette.Accent, modifier = Modifier.size(16.dp))
+                !state.isRead -> Box(
                     Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(if (state.isRead) palette.InkStroke else palette.Accent),
+                        .background(palette.Accent),
                 )
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 ListTitle(item.title, read = state.isRead)
                 Spacer(Modifier.height(2.dp))
-                DenseMeta(item, read = state.isRead)
+                FeedMeta(item, read = state.isRead)
             }
         }
         // Hairline divider at the bottom
@@ -139,11 +144,22 @@ fun RichFeedCard(
                             .background(palette.InkRaised),
                         contentAlignment = Alignment.Center,
                     ) {
-                        AsyncImage(
-                            model = mediaUrl,
+                        SubcomposeAsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(mediaUrl)
+                                .crossfade(220)
+                                .build(),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
+                            error = {
+                                Icon(
+                                    Icons.Filled.RssFeed,
+                                    contentDescription = null,
+                                    tint = palette.OnInkFaint,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            },
                         )
                     }
                 }
@@ -161,7 +177,7 @@ fun RichFeedCard(
                         )
                     }
                     Spacer(Modifier.height(6.dp))
-                    ListMeta(item, read = state.isRead)
+                    FeedMeta(item, read = state.isRead)
                 }
             }
             if (selected) {
@@ -206,7 +222,7 @@ private fun ListTitle(text: String, read: Boolean) {
 }
 
 @Composable
-private fun ListMeta(item: FeedItem, read: Boolean) {
+private fun FeedMeta(item: FeedItem, read: Boolean) {
     val palette = LocalSapphirePalette.current
     val source = item.sourceTitle
         ?: item.agentTag
@@ -228,31 +244,6 @@ private fun ListMeta(item: FeedItem, read: Boolean) {
         }
     }
 }
-
-@Composable
-private fun DenseMeta(item: FeedItem, read: Boolean) {
-    val palette = LocalSapphirePalette.current
-    val source = item.sourceTitle
-        ?: item.agentTag
-        ?: item.platformTag?.let { com.sapphire.app.ui.design.PlatformLabels.forTag(it) }
-    val author = item.authorHandle?.takeIf { it.isNotBlank() }?.let { "@$it" }
-    val sep = " · "
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (!source.isNullOrBlank()) {
-            Icon(Icons.Filled.RssFeed, contentDescription = null, tint = if (read) palette.OnInkFaint else palette.Accent, modifier = Modifier.size(12.dp))
-            Text(source, style = SapphireMono.Label, color = if (read) palette.OnInkFaint else palette.OnInkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (!author.isNullOrBlank()) {
-            if (!source.isNullOrBlank()) Text(sep, style = SapphireMono.Label, color = palette.OnInkFaint)
-            Text(author, style = SapphireMono.Label, color = if (read) palette.OnInkFaint else palette.OnInkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        item.publishedAt?.let {
-            if (!source.isNullOrBlank() || !author.isNullOrBlank()) Text(sep, style = SapphireMono.Label, color = palette.OnInkFaint)
-            Text(relativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint, maxLines = 1)
-        }
-    }
-}
-
 
 /**
  * Card container surface — borderless ink-elevated background; read state is conveyed by

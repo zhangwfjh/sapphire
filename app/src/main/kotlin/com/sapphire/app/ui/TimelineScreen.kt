@@ -34,6 +34,8 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Markunread
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SwipeToDismissBox
@@ -48,11 +50,14 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -120,6 +125,8 @@ fun TimelineScreen(
     val hasAnyItems by viewModel.hasAnyItems.collectAsStateWithLifecycle()
     val feedScope by viewModel.feedScope.collectAsStateWithLifecycle()
     val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
+    val hasTopic by viewModel.hasTopic.collectAsStateWithLifecycle()
+    val firstRefreshDone by viewModel.firstRefreshDone.collectAsStateWithLifecycle()
 
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -143,6 +150,19 @@ fun TimelineScreen(
     val selectedItems = remember { mutableStateMapOf<String, Boolean>() }
     val inSelection = selectedItems.any { it.value }
 
+    // Surface refresh-time source errors as a non-blocking snackbar with a Retry action.
+    LaunchedEffect(Unit) {
+        viewModel.refreshErrorEvents.collect { failedCount ->
+            val result = snackbarHostState.showSnackbar(
+                message = "Couldn't refresh $failedCount source${if (failedCount == 1) "" else "s"}.",
+                actionLabel = "Retry",
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) viewModel.refresh()
+        }
+    }
+
+
     // Shared per-item interaction handlers — identical across every layout variant, so the
     // card plumbing is written once and passed to whichever card the active view renders.
     fun itemToggleRead(item: com.sapphire.domain.model.FeedItem): () -> Unit = {
@@ -162,8 +182,6 @@ fun TimelineScreen(
 
     SourcesDrawer(
         drawerState = sourcesDrawerState,
-        query = query,
-        onQueryChange = viewModel::setQuery,
         onCategoryClick = { ids, label ->
             viewModel.setCategoryFilter(ids, label)
             sourcesDrawerScope.launch { sourcesDrawerState.close() }
@@ -187,10 +205,6 @@ fun TimelineScreen(
             sourcesDrawerScope.launch { sourcesDrawerState.close() }
             onOpenExplore()
         },
-        onOpenSettings = {
-            sourcesDrawerScope.launch { sourcesDrawerState.close() }
-            onOpenSettings()
-        },
     ) {
 
     Scaffold(
@@ -201,6 +215,8 @@ fun TimelineScreen(
                 title = if (inSelection) "${selectedItems.count { it.value }} selected"
                     else filterLabel ?: "All Feeds",
                 inSelection = inSelection,
+                query = query,
+                onQueryChange = viewModel::setQuery,
                 onOpenLeftDrawer = { sourcesDrawerScope.launch { sourcesDrawerState.open() } },
                 onOpenSettings = { rightDrawerOpen = true },
                 onClearSelection = { selectedItems.clear() },
@@ -213,8 +229,17 @@ fun TimelineScreen(
                     selectedItems.clear()
                 },
                 onRemove = {
+                    val count = selectedItems.count { it.value }
                     viewModel.deleteItems(selectedItems.filter { it.value }.keys)
                     selectedItems.clear()
+                    sourcesDrawerScope.launch {
+                        val result = snackbarHostState.showSnackbar(
+                            message = "Removed $count item${if (count == 1) "" else "s"}.",
+                            actionLabel = "Undo",
+                            duration = SnackbarDuration.Long,
+                        )
+                        if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete()
+                    }
                 },
             )
         },
@@ -245,6 +270,9 @@ fun TimelineScreen(
                         padding = PaddingValues(0.dp),
                         onRefresh = viewModel::refresh,
                         onBuildFeed = onBuildFeed,
+                        hasTopic = hasTopic,
+                        refreshing = refreshing,
+                        firstRefreshDone = firstRefreshDone,
                     )
                     timeline.isEmpty() && searching -> NoSearchMatches(
                         query = query,
@@ -389,6 +417,8 @@ private fun JumpToTopFab(
 private fun TimelineTopBar(
     title: String,
     inSelection: Boolean,
+    query: String,
+    onQueryChange: (String) -> Unit,
     onOpenLeftDrawer: () -> Unit,
     onOpenSettings: () -> Unit,
     onClearSelection: () -> Unit,
@@ -397,25 +427,52 @@ private fun TimelineTopBar(
     onRemove: () -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
+    var isSearchActive by rememberSaveable { mutableStateOf(false) }
     TopAppBar(
         navigationIcon = {
-            IconButton(onClick = if (inSelection) onClearSelection else onOpenLeftDrawer) {
-                Icon(
-                    if (inSelection) Icons.Filled.Close else Icons.Filled.Menu,
-                    contentDescription = if (inSelection) "Exit selection" else "Sources & search",
-                    tint = palette.OnInkMuted,
-                )
+            if (isSearchActive && !inSelection) {
+                IconButton(onClick = { onQueryChange(""); isSearchActive = false }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close search", tint = palette.OnInkMuted)
+                }
+            } else {
+                IconButton(onClick = if (inSelection) onClearSelection else onOpenLeftDrawer) {
+                    Icon(
+                        if (inSelection) Icons.Filled.Close else Icons.Filled.Menu,
+                        contentDescription = if (inSelection) "Exit selection" else "Sources",
+                        tint = palette.OnInkMuted,
+                    )
+                }
             }
         },
         title = {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                color = palette.OnInk,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (isSearchActive && !inSelection) {
+                TextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    placeholder = { Text("Search feed", color = palette.OnInkFaint) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = palette.InkElevated,
+                        unfocusedContainerColor = palette.InkElevated,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = palette.Accent,
+                        focusedTextColor = palette.OnInk,
+                        unfocusedTextColor = palette.OnInk,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.OnInk,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         },
         actions = {
             if (inSelection) {
@@ -429,6 +486,11 @@ private fun TimelineTopBar(
                     Icon(Icons.Outlined.DeleteOutline, contentDescription = "Remove", tint = palette.Danger)
                 }
             } else {
+                if (!isSearchActive) {
+                    IconButton(onClick = { isSearchActive = true }) {
+                        Icon(Icons.Filled.Search, contentDescription = "Search", tint = palette.OnInkMuted)
+                    }
+                }
                 IconButton(onClick = onOpenSettings) {
                     Icon(Icons.Filled.Tune, contentDescription = "View & preferences", tint = palette.OnInkMuted)
                 }
@@ -446,8 +508,14 @@ private fun EmptyTimeline(
     padding: PaddingValues,
     onRefresh: () -> Unit,
     onBuildFeed: () -> Unit,
+    hasTopic: Boolean,
+    refreshing: Boolean,
+    firstRefreshDone: Boolean,
 ) {
     val palette = LocalSapphirePalette.current
+    // Cold-start copy: a brand-new install with no sources has nothing to refresh, so lead
+    // with "Curate". Once a topic exists, sources exist and Refresh is meaningful again.
+    val isColdStart = !hasTopic
     Box(
         Modifier
             .fillMaxSize()
@@ -472,23 +540,32 @@ private fun EmptyTimeline(
             ) {
                 Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = palette.Accent)
             }
-            SectionEyebrow("EMPTY FEED")
+            SectionEyebrow(if (isColdStart) "WELCOME" else "EMPTY FEED")
             Text(
-                stringResource(R.string.timeline_empty_title),
+                if (isColdStart) "Curate your first feed" else stringResource(R.string.timeline_empty_title),
                 style = MaterialTheme.typography.headlineMedium,
                 textAlign = TextAlign.Center,
                 color = palette.OnInk,
             )
             Text(
-                stringResource(R.string.timeline_empty_body),
+                if (isColdStart)
+                    "Type a topic and AI builds the taxonomy, sources the feeds, and curates the stream — no accounts, all on-device."
+                else stringResource(R.string.timeline_empty_body),
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = palette.OnInkMuted,
             )
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PrimaryActionButton(onRefresh, "Refresh feeds")
-                SecondaryActionButton(onBuildFeed, "Curate with AI")
+                // On cold start, "Curate with AI" is primary and Refresh is hidden (nothing
+                // to refresh). After a topic exists, Refresh leads so the user can pull
+                // fresh items; Curate stays as a secondary path.
+                if (isColdStart) {
+                    PrimaryActionButton(onBuildFeed, "Curate with AI")
+                } else {
+                    PrimaryActionButton(onRefresh, if (refreshing) "Refreshing…" else "Refresh feeds")
+                    SecondaryActionButton(onBuildFeed, "Curate with AI")
+                }
             }
         }
     }
