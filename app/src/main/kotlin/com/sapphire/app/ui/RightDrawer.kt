@@ -35,6 +35,7 @@ fun RightDrawer(
     visible: Boolean,
     onDismiss: () -> Unit,
     density: UiPrefsStore.FeedDensity,
+    showDensity: Boolean = true,
     onDensityChange: (UiPrefsStore.FeedDensity) -> Unit,
     themePreference: com.sapphire.domain.settings.ThemePreference,
     onThemeChange: (com.sapphire.domain.settings.ThemePreference) -> Unit,
@@ -84,16 +85,18 @@ fun RightDrawer(
                 )
 
                 HorizontalDivider(color = palette.InkStroke)
-
                 // Density
-                PrefSectionLabel("Density")
-                SegmentedRow(
-                    options = listOf("Dense" to true, "Rich" to false),
-                    selected = density.isDense,
-                    optionValue = { it.second },
-                    optionLabel = { it.first },
-                    onSelect = { onDensityChange(UiPrefsStore.FeedDensity(it)) },
-                )
+                if (showDensity) {
+                    // Density
+                    PrefSectionLabel("Density")
+                    SegmentedRow(
+                        options = listOf("Dense" to true, "Rich" to false),
+                        selected = density.isDense,
+                        optionValue = { it.second },
+                        optionLabel = { it.first },
+                        onSelect = { onDensityChange(UiPrefsStore.FeedDensity(it)) },
+                    )
+                }
 
                 // Theme
                 PrefSectionLabel("Theme")
@@ -115,9 +118,9 @@ fun RightDrawer(
                 PrefSectionLabel("Translate view")
                 SegmentedRow(
                     options = listOf(
-                        "双/A" to TranslateViewMode.BILINGUAL,
+                        "Bilingual" to TranslateViewMode.BILINGUAL,
                         "Origin" to TranslateViewMode.ORIGIN,
-                        "译" to TranslateViewMode.TRANSLATION,
+                        "Translation" to TranslateViewMode.TRANSLATION,
                     ),
                     selected = translateView,
                     optionValue = { it.second },

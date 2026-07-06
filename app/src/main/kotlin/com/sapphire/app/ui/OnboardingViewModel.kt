@@ -3,6 +3,7 @@ package com.sapphire.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sapphire.domain.llm.LlmOutcome
+import com.sapphire.domain.llm.LlmError
 import com.sapphire.domain.onboarding.CurateTaxonomyUseCase
 import com.sapphire.domain.onboarding.OnboardingRepository
 import com.sapphire.domain.review.ReviewEdit
@@ -23,7 +24,7 @@ sealed interface OnboardingUiState {
     data class Review(val model: ReviewModel) : OnboardingUiState
     data class Committing(val model: ReviewModel) : OnboardingUiState
     data class Committed(val topicId: String) : OnboardingUiState
-    data class Error(val message: String) : OnboardingUiState
+    data class Error(val message: String, val notConfigured: Boolean = false) : OnboardingUiState
 }
 
 @HiltViewModel
@@ -39,7 +40,10 @@ class OnboardingViewModel @Inject constructor(
         _state.value = OnboardingUiState.Loading
         viewModelScope.launch {
             when (val outcome = curate(phrase)) {
-                is LlmOutcome.Err -> _state.value = OnboardingUiState.Error(outcome.error.userMessage())
+                is LlmOutcome.Err -> _state.value = OnboardingUiState.Error(
+                    message = outcome.error.userMessage(),
+                    notConfigured = outcome.error is LlmError.NotConfigured,
+                )
                 is LlmOutcome.Ok -> _state.value = OnboardingUiState.Review(outcome.value)
             }
         }

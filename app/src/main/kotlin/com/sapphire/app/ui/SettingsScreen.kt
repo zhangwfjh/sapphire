@@ -2,6 +2,9 @@ package com.sapphire.app.ui
 
 import java.util.Locale
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -202,7 +206,33 @@ fun SettingsScreen(
             ClearRow("Feed items", "${bd.feedItems} · ${formatBytes(bd.feedItemsBytes)}", "Remove all feed items? Sources and saved items are kept.") { confirmDialog = ClearAction.FEED_ITEMS }
             ClearRow("Reader cache", "${bd.readerCache} · ${formatBytes(bd.readerCacheBytes)}", "Remove all extracted article bodies and LLM caches?") { confirmDialog = ClearAction.READER_CACHE }
             ClearRow("Saved items", "${bd.savedItems} · ${formatBytes(bd.savedItemsBytes)}", "Remove all saved items? Feed items are kept.") { confirmDialog = ClearAction.SAVED }
-            ClearRow("Reset all data", formatBytes(bd.totalBytes), "Erase everything and re-seed defaults? This cannot be undone.") { confirmDialog = ClearAction.ALL }
+
+            Spacer(Modifier.height(32.dp))
+
+            // ── Danger Zone ──
+            SectionEyebrow("DANGER ZONE")
+            Spacer(Modifier.height(12.dp))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, palette.Danger, RoundedCornerShape(10.dp))
+                    .background(palette.InkElevated, RoundedCornerShape(10.dp))
+                    .clickable { confirmDialog = ClearAction.ALL }
+                    .padding(14.dp),
+            ) {
+                Text(
+                    "Reset all data",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = palette.Danger,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Erase everything and re-seed defaults. This cannot be undone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.OnInkFaint,
+                )
+            }
 
             Spacer(Modifier.height(32.dp))
 
@@ -231,7 +261,7 @@ fun SettingsScreen(
                         ClearAction.ALL -> viewModel.clearAll()
                     }
                     confirmDialog = null
-                }) { Text("Confirm", color = palette.Danger) }
+                }) { Text(if (action == ClearAction.ALL) "I understand — erase everything" else "Confirm", color = palette.Danger) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDialog = null }) { Text("Cancel") }

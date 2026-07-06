@@ -38,7 +38,9 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
+import androidx.compose.foundation.Image
 import coil.request.ImageRequest
 import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
@@ -109,9 +111,9 @@ fun DenseFeedCard(
 /**
  * Card variant — X/Reddit-style hero layout: a full-width 16:9 image above a stacked
  * title + 2-line summary + meta line. Falls back to a text-only column (title up to 3
- * lines) when the item has no media. Image load failures render as a quiet InkRaised
- * placeholder slot rather than a broken-image icon. Same selection / open semantics as
- * [ListFeedCard]; the unread accent rail and selection badge come from [FeedCardSurface].
+ * lines) when the item has no media or when the image fails to load — the cover slot
+ * collapses entirely rather than showing a placeholder. Same selection / open semantics
+ * as [ListFeedCard]; the unread accent rail and selection badge come from [FeedCardSurface].
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -126,6 +128,15 @@ fun RichFeedCard(
     val state = rememberFeedCardState(item.readState)
     val palette = LocalSapphirePalette.current
     val mediaUrl = item.mediaUrl?.takeIf { it.isNotBlank() }
+    val painter = mediaUrl?.let {
+        rememberAsyncImagePainter(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(it)
+                .crossfade(220)
+                .build(),
+        )
+    }
+    val hasCover = painter != null && painter.state !is AsyncImagePainter.State.Error
     FeedCardSurface(
         read = state.isRead,
         alpha = state.containerAlpha,
@@ -136,7 +147,7 @@ fun RichFeedCard(
     ) {
         Box {
             Column {
-                if (mediaUrl != null) {
+                if (hasCover) {
                     Box(
                         Modifier
                             .fillMaxWidth()
@@ -144,27 +155,16 @@ fun RichFeedCard(
                             .background(palette.InkRaised),
                         contentAlignment = Alignment.Center,
                     ) {
-                        SubcomposeAsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(mediaUrl)
-                                .crossfade(220)
-                                .build(),
+                        Image(
+                            painter = painter!!,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
-                            error = {
-                                Icon(
-                                    Icons.Filled.RssFeed,
-                                    contentDescription = null,
-                                    tint = palette.OnInkFaint,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            },
                         )
                     }
                 }
                 Column(Modifier.padding(12.dp)) {
-                    Title(item.title, read = state.isRead, maxLines = if (mediaUrl != null) 2 else 3)
+                    Title(item.title, read = state.isRead, maxLines = if (hasCover) 2 else 3)
                     val summary = item.summary
                     if (!summary.isNullOrBlank()) {
                         Spacer(Modifier.height(4.dp))

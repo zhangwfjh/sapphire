@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -64,6 +65,7 @@ import com.sapphire.app.ui.theme.SapphireMono
 fun OnboardingScreen(
     onReviewReady: () -> Unit,
     onCommitted: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -95,12 +97,19 @@ fun OnboardingScreen(
                 enabled = phrase.isNotBlank() && state !is OnboardingUiState.Loading,
                 loading = state is OnboardingUiState.Loading,
             )
+            TopicChips(onPhraseChange = { phrase = it })
             Spacer(Modifier.height(48.dp))
             when (val s = state) {
                 is OnboardingUiState.Loading -> CuratingState()
                 is OnboardingUiState.Error -> ErrorModal(
-                    message = s.message,
+                    message = if (s.notConfigured) {
+                        "Add your LLM API key in Settings to start curating."
+                    } else {
+                        s.message
+                    },
+                    notConfigured = s.notConfigured,
                     onDismiss = viewModel::dismissError,
+                    onOpenSettings = onOpenSettings,
                 )
                 else -> Unit
             }
@@ -238,7 +247,12 @@ private fun CuratingState() {
 }
 
 @Composable
-private fun ErrorModal(message: String, onDismiss: () -> Unit) {
+private fun ErrorModal(
+    message: String,
+    notConfigured: Boolean = false,
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit = {},
+) {
     val palette = LocalSapphirePalette.current
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -246,18 +260,37 @@ private fun ErrorModal(message: String, onDismiss: () -> Unit) {
             Box(
                 Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(palette.Accent)
-                    .clickable(onClick = onDismiss)
+                    .background(if (notConfigured) palette.Danger else palette.Accent)
+                    .clickable(onClick = if (notConfigured) onOpenSettings else onDismiss)
                     .padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
                 Text(
-                    stringResource(R.string.onboarding_error_dismiss).uppercase(),
+                    (if (notConfigured) "Open Settings" else stringResource(R.string.onboarding_error_dismiss))
+                        .uppercase(),
                     style = SapphireMono.Label,
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
         },
+        dismissButton = if (notConfigured) {
+            {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, palette.InkStrokeStrong, RoundedCornerShape(6.dp))
+                        .clickable(onClick = onDismiss)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.onboarding_error_dismiss).uppercase(),
+                        style = SapphireMono.Label,
+                        color = palette.OnInkMuted,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        } else null,
         containerColor = palette.InkElevated,
         titleContentColor = palette.OnInk,
         title = {
@@ -275,4 +308,46 @@ private fun ErrorModal(message: String, onDismiss: () -> Unit) {
             )
         },
     )
+}
+
+@Composable
+private fun TopicChips(onPhraseChange: (String) -> Unit) {
+    val topics = listOf(
+        "Artificial Intelligence",
+        "Climate Tech",
+        "Biohacking",
+        "Space Industry",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionEyebrow("TRY A TOPIC")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            topics.forEach { topic ->
+                TopicChip(topic = topic, onClick = { onPhraseChange(topic) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun TopicChip(topic: String, onClick: () -> Unit) {
+    val palette = LocalSapphirePalette.current
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(palette.InkElevated)
+            .border(1.dp, palette.InkStroke, RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(
+            topic.uppercase(),
+            style = SapphireMono.Label,
+            color = palette.OnInkMuted,
+        )
+    }
 }

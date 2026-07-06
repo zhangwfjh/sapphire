@@ -2,6 +2,7 @@ package com.sapphire.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +50,7 @@ import java.util.Date
 fun SavedItemsScreen(
     viewModel: SavedItemsViewModel = hiltViewModel(),
     onBack: () -> Unit,
+    onOpen: (String) -> Unit = {},
 ) {
     val palette = LocalSapphirePalette.current
     val items by viewModel.items.collectAsStateWithLifecycle()
@@ -89,7 +91,7 @@ fun SavedItemsScreen(
                 ),
             ) {
                 items(items, key = { it.itemId }) { item ->
-                    SavedRow(item = item, onUnsave = viewModel::unsave)
+                    SavedRow(item = item, onUnsave = viewModel::unsave, onOpen = onOpen)
                 }
             }
         }
@@ -100,6 +102,7 @@ fun SavedItemsScreen(
 private fun SavedRow(
     item: com.sapphire.domain.model.SavedItemDetails,
     onUnsave: (String) -> Unit,
+    onOpen: (String) -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
     Row(
@@ -109,6 +112,7 @@ private fun SavedRow(
             .clip(RoundedCornerShape(10.dp))
             .background(palette.InkElevated)
             .border(1.dp, palette.InkStroke, RoundedCornerShape(10.dp))
+            .clickable { onOpen(item.itemId) }
             .padding(14.dp),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

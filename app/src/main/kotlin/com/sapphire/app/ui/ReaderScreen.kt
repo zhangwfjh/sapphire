@@ -12,9 +12,6 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.SmallFloatingActionButton
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -30,7 +27,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,19 +35,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Markunread
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -59,13 +53,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -78,7 +68,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -89,21 +78,21 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sapphire.app.ui.design.PlatformBadge
-import com.sapphire.app.ui.design.SectionEyebrow
 import com.sapphire.app.ui.design.ShimmerBlock
 import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
 import com.sapphire.domain.model.ReadState
+import com.sapphire.domain.reader.toPlainParagraphs
 import com.sapphire.domain.settings.TranslateViewMode
 import com.sapphire.domain.settings.UiPrefsStore
 
 /**
- * PRD §3.4 Full-Screen Reader + §3.5 Context-Aware Dynamic AI Operations.
+ * PRD §3.4 Full-Screen Reader.
  *
- * Full navigation route (promoted from the old ReaderSheet overlay). The top toolbar carries
- * back, read/unread, save, open-in-browser, AI summarize, and preferences — and auto-hides
- * on scroll-down / shows on scroll-up. Translate auto-fires when the view mode is BILINGUAL
- * or TRANSLATION. A search-style custom prompt sits at the end of the scrolling body.
+ * Full navigation route (promoted from the old ReaderSheet overlay). The action row carries
+ * read/unread, save, share, open-in-browser, and preferences — and auto-hides on scroll-down
+ * / shows on scroll-up. The back chevron stays pinned and always tappable. Translate auto-fires
+ * when the view mode is BILINGUAL or TRANSLATION.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,6 +142,7 @@ fun ReaderScreen(
     RightDrawer(
         visible = rightDrawerOpen,
         onDismiss = { rightDrawerOpen = false },
+        showDensity = false,
         density = UiPrefsStore.FeedDensity(true),
         onDensityChange = {},
         themePreference = themePreference,
@@ -164,14 +154,14 @@ fun ReaderScreen(
 }
 
 /**
- * Reader top toolbar — back, read/unread toggle, save, open-in-browser, AI summarize,
- * preferences. Auto-hides on scroll-down, shows on scroll-up.
+ * Reader action row — read/unread toggle, save, share, open-in-browser, preferences.
+ * Auto-hides on scroll-down, shows on scroll-up. The persistent back chevron lives
+ * outside this row in [ReaderContent] so it stays tappable at all scroll positions.
  */
 @Composable
 private fun ReaderTopBar(
     state: ReaderUiState.Open,
     viewModel: ReaderViewModel,
-    onBack: () -> Unit,
     onOpenRightDrawer: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -180,9 +170,6 @@ private fun ReaderTopBar(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
-        }
         Spacer(Modifier.weight(1f))
         IconButton(onClick = viewModel::toggleRead) {
             Icon(
@@ -199,6 +186,19 @@ private fun ReaderTopBar(
             )
         }
         val url = state.item.url
+        val title = state.item.title
+        IconButton(onClick = {
+            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(
+                    android.content.Intent.EXTRA_TEXT,
+                    if (url.isNullOrBlank()) title else "$title $url",
+                )
+            }
+            runCatching { context.startActivity(android.content.Intent.createChooser(send, null)) }
+        }) {
+            Icon(Icons.Filled.Share, contentDescription = "Share", tint = palette.OnInkMuted)
+        }
         if (!url.isNullOrBlank()) {
             IconButton(onClick = { openInAppBrowser(context, url) }) {
                 Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open", tint = palette.OnInkMuted)
@@ -263,6 +263,18 @@ private fun ReaderContent(
                     item.publishedAt?.let {
                         Text("· " + formatRelativeTime(it), style = SapphireMono.Label, color = palette.OnInkFaint)
                     }
+                    // Reading-time estimate (200 wpm) from the resolved article body, or
+                    // the feed body while extraction is still in flight. Hidden when <1 min.
+                    val readingMinutes by remember(state.item.hashUuid, state.articleBlocks, state.blocks) {
+                        derivedStateOf {
+                            val paras = (state.articleBlocks ?: state.blocks).toPlainParagraphs()
+                            val words = paras.sumOf { it.split(WS_REGEX).count { w -> w.isNotBlank() } }
+                            (words + READING_WPM - 1) / READING_WPM // ceil
+                        }
+                    }
+                    if (readingMinutes >= 1) {
+                        Text("· $readingMinutes min", style = SapphireMono.Label, color = palette.OnInkFaint)
+                    }
                 }
                 Spacer(Modifier.height(10.dp))
 
@@ -320,7 +332,7 @@ private fun ReaderContent(
                 Spacer(Modifier.height(80.dp))
             }
         }
-        // Auto-hiding top bar overlay
+        // Auto-hiding action row overlay (read/unread, save, share, open, tune)
         AnimatedVisibility(
             visible = topBarVisible,
             enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
@@ -328,116 +340,20 @@ private fun ReaderContent(
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
             Box(Modifier.fillMaxWidth().background(palette.ReaderPaper)) {
-                ReaderTopBar(state, viewModel, onBack, onOpenRightDrawer)
+                ReaderTopBar(state, viewModel, onOpenRightDrawer)
             }
         }
 
-        // Jump-to-top / jump-to-bottom (bottom-right)
-        ReaderJumpButtons(
-            scrollState = scrollState,
-            onJumpToTop = { scope.launch { scrollState.animateScrollBy(-scrollState.value.toFloat()) } },
-            onJumpToBottom = { scope.launch { scrollState.animateScrollBy((scrollState.maxValue - scrollState.value).toFloat()) } },
-        )
-
-        // Floating AI button — bottom-start, pops up discrete action buttons
-        var aiExpanded by remember { mutableStateOf(false) }
-        if (aiExpanded) {
-            // Scrim to dismiss
-            Box(
-                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f))
-                    .clickable { aiExpanded = false },
-            )
-        }
-        Column(
-            Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = 24.dp),
-            horizontalAlignment = Alignment.Start,
+        // Persistent back chevron — always tappable, pinned top-start outside the auto-hide
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(horizontal = 4.dp),
         ) {
-            // Speed-dial actions (shown above the FAB)
-            AnimatedVisibility(
-                visible = aiExpanded,
-                enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp), horizontalAlignment = Alignment.Start) {
-                    // Context ops
-                    if (state.classification is ClassificationState.Done && state.macros.isNotEmpty()) {
-                        state.macros.forEach { macro ->
-                            AiActionPill(label = macro.label) {
-                                aiExpanded = false
-                            }
-                        }
-                    }
-                    // Ask AI
-                    var askText by remember { mutableStateOf("") }
-                    val keyboard = LocalSoftwareKeyboardController.current
-                    Row(
-                        Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(palette.InkElevated)
-                            .border(1.dp, palette.InkStroke, RoundedCornerShape(20.dp))
-                            .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedTextField(
-                            value = askText,
-                            onValueChange = { askText = it },
-                            placeholder = { Text("Ask AI…", style = MaterialTheme.typography.bodySmall, color = palette.OnInkFaint) },
-                            textStyle = MaterialTheme.typography.bodySmall.copy(color = palette.ReaderInk),
-                            singleLine = true,
-                            modifier = Modifier.width(160.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedBorderColor = Color.Transparent,
-                                unfocusedBorderColor = Color.Transparent,
-                                cursorColor = palette.Accent,
-                            ),
-                        )
-                        Box(
-                            Modifier.size(28.dp).clip(RoundedCornerShape(50))
-                                .background(if (askText.isNotBlank()) palette.Accent else palette.InkRaised)
-                                .clickable(enabled = askText.isNotBlank()) { askText = ""; keyboard?.hide() },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = if (askText.isNotBlank()) Color.White else palette.OnInkFaint, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            // The AI FAB itself
-            SmallFloatingActionButton(
-                onClick = { aiExpanded = !aiExpanded },
-                containerColor = if (aiExpanded) palette.InkRaised else palette.Accent,
-                contentColor = if (aiExpanded) palette.OnInk else Color.White,
-            ) {
-                Icon(
-                    if (aiExpanded) Icons.Filled.Close else Icons.Filled.AutoAwesome,
-                    contentDescription = "AI ops",
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.OnInk)
         }
-    }
-}
-
-@Composable
-private fun AiActionPill(label: String, onClick: () -> Unit) {
-    val palette = LocalSapphirePalette.current
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(palette.InkElevated)
-            .border(1.dp, palette.InkStroke, RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.Accent, modifier = Modifier.size(14.dp))
-        Text(label, style = MaterialTheme.typography.bodySmall, color = palette.OnInk, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -484,51 +400,6 @@ private fun ReaderJumpButtons(
                 ) { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Jump to bottom") }
             }
         }
-    }
-}
-
-@Composable
-private fun MacroSlot(state: ReaderUiState.Open) {
-    val palette = LocalSapphirePalette.current
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionEyebrow("CONTEXT OPS")
-        when (state.classification) {
-            is ClassificationState.Loading -> {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ShimmerBlock(width = 140.dp)
-                    ShimmerBlock(width = 100.dp)
-                }
-            }
-            is ClassificationState.Error -> {
-                Text("Classification unavailable", style = SapphireMono.Body, color = palette.OnInkFaint)
-            }
-            is ClassificationState.Done -> {
-                if (state.macros.isEmpty()) {
-                    Text(state.classification.label.uppercase(), style = SapphireMono.Label, color = palette.OnInkMuted)
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        state.macros.forEach { macro -> MacroChip(label = macro.label) }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MacroChip(label: String) {
-    val palette = LocalSapphirePalette.current
-    Row(
-        Modifier.clip(RoundedCornerShape(6.dp))
-            .background(palette.Accent.copy(alpha = 0.12f))
-            .border(1.dp, palette.Accent.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
-            .clickable {}
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.AccentBright, modifier = Modifier.size(12.dp))
-        Text(label, style = SapphireMono.Label, color = palette.AccentBright, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -694,60 +565,6 @@ private fun StreamingCaretLabel(text: String, color: Color) {
     )
 }
 
-/**
- * Search-style AI prompt field — pill-shaped, sparkle leading icon, send button.
- */
-@Composable
-private fun CustomPromptField() {
-    val palette = LocalSapphirePalette.current
-    var prompt by remember { mutableStateOf("") }
-    val keyboard = LocalSoftwareKeyboardController.current
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
-            .background(palette.InkElevated)
-            .border(1.dp, palette.InkStroke, RoundedCornerShape(24.dp))
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Filled.AutoAwesome,
-            contentDescription = null,
-            tint = palette.OnInkFaint,
-            modifier = Modifier.padding(start = 12.dp).size(16.dp),
-        )
-        OutlinedTextField(
-            value = prompt,
-            onValueChange = { prompt = it },
-            placeholder = {
-                Text("Ask AI…", style = MaterialTheme.typography.bodySmall, color = palette.OnInkFaint)
-            },
-            textStyle = MaterialTheme.typography.bodySmall.copy(color = palette.ReaderInk),
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedBorderColor = Color.Transparent,
-                unfocusedBorderColor = Color.Transparent,
-                cursorColor = palette.Accent,
-            ),
-        )
-        Box(
-            Modifier.size(32.dp).clip(RoundedCornerShape(50))
-                .background(if (prompt.isNotBlank()) palette.Accent else palette.InkRaised)
-                .clickable(enabled = prompt.isNotBlank()) { prompt = ""; keyboard?.hide() },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.Send,
-                contentDescription = "Send",
-                tint = if (prompt.isNotBlank()) Color.White else palette.OnInkFaint,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-    }
-}
-
 private fun openInAppBrowser(context: android.content.Context, url: String) {
     val customTabsIntent = androidx.browser.customtabs.CustomTabsIntent.Builder()
         .setShowTitle(true)
@@ -765,3 +582,6 @@ private fun formatRelativeTime(epochMs: Long): String {
         else -> "${mins / (30 * 24 * 60)}mo"
     }
 }
+
+private const val READING_WPM = 200
+private val WS_REGEX = Regex("\\s+")

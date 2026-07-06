@@ -9,7 +9,11 @@ import com.sapphire.data.feed.FeedRefreshService
 import com.sapphire.domain.feed.filterByQuery
 import com.sapphire.domain.model.FeedItem
 import com.sapphire.domain.model.ReadMechanism
+import com.sapphire.domain.source.SourceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +22,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -30,14 +35,15 @@ import javax.inject.Inject
  * ([markReadOnOpen]) or the manual mark-read button / batch mark-read. There is no
  * scroll-to-mark-read; scrolling never changes read state.
  */
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 @HiltViewModel
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 class FeedViewModel @Inject constructor(
     private val repository: FeedRepository,
     private val refreshService: FeedRefreshService,
     private val uiPrefsStore: UiPrefsStore,
     private val savedItemRepository: com.sapphire.domain.save.SavedItemRepository,
     private val themeConfigStore: com.sapphire.domain.settings.ThemeConfigStore,
+    private val sourceRepository: SourceRepository,
 ) : ViewModel() {
 
     /** In-feed free-text search query. Blank = full timeline. */
@@ -53,9 +59,28 @@ class FeedViewModel @Inject constructor(
     /** Active read-state scope chip (All / Unread / Saved). Applied client-side. */
     private val _scope = MutableStateFlow(FeedScope.ALL)
     val feedScope: StateFlow<FeedScope> = _scope.asStateFlow()
-
     /** Active source/category filter; null = unified timeline (all sources). */
     private val _filter = MutableStateFlow<FeedFilter?>(null)
+
+    /**
+     * Items staged for deletion but not yet committed. Kept out of [visibleTimeline] so the
+     * UI hides them immediately while an Undo snackbar is showing; committed after a short
+     * delay (or cancelled wholesale by [undoDelete]).
+     */
+    private val _pendingDeletion = MutableStateFlow<Set<String>>(emptySet())
+    private var deleteCommitJob: Job? = null
+
+    /** "Has the user ever onboarded a topic?" — gates the true cold-start empty state. */
+    val hasTopic: StateFlow<Boolean> = sourceRepository.observeHasTopic()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /** True once the first refresh pass has completed (success or fail). */
+    private val _firstRefreshDone = MutableStateFlow(false)
+    val firstRefreshDone: StateFlow<Boolean> = _firstRefreshDone.asStateFlow()
+
+    /** One-shot stream of non-zero source-error counts from a completed refresh pass. */
+    private val _refreshErrorEvents = Channel<Int>(Channel.BUFFERED)
+    val refreshErrorEvents = _refreshErrorEvents.receiveAsFlow()
 
     val visibleTimeline: StateFlow<List<FeedItem>> = combine(
         _filter.flatMapLatest { f ->
@@ -70,7 +95,10 @@ class FeedViewModel @Inject constructor(
         // allocations per item) on every character. Also dedups consecutive equal queries.
         _query.debounce(QUERY_DEBOUNCE_MS).distinctUntilChanged(),
         _scope,
-    ) { items, q, scope -> items.filterByQuery(q).filterByScope(scope) }
+        _pendingDeletion,
+    ) { items, q, scope, pending ->
+        items.filterByQuery(q).filterByScope(scope).filter { it.hashUuid !in pending }
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Update the in-feed search query. Blank restores the full (filtered) timeline. */
@@ -136,28 +164,30 @@ class FeedViewModel @Inject constructor(
         // / onboarding flow), which would needlessly re-fetch.
         refresh()
     }
-
     /**
-     * Silent streaming refresh: fetches sources concurrently and inserts items as each
-     * source completes, so the live timeline updates incrementally. No "N new" snackbar —
-     * the timeline itself is the feedback. Errors are swallowed (health state is still
-     * stamped on the source row for the drawer).
+     * Streaming refresh: fetches sources concurrently and inserts items as each completes,
+     * so the live timeline updates incrementally. Source errors are tallied and surfaced
+     * via [refreshErrorEvents] when the pass ends with ≥1 failure (the timeline itself is
+     * still the success signal — no "N new" toast). Any throw is swallowed so refresh can
+     * never crash the app; per-source health state is still stamped for the drawer.
      */
     fun refresh() {
         viewModelScope.launch {
             if (_refreshing.value) return@launch
             _refreshing.value = true
+            var errorCount = 0
             try {
-                refreshService.refreshStreaming().collect { /* silent — timeline updates live */ }
+                refreshService.refreshStreaming().collect { ev ->
+                    if (ev is FeedRefreshService.StreamEvent.SourceError) errorCount++
+                }
             } catch (ce: kotlinx.coroutines.CancellationException) {
                 throw ce
             } catch (t: Throwable) {
-                // Best-effort refresh must never crash the app. Any throw (DB error,
-                // fetcher bug, flow body failure) is swallowed; source health state
-                // already surfaces per-source errors in the drawer.
                 android.util.Log.e("FeedViewModel", "refresh failed", t)
             } finally {
                 _refreshing.value = false
+                _firstRefreshDone.value = true
+                if (errorCount > 0) _refreshErrorEvents.trySend(errorCount)
             }
         }
     }
@@ -186,6 +216,7 @@ class FeedViewModel @Inject constructor(
     private companion object {
         const val DEFAULT_SAVE_FOLDER = "Inbox"
         const val QUERY_DEBOUNCE_MS = 250L
+        const val DELETE_UNDO_DELAY_MS = 4500L
     }
 
     /** Batch-mark the selected items READ. */
@@ -198,9 +229,27 @@ class FeedViewModel @Inject constructor(
         viewModelScope.launch { repository.markUnreadBatch(itemIds) }
     }
 
-    /** Batch-delete (remove) the selected items. */
+    /**
+     * Stage [itemIds] for deletion: hides them from [visibleTimeline] immediately, then
+     * commits after [DELETE_UNDO_DELAY_MS]. [undoDelete] cancels the commit and restores
+     * the items wholesale. Mirrors the swipe-to-save/read undo semantics on the same screen.
+     */
     fun deleteItems(itemIds: Collection<String>) {
-        viewModelScope.launch { repository.deleteItems(itemIds) }
+        val ids = itemIds.toSet()
+        if (ids.isEmpty()) return
+        _pendingDeletion.value = _pendingDeletion.value + ids
+        deleteCommitJob?.cancel()
+        deleteCommitJob = viewModelScope.launch {
+            delay(DELETE_UNDO_DELAY_MS)
+            repository.deleteItems(ids)
+            _pendingDeletion.value = _pendingDeletion.value - ids
+        }
+    }
+
+    /** Cancel a pending batch delete and restore the staged items to the timeline. */
+    fun undoDelete() {
+        deleteCommitJob?.cancel()
+        _pendingDeletion.value = emptySet()
     }
 
     /**

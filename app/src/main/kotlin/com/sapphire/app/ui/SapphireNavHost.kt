@@ -35,6 +35,7 @@ fun SapphireNavHost() {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
                     }
                 },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
             )
         }
         composable(Routes.REVIEW) {
@@ -73,7 +74,10 @@ fun SapphireNavHost() {
             )
         }
         composable(Routes.SAVED) {
-            SavedItemsScreen(onBack = { navController.popBackStack() })
+            SavedItemsScreen(
+                onBack = { navController.popBackStack() },
+                onOpen = { itemId -> navController.navigate(Routes.reader(itemId)) },
+            )
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { navController.popBackStack() })
