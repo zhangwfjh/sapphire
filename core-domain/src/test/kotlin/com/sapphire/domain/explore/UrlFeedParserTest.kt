@@ -47,4 +47,23 @@ class UrlFeedParserTest {
         val feed = parseUrlFeed("https://example.com/")!!
         assertEquals("example.com", feed.title)
     }
+
+    @Test
+    fun `rsshub route is recognized and round-trips verbatim`() {
+        val feed = parseUrlFeed("rsshub://bbc/world")!!
+        assertEquals("rsshub://bbc/world", feed.url)
+        assertEquals("rsshub://bbc/world", feed.title)
+    }
+
+    @Test
+    fun `rsshub scheme is case-insensitive`() {
+        val feed = parseUrlFeed("RSSHUB://bbc/world")!!
+        assertEquals("RSSHUB://bbc/world", feed.url)
+    }
+
+    @Test
+    fun `rsshub with empty route is rejected`() {
+        assertNull(parseUrlFeed("rsshub://"))
+        assertNull(parseUrlFeed("rsshub:///"))
+    }
 }

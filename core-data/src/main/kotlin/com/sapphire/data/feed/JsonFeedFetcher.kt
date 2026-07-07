@@ -2,6 +2,7 @@ package com.sapphire.data.feed
 
 import com.sapphire.domain.feed.FetchResult
 import com.sapphire.domain.feed.Fetcher
+import com.sapphire.domain.util.resolveFeedUrl
 import com.sapphire.domain.feed.FeedItemCandidate
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -33,7 +34,8 @@ class JsonFeedFetcher @Inject constructor(
     }
 
     private fun fetchText(url: String): String {
-        val req = Request.Builder().url(url)
+        val real = resolveFeedUrl(url)
+        val req = Request.Builder().url(real)
             .header("User-Agent", "Sapphire/0.1 (local feed reader)")
             .header("Accept", "application/feed+json, application/json, */*")
             .build()
