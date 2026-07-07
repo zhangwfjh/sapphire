@@ -25,6 +25,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.text.font.FontWeight
@@ -38,9 +41,8 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
-import androidx.compose.foundation.Image
 import coil.request.ImageRequest
 import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
@@ -128,15 +130,11 @@ fun RichFeedCard(
     val state = rememberFeedCardState(item.readState)
     val palette = LocalSapphirePalette.current
     val mediaUrl = item.mediaUrl?.takeIf { it.isNotBlank() }
-    val painter = mediaUrl?.let {
-        rememberAsyncImagePainter(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(it)
-                .crossfade(220)
-                .build(),
-        )
-    }
-    val hasCover = painter != null && painter.state !is AsyncImagePainter.State.Error
+    // Track load failure via the onState callback (not by reading painter.state
+    // reactively) — that decouples the cover-slot collapse from the painter's own
+    // recomposition, which is flaky inside a recycled LazyColumn item.
+    var loadFailed by remember(item.hashUuid, mediaUrl) { mutableStateOf(false) }
+    val hasCover = mediaUrl != null && !loadFailed
     FeedCardSurface(
         read = state.isRead,
         alpha = state.containerAlpha,
@@ -155,11 +153,15 @@ fun RichFeedCard(
                             .background(palette.InkRaised),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Image(
-                            painter = painter!!,
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(mediaUrl)
+                                .crossfade(220)
+                                .build(),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
+                            onState = { s -> if (s is AsyncImagePainter.State.Error) loadFailed = true },
                         )
                     }
                 }
