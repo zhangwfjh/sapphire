@@ -64,6 +64,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -300,13 +301,20 @@ fun TimelineScreen(
                                 }
                                 items(items = group.items, key = { it.hashUuid }) { item ->
                                     val isSelected = selectedItems[item.hashUuid] == true
+                                    // rememberSwipeToDismissBoxState captures confirmValueChange ONCE when the
+                                    // state is first created, so a lambda that reads `item` freezes the first
+                                    // read/saved state — every swipe computes wasRead/wasSaved from that stale
+                                    // snapshot, so it can only ever apply one direction of the toggle and a
+                                    // second swipe never reverts. Route the item through rememberUpdatedState
+                                    // so the captured lambda always reads the live read/saved state.
+                                    val currentItem by rememberUpdatedState(item)
                                     val dismissState = rememberSwipeToDismissBoxState(
                                         confirmValueChange = { value ->
                                             when (value) {
                                                 SwipeToDismissBoxValue.StartToEnd -> {
                                                     // Swipe right → toggle read/unread + undo
-                                                    val wasRead = item.readState == com.sapphire.domain.model.ReadState.READ
-                                                    viewModel.toggleRead(item.hashUuid, wasRead)
+                                                    val wasRead = currentItem.readState == com.sapphire.domain.model.ReadState.READ
+                                                    viewModel.toggleRead(currentItem.hashUuid, wasRead)
                                                     sourcesDrawerScope.launch {
                                                         val result = snackbarHostState.showSnackbar(
                                                             message = if (wasRead) "Marked unread" else "Marked read",
@@ -314,15 +322,15 @@ fun TimelineScreen(
                                                             duration = SnackbarDuration.Short,
                                                         )
                                                         if (result == SnackbarResult.ActionPerformed) {
-                                                            viewModel.toggleRead(item.hashUuid, !wasRead)
+                                                            viewModel.toggleRead(currentItem.hashUuid, !wasRead)
                                                         }
                                                     }
                                                     false // snap back
                                                 }
                                                 SwipeToDismissBoxValue.EndToStart -> {
                                                     // Swipe left → toggle save/unsave + undo
-                                                    val wasSaved = item.savedLater
-                                                    viewModel.toggleSaved(item.hashUuid, wasSaved)
+                                                    val wasSaved = currentItem.savedLater
+                                                    viewModel.toggleSaved(currentItem.hashUuid, wasSaved)
                                                     sourcesDrawerScope.launch {
                                                         val result = snackbarHostState.showSnackbar(
                                                             message = if (wasSaved) "Removed from saved" else "Saved",
@@ -330,7 +338,7 @@ fun TimelineScreen(
                                                             duration = SnackbarDuration.Short,
                                                         )
                                                         if (result == SnackbarResult.ActionPerformed) {
-                                                            viewModel.toggleSaved(item.hashUuid, !wasSaved)
+                                                            viewModel.toggleSaved(currentItem.hashUuid, !wasSaved)
                                                         }
                                                     }
                                                     false // snap back
