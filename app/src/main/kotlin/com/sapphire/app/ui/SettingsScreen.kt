@@ -81,6 +81,7 @@ fun SettingsScreen(
     }
 
     var showKey by remember { mutableStateOf(false) }
+    var showTavilyKey by remember { mutableStateOf(false) }
     var confirmDialog by remember { mutableStateOf<ClearAction?>(null) }
 
     Scaffold(
@@ -209,7 +210,16 @@ fun SettingsScreen(
                 onValueChange = viewModel::setTavilyKey,
                 label = { Text("Tavily API key (optional)") },
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
+                visualTransformation = if (showTavilyKey) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showTavilyKey = !showTavilyKey }) {
+                        Icon(
+                            if (showTavilyKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (showTavilyKey) "Hide key" else "Show key",
+                            tint = palette.OnInkMuted,
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
 

@@ -49,12 +49,12 @@ class BaiduSearchClientTest {
             </body></html>
         """.trimIndent()
         searchServer.enqueue(MockResponse().setBody(html).setResponseCode(200))
-        // Redirector: 302 to the real URL.
+        // Redirector responds 302 with the real URL in Location. Impl uses
+        // followRedirects(false) and reads Location directly (single hop, no body fetch),
+        // so no final-200 response is enqueued.
         redirectServer.enqueue(
             MockResponse().setResponseCode(302).setHeader("Location", realUrl),
         )
-        // Final hop body (OkHttp auto-follows 302; this is what the GET lands on).
-        redirectServer.enqueue(MockResponse().setBody("<html></html>").setResponseCode(200))
 
         val hits = client().search("tokio")
 
