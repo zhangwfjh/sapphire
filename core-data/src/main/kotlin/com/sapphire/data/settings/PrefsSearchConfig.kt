@@ -1,6 +1,7 @@
 package com.sapphire.data.settings
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.sapphire.domain.explore.SearchConfig
 import com.sapphire.domain.explore.SearchRegion
@@ -22,12 +23,19 @@ import javax.inject.Inject
  *
  * Test constructor accepts a [prefsName] so tests use an isolated file.
  */
-class PrefsSearchConfig @Inject constructor(
-    @ApplicationContext context: Context,
-    private val prefsName: String = DEFAULT_PREFS_NAME,
+class PrefsSearchConfig private constructor(
+    private val prefs: SharedPreferences,
 ) : SearchConfig {
 
-    private val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+    @Inject
+    constructor(@ApplicationContext context: Context) : this(
+        context.getSharedPreferences(DEFAULT_PREFS_NAME, Context.MODE_PRIVATE),
+    )
+
+    // Test constructor: isolated prefs file per test.
+    constructor(context: Context, prefsName: String) : this(
+        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE),
+    )
 
     private val _region = MutableStateFlow(readRegion())
     private val _tavilyKey = MutableStateFlow(readTavilyKey())
