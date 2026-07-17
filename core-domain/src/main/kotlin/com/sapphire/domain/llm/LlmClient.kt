@@ -50,7 +50,6 @@ interface LlmClient {
         userPrompt: String,
         outputSerializer: KSerializer<T>,
     ): LlmOutcome<T>
-
     /**
      * Streams a plain-text completion as progressive partials. Each [LlmOutcome.Ok] carries
      * the full text accumulated so far; the final emission is the complete text. A failure

@@ -28,11 +28,13 @@ android {
         val baseUrl = props.getProperty("SAPPHIRE_LLM_BASE_URL", "https://api.openai.com/v1/")
         val tier1Model = props.getProperty("SAPPHIRE_LLM_TIER1_MODEL", "gpt-4o-mini")
         val tier2Model = props.getProperty("SAPPHIRE_LLM_TIER2_MODEL", "gpt-4o")
+        val tavilyKey = props.getProperty("SAPPHIRE_TAVILY_API_KEY", "")
 
         buildConfigField("String", "LLM_API_KEY", "\"$apiKey\"")
         buildConfigField("String", "LLM_BASE_URL", "\"$baseUrl\"")
         buildConfigField("String", "LLM_TIER1_MODEL", "\"$tier1Model\"")
         buildConfigField("String", "LLM_TIER2_MODEL", "\"$tier2Model\"")
+        buildConfigField("String", "TAVILY_API_KEY", "\"$tavilyKey\"")
     }
 
     buildTypes {

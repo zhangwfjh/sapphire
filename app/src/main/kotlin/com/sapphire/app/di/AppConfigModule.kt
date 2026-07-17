@@ -2,6 +2,7 @@ package com.sapphire.app.di
 
 import com.sapphire.app.BuildConfig
 import com.sapphire.data.di.LlmConfigProvider
+import com.sapphire.data.di.TavilyConfigProvider
 import com.sapphire.domain.llm.LlmConfig
 import com.sapphire.domain.settings.LlmConfigBuildConfigDefaults
 import com.sapphire.domain.settings.LlmConfigSnapshot
@@ -20,6 +21,11 @@ class BuildConfigLlmDefaults : LlmConfigBuildConfigDefaults {
     override fun baseUrl(): String = BuildConfig.LLM_BASE_URL
     override fun tier1Model(): String = BuildConfig.LLM_TIER1_MODEL
     override fun tier2Model(): String = BuildConfig.LLM_TIER2_MODEL
+}
+
+/** The only BuildConfig touchpoint for the Tavily search key. */
+class BuildConfigTavilyConfigProvider : TavilyConfigProvider {
+    override fun apiKey(): String = BuildConfig.TAVILY_API_KEY
 }
 
 /**
@@ -69,4 +75,7 @@ object AppConfigModule {
         store: LlmConfigStore,
         defaults: LlmConfigBuildConfigDefaults,
     ): LlmConfigProvider = StoreBackedLlmConfigProvider(store, defaults)
+
+    @Provides @Singleton
+    fun provideTavilyConfigProvider(): TavilyConfigProvider = BuildConfigTavilyConfigProvider()
 }

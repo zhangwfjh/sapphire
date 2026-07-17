@@ -356,20 +356,6 @@ private fun DrawerSheetContent(
         }
         Divider(color = palette.InkStroke, thickness = 1.dp)
 
-        if (tree.isEmpty()) {
-            Box(
-                Modifier.fillMaxSize().padding(24.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "No sources yet. Curate a topic to populate the list.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = palette.OnInkMuted,
-                )
-            }
-            return@ModalDrawerSheet
-        }
-
         LazyColumn(modifier = Modifier.fillMaxSize().padding(bottom = 24.dp)) {
             item(key = "explore") {
                 ExploreSourcesRow(onClick = onOpenExplore)
@@ -379,6 +365,21 @@ private fun DrawerSheetContent(
             }
             item(key = "read-later") {
                 ReadLaterRow(onClick = onOpenSaved)
+            }
+            if (tree.isEmpty()) {
+                item(key = "empty-state") {
+                    Box(
+                        Modifier.fillMaxWidth().padding(24.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "No sources yet. Curate a topic or use Explore to add feeds.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = palette.OnInkMuted,
+                        )
+                    }
+                }
+                return@LazyColumn
             }
             tree.forEach { folder ->
                 val isExpanded = expandedFolders[folder.category.id] == true

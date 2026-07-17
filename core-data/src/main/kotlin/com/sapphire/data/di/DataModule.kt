@@ -111,8 +111,19 @@ object DataProvidersModule {
         com.sapphire.data.explore.CatalogAssetParser(json)
 
     @Provides @Singleton
-    fun provideSearchFeedsUseCase(llm: LlmClient): com.sapphire.domain.explore.SearchFeedsUseCase =
-        com.sapphire.domain.explore.SearchFeedsUseCase(llm)
+    fun provideWebSearchClient(
+        config: TavilyConfigProvider,
+        json: Json,
+        client: OkHttpClient,
+    ): com.sapphire.domain.explore.WebSearchClient =
+        com.sapphire.data.explore.TavilySearchClient(config.apiKey(), json, client)
+
+    @Provides @Singleton
+    fun provideSearchFeedsUseCase(
+        llm: LlmClient,
+        webSearch: com.sapphire.domain.explore.WebSearchClient,
+    ): com.sapphire.domain.explore.SearchFeedsUseCase =
+        com.sapphire.domain.explore.SearchFeedsUseCase(llm, webSearch)
 
     @Provides @Singleton
     fun provideReaderOpsUseCase(
@@ -197,6 +208,16 @@ abstract class RepositoryBindingsModule {
  */
 interface LlmConfigProvider {
     fun config(): LlmConfig
+}
+
+/**
+ * App-supplied Tavily API key, resolved from BuildConfig (local.properties) in the app
+ * module. Keeps core-data free of BuildConfig references, mirroring [LlmConfigProvider].
+ * An empty key is valid: the search client short-circuits and the use case falls back to a
+ * knowledge-only LLM call.
+ */
+interface TavilyConfigProvider {
+    fun apiKey(): String
 }
 
 /**
