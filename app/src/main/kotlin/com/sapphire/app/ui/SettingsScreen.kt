@@ -55,6 +55,7 @@ import com.sapphire.app.BuildConfig
 import com.sapphire.app.ui.design.SectionEyebrow
 import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
+import com.sapphire.domain.explore.SearchRegion
 import com.sapphire.domain.settings.ThemePreference
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +67,9 @@ fun SettingsScreen(
     val palette = LocalSapphirePalette.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val connTest by viewModel.connectionTest.collectAsStateWithLifecycle()
+    val searchRegion by viewModel.searchRegion.collectAsStateWithLifecycle()
+    val tavilyKey by viewModel.tavilyKey.collectAsStateWithLifecycle()
+    val searchTest by viewModel.searchTest.collectAsStateWithLifecycle()
     val snackbar by viewModel.snackbar.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -159,6 +163,90 @@ fun SettingsScreen(
                         Text("✗ ${ct.message}", color = palette.Danger, style = MaterialTheme.typography.bodyMedium)
                     }
                     ConnectionTestState.Idle -> Unit
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+
+            // ── Web Search ──
+            SectionEyebrow("WEB SEARCH")
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "Region",
+                style = MaterialTheme.typography.labelLarge,
+                color = palette.OnInk,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SearchRegion.entries.forEach { r ->
+                    FilterChip(
+                        selected = searchRegion == r,
+                        onClick = { viewModel.setSearchRegion(r) },
+                        label = {
+                            Text(
+                                when (r) {
+                                    SearchRegion.AUTO -> "Auto"
+                                    SearchRegion.WEST -> "West"
+                                    SearchRegion.CHINA -> "China"
+                                }
+                            )
+                        },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Provider: " + if (tavilyKey.isNotBlank()) "Tavily (key set)" else "No-key default (DDG/Baidu)",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.OnInkMuted,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = tavilyKey,
+                onValueChange = viewModel::setTavilyKey,
+                label = { Text("Tavily API key (optional)") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = viewModel::testSearch,
+                    enabled = searchTest !is SearchTestState.Testing,
+                ) {
+                    Text("Test search")
+                }
+                when (val st = searchTest) {
+                    is SearchTestState.Testing -> {
+                        Spacer(Modifier.width(12.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.height(20.dp),
+                            strokeWidth = 2.dp,
+                            color = palette.Accent,
+                        )
+                    }
+                    is SearchTestState.Ok -> {
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            "✓ ${st.count} results",
+                            color = palette.Accent,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    is SearchTestState.Err -> {
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            "✗ ${st.message}",
+                            color = palette.Danger,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    SearchTestState.Idle -> Unit
                 }
             }
 
