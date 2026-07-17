@@ -41,6 +41,7 @@ import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dagger.Provides
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -112,11 +113,33 @@ object DataProvidersModule {
 
     @Provides @Singleton
     fun provideWebSearchClient(
-        config: TavilyConfigProvider,
+        tavilyConfig: TavilyConfigProvider,
         json: Json,
         client: OkHttpClient,
-    ): com.sapphire.domain.explore.WebSearchClient =
-        com.sapphire.data.explore.TavilySearchClient(config.apiKey(), json, client)
+        searchConfig: com.sapphire.domain.explore.SearchConfig,
+        regionResolver: com.sapphire.domain.explore.SearchRegionResolver,
+    ): com.sapphire.domain.explore.WebSearchClient {
+        // The Tavily instance uses whichever key is active on each call: runtime override
+        // from SearchConfig.observeTavilyKey() if non-empty, else BuildConfig default.
+        val tavily = RuntimeKeyTavilyClient(tavilyConfig, searchConfig, json, client)
+        return com.sapphire.data.explore.CompositeSearchClient(
+            tavily = tavily,
+            ddg = com.sapphire.data.explore.DdgSearchClient(client),
+            baidu = com.sapphire.data.explore.BaiduSearchClient(client),
+            config = searchConfig,
+            regionResolver = regionResolver,
+        )
+    }
+
+    @Provides @Singleton
+    fun provideSearchConfig(
+        @dagger.hilt.android.qualifiers.ApplicationContext ctx: android.content.Context,
+    ): com.sapphire.domain.explore.SearchConfig =
+        com.sapphire.data.settings.PrefsSearchConfig(ctx)
+
+    @Provides @Singleton
+    fun provideSearchRegionResolver(): com.sapphire.domain.explore.SearchRegionResolver =
+        com.sapphire.data.explore.LocaleSearchRegionResolver()
 
     @Provides @Singleton
     fun provideSearchFeedsUseCase(
@@ -229,4 +252,26 @@ interface TavilyConfigProvider {
 object LlmConfigBridgeModule {
     @Provides @Singleton
     fun provideLlmConfig(provider: LlmConfigProvider): LlmConfig = provider.config()
+}
+
+/**
+ * Wraps [com.sapphire.data.explore.TavilySearchClient] so each call uses whichever key
+ * is active: the runtime override from [com.sapphire.domain.explore.SearchConfig.observeTavilyKey]
+ * if non-empty, else the BuildConfig default from [TavilyConfigProvider]. Lets Settings
+ * edits take effect immediately without re-providing the singleton.
+ */
+private class RuntimeKeyTavilyClient(
+    private val buildConfig: TavilyConfigProvider,
+    private val searchConfig: com.sapphire.domain.explore.SearchConfig,
+    private val json: Json,
+    private val client: OkHttpClient,
+) : com.sapphire.domain.explore.WebSearchClient {
+
+    override suspend fun search(query: String): List<com.sapphire.domain.explore.WebSearchHit> {
+        val runtimeKey = searchConfig.observeTavilyKey().first()
+        val effectiveKey = runtimeKey.ifBlank { buildConfig.apiKey() }
+        // Empty key -> TavilySearchClient short-circuits to empty (existing behavior).
+        return com.sapphire.data.explore.TavilySearchClient(effectiveKey, json, client)
+            .search(query)
+    }
 }
