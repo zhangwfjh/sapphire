@@ -2,6 +2,9 @@ package com.sapphire.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sapphire.domain.explore.SearchConfig
+import com.sapphire.domain.explore.SearchRegion
+import com.sapphire.domain.explore.WebSearchClient
 import com.sapphire.domain.llm.LlmClient
 import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.llm.LlmTier
@@ -30,6 +33,8 @@ class SettingsViewModel @Inject constructor(
     private val themeStore: ThemeConfigStore,
     private val dataClear: DataClearUseCase,
     private val llmClient: LlmClient,
+    private val searchConfig: SearchConfig,
+    private val webSearchClient: WebSearchClient,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
@@ -47,12 +52,23 @@ class SettingsViewModel @Inject constructor(
     private val _breakdown = MutableStateFlow(com.sapphire.domain.settings.DataBreakdown(0, 0, 0, 0L, 0L, 0L, 0L))
     val breakdown: StateFlow<com.sapphire.domain.settings.DataBreakdown> = _breakdown.asStateFlow()
 
+    private val _searchRegion = MutableStateFlow(SearchRegion.AUTO)
+    val searchRegion: StateFlow<SearchRegion> = _searchRegion.asStateFlow()
+
+    private val _tavilyKey = MutableStateFlow("")
+    val tavilyKey: StateFlow<String> = _tavilyKey.asStateFlow()
+
+    private val _searchTest = MutableStateFlow<SearchTestState>(SearchTestState.Idle)
+    val searchTest: StateFlow<SearchTestState> = _searchTest.asStateFlow()
+
     init {
         viewModelScope.launch {
             val llm = llmStore.observe().first()
             val key = llmStore.observeApiKey().first()
             val retention = retentionStore.observe().first()
             val theme = themeStore.observe().first()
+            _searchRegion.value = searchConfig.region()
+            _tavilyKey.value = searchConfig.observeTavilyKey().first()
             _state.value = SettingsUiState(
                 apiKey = key,
                 baseUrl = llm.baseUrl,
@@ -102,6 +118,34 @@ class SettingsViewModel @Inject constructor(
     fun setTheme(p: ThemePreference) {
         _state.value = _state.value.copy(theme = p)
         viewModelScope.launch { themeStore.set(p) }
+    }
+
+    fun setSearchRegion(r: SearchRegion) {
+        _searchRegion.value = r
+        viewModelScope.launch { searchConfig.setRegion(r) }
+    }
+
+    fun setTavilyKey(v: String) {
+        _tavilyKey.value = v
+        viewModelScope.launch { searchConfig.setTavilyKey(v) }
+    }
+
+    /** Fires a minimal query via the composite to validate the active backend chain. */
+    fun testSearch() {
+        viewModelScope.launch {
+            _searchTest.value = SearchTestState.Testing
+            val hits = runCatching { webSearchClient.search("sapphire rss reader") }
+                .getOrDefault(emptyList())
+            _searchTest.value = if (hits.isNotEmpty()) {
+                SearchTestState.Ok(hits.size)
+            } else {
+                SearchTestState.Err("No results — check region or network.")
+            }
+        }
+    }
+
+    fun consumeSearchTest() {
+        _searchTest.value = SearchTestState.Idle
     }
 
     /** Fires a minimal Tier-1 ping to validate the current LLM config. */
@@ -168,4 +212,11 @@ sealed interface ConnectionTestState {
     data object Testing : ConnectionTestState
     data object Ok : ConnectionTestState
     data class Err(val message: String) : ConnectionTestState
+}
+
+sealed interface SearchTestState {
+    data object Idle : SearchTestState
+    data object Testing : SearchTestState
+    data class Ok(val count: Int) : SearchTestState
+    data class Err(val message: String) : SearchTestState
 }
