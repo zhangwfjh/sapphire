@@ -47,14 +47,14 @@ class FetcherRegistry private constructor(
 }
 
 /**
- * PRD §4.1 / architecture §6 ingest pipeline for the S02 (non-agent) path:
+ * Ingest pipeline (non-agent path):
  *
  *   Source ──► Fetcher(kind) ──► [FeedItemCandidate] ──► hash + categoryId + fetchedAt
  *                  ──► FeedItemEntity ──► INSERT OR IGNORE (PK = hash_uuid)
  *
- * Dedup is the cheap hash layer only (PRD §3.2 global id). Semantic embedding dedup (τ≈0.88)
- * lands in S04 and runs *only* on the AGENT_SEARCH path — RSS/social items are already
- * curated by their source, reranking them would be noise (architecture §6).
+ * Dedup is the cheap hash layer only (global id). Semantic embedding dedup (τ≈0.88)
+ * runs *only* on the AGENT_SEARCH path — RSS/social items are already curated by their
+ * source, reranking them would be noise.
  *
  * Source health is stamped on every fetch: OK on success, FAILED on persistent parse/4xx.
  * Transient (network/5xx) leaves health untouched — the route may have just blipped.
@@ -68,7 +68,7 @@ class FeedRefreshService @Inject constructor(
     /**
      * Aggregated across all sources in one refresh pass. [sourceCount],
      * [skippedNoFetcher], and [fetchedSources] let the caller distinguish the three
-     * "0 new" cases: no sources configured, all skipped (AGENT with no S02 fetcher),
+     * "0 new" cases: no sources configured, all skipped (AGENT with no fetcher),
      * or fetched-but-empty.
      */
     data class RefreshOutcome(

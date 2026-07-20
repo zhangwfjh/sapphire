@@ -51,7 +51,7 @@ import com.sapphire.domain.reader.isTextBlock
 private const val URL_TAG = "url"
 
 /**
- * Renders an ordered list of [RichBlock]s — the rich article body (PRD §3.4). Each block
+ * Renders an ordered list of [RichBlock]s — the rich article body. Each block
  * type maps to its own Compose primitive: paragraphs/headings/quotes via an
  * [AnnotatedString] (so inline bold/italic/strike/code/links survive), list items as marker
  * rows, blockquotes as an accent-ruled indented block, code as a mono slab, and images as

@@ -12,10 +12,10 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
- * Room-backed [ReaderOpCache] (architecture §3 `LlmCache`). Stores payloads keyed by the
+ * Room-backed [ReaderOpCache]. Stores payloads keyed by the
  * domain-derived [com.sapphire.domain.util.LlmCacheKey]; the domain owns key derivation
  * and decoding, this layer owns the row shape + FK to `feed_item` (cascade-deletes on
- * retention purge, S07). REPLACE on PK conflict so a re-computed payload overwrites cleanly.
+ * retention purge). REPLACE on PK conflict so a re-computed payload overwrites cleanly.
  */
 class RoomReaderOpCache @Inject constructor(
     private val dao: LlmCacheDao,

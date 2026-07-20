@@ -3,7 +3,7 @@ package com.sapphire.domain.util
 import java.security.MessageDigest
 
 /**
- * PRD §3.2 / architecture §3 global feed-item identity.
+ * Global feed-item identity.
  *
  * `hashUuid = SHA-256( normalized(sourceId, canonicalUrl | title+publishedAt) )`, hex-encoded.
  * Falls back to `(title + publishedAt)` only when a canonical URL is absent (agent-synthesized
@@ -12,7 +12,7 @@ import java.security.MessageDigest
  * Normalization is deliberately aggressive: scheme/host lowercased, default ports stripped,
  * common tracking params removed, fragments dropped, trailing slashes collapsed. This makes
  * `https://example.com/post?a=1&b=2&utm_source=x` and `HTTP://Example.com:443/post?b=2&a=1`
- * hash to the same id — the "same story from many feeds" case PRD §3.2 calls out.
+ * hash to the same id — the "same story from many feeds" case.
  *
  * Pure (no Android deps) so it's exhaustively unit-testable. Uses SHA-256, not MD5 —
  * collisions here silently drop stories.

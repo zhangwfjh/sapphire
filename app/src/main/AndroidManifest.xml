@@ -14,7 +14,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Sapphire">
 
-        <!-- S07: WorkManager on-demand init (SapphireApp implements Configuration.Provider). -->
+        <!-- WorkManager on-demand init (SapphireApp implements Configuration.Provider). -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"

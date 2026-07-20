@@ -4,7 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.sapphire.data.db.CategoryEntity
 import com.sapphire.data.db.FeedItemEntity
-import com.sapphire.data.db.OnboardingDao
+import com.sapphire.data.db.SeedDao
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.data.db.SourceEntity
 import com.sapphire.data.db.TopicEntity
@@ -22,7 +22,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * S07 Room integration for the Save Later repository: the `saved_item` table, its
+ * Room integration for the Save Later repository: the `saved_item` table, its
  * transactional coupling to `feed_item.saved_later`, CASCADE behavior, and the
  * [RoomRetentionPurge] query (read + unsaved + older-than-cutoff).
  *
@@ -32,7 +32,7 @@ import org.robolectric.RobolectricTestRunner
 class RoomSavedItemRepositoryTest {
 
     private lateinit var db: SapphireDatabase
-    private lateinit var onboarding: OnboardingDao
+    private lateinit var seedDao: SeedDao
     private lateinit var repo: RoomSavedItemRepository
     private lateinit var purge: RoomRetentionPurge
 
@@ -42,7 +42,7 @@ class RoomSavedItemRepositoryTest {
             ApplicationProvider.getApplicationContext(),
             SapphireDatabase::class.java,
         ).allowMainThreadQueries().build()
-        onboarding = db.onboardingDao()
+        seedDao = db.seedDao()
         repo = RoomSavedItemRepository(db, db.savedItemDao(), db.feedDao())
         purge = RoomRetentionPurge(db.feedDao())
     }
@@ -178,17 +178,15 @@ class RoomSavedItemRepositoryTest {
     // ---------- helpers ----------
 
     private suspend fun seedSourceAndItems() {
-        onboarding.commitOnboarding(
-            topic = TopicEntity("t1", "AI", 0L),
-            categories = listOf(
-                CategoryEntity("c1", "t1", 1, null, "Tech", 0),
-                CategoryEntity("c2", "t1", 2, "c1", "AI Infra", 0),
-            ),
-            keywords = emptyList(),
-            sources = listOf(
-                SourceEntity("s1", "c2", "t1", SourceKind.RSS, "https://feed", "AI Blog"),
-            ),
-        )
+        seedDao.commitSeed(topic = TopicEntity("t1", "AI", 0L),
+        categories = listOf(
+            CategoryEntity("c1", "t1", 1, null, "Tech", 0),
+            CategoryEntity("c2", "t1", 2, "c1", "AI Infra", 0),
+        ),
+        keywords = emptyList(),
+        sources = listOf(
+            SourceEntity("s1", "c2", "t1", SourceKind.RSS, "https://feed", "AI Blog"),
+        ),)
         val now = System.currentTimeMillis()
         dao = db.feedDao()
         dao.insertItems(

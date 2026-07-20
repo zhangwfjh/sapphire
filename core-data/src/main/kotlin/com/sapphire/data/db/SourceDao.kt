@@ -9,8 +9,8 @@ import com.sapphire.domain.model.SourceKind
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Post-onboarding source/category CRUD (Sources drawer). Distinct from [OnboardingDao],
- * which owns the one-shot atomic bootstrap commit; this DAO owns all mutations after that.
+ * Post-seed source/category CRUD (Sources drawer). Distinct from [SeedDao],
+ * which owns the one-shot atomic topic-tree commit; this DAO owns all mutations after that.
  *
  * Reads are [Flow]s so the drawer recomposes live. Writes that touch `(category_id, url)`
  * use `IGNORE` so a unique-index collision is detectable by the caller via the returned
@@ -67,7 +67,7 @@ interface SourceDao {
 
     /**
      * IGNORE so a `(category_id, url)` unique-index conflict returns -1 instead of throwing.
-     * The caller interprets -1 as a move/add collision (PRD §3.1 duplicate guard).
+     * The caller interprets -1 as a move/add collision (duplicate guard).
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertSource(source: SourceEntity): Long

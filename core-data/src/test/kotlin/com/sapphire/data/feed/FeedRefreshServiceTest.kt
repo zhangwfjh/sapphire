@@ -3,7 +3,7 @@ package com.sapphire.data.feed
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.sapphire.data.db.FeedDao
-import com.sapphire.data.db.OnboardingDao
+import com.sapphire.data.db.SeedDao
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.data.db.SourceEntity
 import com.sapphire.data.db.TopicEntity
@@ -28,7 +28,7 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Ingest pipeline test: candidates → [FeedRefreshService] → hash → Room (PK dedup).
- * Uses a fake [Fetcher] so no network; asserts the cheap hash-dedup PRD §3.2 requires and
+ * Uses a fake [Fetcher] so no network; asserts the cheap hash-dedup and
  * that re-fetching a source doesn't duplicate or overwrite existing rows.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -36,7 +36,7 @@ class FeedRefreshServiceTest {
 
     private lateinit var db: SapphireDatabase
     private lateinit var feedDao: FeedDao
-    private lateinit var onboarding: OnboardingDao
+    private lateinit var seedDao: SeedDao
     private lateinit var sources: RoomSourceFeedQuery
     private lateinit var refresh: FeedRefreshService
 
@@ -47,23 +47,21 @@ class FeedRefreshServiceTest {
             SapphireDatabase::class.java,
         ).allowMainThreadQueries().build()
         feedDao = db.feedDao()
-        onboarding = db.onboardingDao()
-        sources = RoomSourceFeedQuery(onboarding)
+        seedDao = db.seedDao()
+        sources = RoomSourceFeedQuery(seedDao)
     }
 
     @After fun tearDown() { db.close() }
 
     private suspend fun seedSource(id: String, url: String, kind: SourceKind = SourceKind.RSS) {
         val topicId = "topic-$id"
-        onboarding.commitOnboarding(
-            TopicEntity(topicId, "AI", 0L),
-            listOf(
-                CategoryEntity("cat-l1-$id", topicId, 1, null, "Tech", 0),
-                CategoryEntity("cat-l2-$id", topicId, 2, "cat-l1-$id", "AI", 0),
-            ),
-            emptyList(),
-            listOf(SourceEntity(id, "cat-l2-$id", topicId, kind, url, "Blog")),
-        )
+        seedDao.commitSeed(TopicEntity(topicId, "AI", 0L),
+        listOf(
+            CategoryEntity("cat-l1-$id", topicId, 1, null, "Tech", 0),
+            CategoryEntity("cat-l2-$id", topicId, 2, "cat-l1-$id", "AI", 0),
+        ),
+        emptyList(),
+        listOf(SourceEntity(id, "cat-l2-$id", topicId, kind, url, "Blog")),)
     }
 
     @Test
@@ -122,8 +120,8 @@ class FeedRefreshServiceTest {
 
     @Test
     fun `items with same url from different source ids are distinct`() = runTest {
-        // PRD §3.2 identity is (sourceId, url) — same story across two feeds stays as two
-        // rows; semantic dedup (S04) collapses near-dupes only on the agent path.
+        // Identity is (sourceId, url) — same story across two feeds stays as two
+        // rows; semantic dedup collapses near-dupes only on the agent path.
         seedSource("s1", "https://feed-a")
         seedSource("s2", "https://feed-b")
         val fetcher = StaticFetcher(

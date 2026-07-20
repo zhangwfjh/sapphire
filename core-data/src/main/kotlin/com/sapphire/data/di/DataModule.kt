@@ -5,13 +5,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.room.Room
 import com.sapphire.data.db.FeedDao
 import com.sapphire.data.db.LlmCacheDao
-import com.sapphire.data.db.OnboardingDao
+import com.sapphire.data.db.SeedDao
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.data.db.SourceDao
 import com.sapphire.data.llm.OpenAiCompatibleLlmClient
-import com.sapphire.data.onboarding.ReviewMapper
-import com.sapphire.data.onboarding.ReviewMapperProvider
-import com.sapphire.data.onboarding.RoomOnboardingRepository
 import com.sapphire.data.feed.RoomFeedRepository
 import com.sapphire.data.feed.RoomSourceFeedQuery
 import com.sapphire.data.feed.SourceFeedQuery
@@ -29,9 +26,6 @@ import com.sapphire.domain.util.IdGenerator
 import com.sapphire.domain.reader.ReaderItemStore
 import com.sapphire.domain.reader.ReaderOpCache
 import com.sapphire.domain.reader.ReaderOpsUseCase
-import com.sapphire.domain.onboarding.CurateTaxonomyUseCase
-import com.sapphire.domain.onboarding.OnboardingRepository
-import com.sapphire.domain.review.ReviewBuilder
 import com.sapphire.domain.save.RetentionPurge
 import com.sapphire.domain.save.SavedItemRepository
 import com.sapphire.domain.util.UuidIdGenerator
@@ -61,7 +55,7 @@ object DatabaseModule {
         .fallbackToDestructiveMigration()
         .build()
 
-    @Provides fun provideOnboardingDao(db: SapphireDatabase): OnboardingDao = db.onboardingDao()
+    @Provides fun provideSeedDao(db: SapphireDatabase): SeedDao = db.seedDao()
     @Provides fun provideFeedDao(db: SapphireDatabase): FeedDao = db.feedDao()
     @Provides fun provideSourceDao(db: SapphireDatabase): SourceDao = db.sourceDao()
     @Provides fun provideLlmCacheDao(db: SapphireDatabase): LlmCacheDao = db.llmCacheDao()
@@ -96,17 +90,6 @@ object DataProvidersModule {
     @Provides @Singleton
     fun provideIdGenerator(): IdGenerator = UuidIdGenerator()
 
-    @Provides @Singleton
-    fun provideReviewMapper(provider: ReviewMapperProvider): ReviewMapper = provider.provide()
-
-    @Provides @Singleton
-    fun provideReviewBuilder(ids: IdGenerator): ReviewBuilder = ReviewBuilder(ids)
-
-    @Provides @Singleton
-    fun provideCurateTaxonomyUseCase(
-        llm: LlmClient,
-        reviewBuilder: ReviewBuilder,
-    ): CurateTaxonomyUseCase = CurateTaxonomyUseCase(llm, reviewBuilder)
     @Provides @Singleton
     fun provideCatalogAssetParser(json: Json): com.sapphire.data.explore.CatalogAssetParser =
         com.sapphire.data.explore.CatalogAssetParser(json)
@@ -185,8 +168,6 @@ object LlmBindingsModule {
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryBindingsModule {
-    @Binds
-    abstract fun bindOnboardingRepository(impl: RoomOnboardingRepository): OnboardingRepository
     @Binds
     abstract fun bindFeedRepository(impl: RoomFeedRepository): FeedRepository
     @Binds

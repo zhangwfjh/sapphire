@@ -42,9 +42,8 @@ data class SourceFolderNode(
 )
 
 /**
- * CRUD + move for post-onboarding source/category management (PRD §3.1 — the Sources drawer
- * is the always-available edit surface, where the Review wizard was the one-shot bootstrap).
- *
+ * CRUD + move for source/category management (the Sources drawer is the always-available
+ * edit surface, post-seed).
  * Reads are a cold [Flow] so Compose recomposes only on real change. Writes are suspend;
  * [moveSource] reassigns a source to a different category. [Outcome] surfaces unique-index
  * conflicts (the `(category_id, url)` index on SourceEntity) so the UI can warn the user

@@ -5,7 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.sapphire.data.db.CategoryEntity
 import com.sapphire.data.db.FeedItemEntity
 import com.sapphire.data.db.LlmCacheEntity
-import com.sapphire.data.db.OnboardingDao
+import com.sapphire.data.db.SeedDao
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.data.db.SourceEntity
 import com.sapphire.data.db.TopicEntity
@@ -22,11 +22,11 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * S03 data-layer integration: the `llm_cache` table + reader-op ports over Room.
+ * Data-layer integration: the `llm_cache` table + reader-op ports over Room.
  *
  * Covers:
  * - [LlmCacheDao] insert/get by the domain-derived [LlmCacheKey].
- * - Classification persistence onto `feed_item.classification` (PRD §3.5 macro source).
+ * - Classification persistence onto `feed_item.classification` (macro source).
  * - [RoomReaderOpCache] round-trip (cache-first contract backing).
  * - [RoomReaderItemStore] item lookup + classification write.
  *
@@ -36,7 +36,7 @@ import org.robolectric.RobolectricTestRunner
 class RoomReaderOpsRepositoryTest {
 
     private lateinit var db: SapphireDatabase
-    private lateinit var onboarding: OnboardingDao
+    private lateinit var seedDao: SeedDao
     private lateinit var cache: RoomReaderOpCache
     private lateinit var items: RoomReaderItemStore
 
@@ -46,7 +46,7 @@ class RoomReaderOpsRepositoryTest {
             ApplicationProvider.getApplicationContext(),
             SapphireDatabase::class.java,
         ).allowMainThreadQueries().build()
-        onboarding = db.onboardingDao()
+        seedDao = db.seedDao()
         cache = RoomReaderOpCache(db.llmCacheDao())
         items = RoomReaderItemStore(db.feedDao())
     }
@@ -112,12 +112,10 @@ class RoomReaderOpsRepositoryTest {
     // ---------- helpers ----------
 
     private suspend fun seedItem(hash: String, bodyRaw: String? = null) {
-        onboarding.commitOnboarding(
-            topic = TopicEntity("t1", "AI", 0L),
-            categories = listOf(CategoryEntity("c1", "t1", 1, null, "Tech", 0)),
-            keywords = emptyList(),
-            sources = listOf(SourceEntity("s1", "c1", "t1", SourceKind.RSS, "https://feed", "Blog")),
-        )
+        seedDao.commitSeed(topic = TopicEntity("t1", "AI", 0L),
+        categories = listOf(CategoryEntity("c1", "t1", 1, null, "Tech", 0)),
+        keywords = emptyList(),
+        sources = listOf(SourceEntity("s1", "c1", "t1", SourceKind.RSS, "https://feed", "Blog")),)
         db.feedDao().insertItems(
             listOf(
                 FeedItemEntity(

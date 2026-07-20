@@ -31,7 +31,7 @@ sealed interface FetchResult {
 
 /**
  * RSS/Atom (`RssAtomFetcher`), JSON Feed (`JsonFeedFetcher`),
- * web-search agent (`WebSearchFetcher` — S04).
+ * web-search agent (`WebSearchFetcher`).
  *
  * Dispatched on [com.sapphire.domain.model.Source.kind]. Pure-domain contract; the HTTP +
  * parsing impls live in core-data.

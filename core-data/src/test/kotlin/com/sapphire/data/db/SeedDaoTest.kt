@@ -14,13 +14,13 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Instrumented-but-JVM-local Room test via Robolectric. Validates the @Transaction insert
- * (PRD §3.1 commit) and the CASCADE semantics that downstream slices rely on.
+ * commit and the CASCADE semantics that downstream code relies on.
  */
 @RunWith(RobolectricTestRunner::class)
-class OnboardingDaoTest {
+class SeedDaoTest {
 
     private lateinit var db: SapphireDatabase
-    private lateinit var dao: OnboardingDao
+    private lateinit var dao: SeedDao
 
     @Before
     fun setUp() {
@@ -28,7 +28,7 @@ class OnboardingDaoTest {
             ApplicationProvider.getApplicationContext(),
             SapphireDatabase::class.java,
         ).allowMainThreadQueries().build()
-        dao = db.onboardingDao()
+        dao = db.seedDao()
     }
 
     @After fun tearDown() { db.close() }
@@ -44,12 +44,12 @@ class OnboardingDaoTest {
             kind = SourceKind.RSS, url = "https://ai.feed", title = "AI Blog",
         )
 
-        dao.commitOnboarding(topic, listOf(catL1, catL2), listOf(keyword), listOf(source))
+        dao.commitSeed(topic, listOf(catL1, catL2), listOf(keyword), listOf(source))
 
         // Query back via a fresh read path (topic id round-trips; counts via DAO queries below).
         // We assert via re-inserting nothing conflicts and counts hold through a second commit.
         val topic2 = TopicEntity("t2", "Bio", 200L)
-        dao.commitOnboarding(topic2, emptyList(), emptyList(), emptyList())
+        dao.commitSeed(topic2, emptyList(), emptyList(), emptyList())
     }
 
     @Test
@@ -60,7 +60,7 @@ class OnboardingDaoTest {
         val kw = KeywordEntity("k1", "c2", "llm", userAdded = false)
         val src = SourceEntity("s1", "c2", "t1", SourceKind.RSS, "https://x", "X")
 
-        dao.commitOnboarding(topic, listOf(l1, l2), listOf(kw), listOf(src))
+        dao.commitSeed(topic, listOf(l1, l2), listOf(kw), listOf(src))
 
         // Delete the topic directly; SQLite CASCADE should remove all children.
         db.openHelper.writableDatabase.execSQL("DELETE FROM topic WHERE id = 't1'")
@@ -77,14 +77,14 @@ class OnboardingDaoTest {
         val topic = TopicEntity("t1", "AI", 0L)
         val l1 = CategoryEntity("c1", "t1", 1, null, "Tech", 0)
         val l2 = CategoryEntity("c2", "t1", 2, "c1", "AI Infra", 0)
-        dao.commitOnboarding(
+        dao.commitSeed(
             topic, listOf(l1, l2), emptyList(),
             listOf(SourceEntity("s1", "c2", "t1", SourceKind.RSS, "https://dup.feed", "A")),
         )
 
-        // Re-onboarding the same (category_id, url) must NOT throw (IGNORE strategy) and
+        // Re-importing the same (category_id, url) must NOT throw (IGNORE strategy) and
         // must NOT produce a duplicate row. The original survives untouched.
-        dao.commitOnboarding(
+        dao.commitSeed(
             TopicEntity("t2", "AI2", 0L), emptyList(), emptyList(),
             listOf(SourceEntity("s2", "c2", "t1", SourceKind.RSS, "https://dup.feed", "B")),
         )

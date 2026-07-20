@@ -87,7 +87,6 @@ import com.sapphire.domain.explore.ExploreFeed
 @Composable
 fun ExploreScreen(
     onBack: () -> Unit,
-    onCurateTopic: () -> Unit,
     viewModel: ExploreViewModel = hiltViewModel(),
 ) {
     val palette = LocalSapphirePalette.current
@@ -235,10 +234,6 @@ fun ExploreScreen(
             onCreateFolder = { folderName ->
                 viewModel.subscribeIntoNewFolder(feed, folderName)
                 pickingFeed = null
-            },
-            onCurateTopic = {
-                pickingFeed = null
-                onCurateTopic()
             },
         )
     }
@@ -524,7 +519,6 @@ private fun CategoryPickerSheet(
     onDismiss: () -> Unit,
     onPick: (categoryId: String, label: String) -> Unit,
     onCreateFolder: (folderName: String) -> Unit,
-    onCurateTopic: () -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
     val sheetState = rememberModalBottomSheetState()
@@ -540,18 +534,13 @@ private fun CategoryPickerSheet(
             )
             Spacer(Modifier.height(12.dp))
             if (!hasTopic) {
-                // Explore must never dead-end: a topic is required for folders, so route
-                // the user to onboarding instead of leaving them stuck in the picker.
+                // A topic is required for folders; OPML import is the path to a first
+                // topic. Guide the user there instead of dead-ending.
                 Text(
-                    "Folders live under a curated topic. Curate one to start subscribing.",
+                    "Folders live under a topic. Import an OPML file to create your first topic and start subscribing.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = palette.OnInkMuted,
                 )
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = onCurateTopic,
-                    colors = ButtonDefaults.buttonColors(containerColor = palette.Accent),
-                ) { Text("Curate a topic") }
             } else {
                 // New-folder affordance: inline name + create button. Shown whenever a
                 // topic exists, even when no folders do yet — that's exactly the moment a

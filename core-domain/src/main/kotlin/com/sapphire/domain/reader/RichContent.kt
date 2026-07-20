@@ -1,7 +1,7 @@
 package com.sapphire.domain.reader
 
 /**
- * Structured rich content for the reader body (PRD §3.4).
+ * Structured rich content for the reader body.
  *
  * Replaces the old flat `List<String>` render path, which stripped all HTML. The body is
  * parsed once into an ordered list of [RichBlock]s; the UI renders each block with the

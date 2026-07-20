@@ -2,7 +2,7 @@ package com.sapphire.domain.reader
 
 /**
  * Splits the reader body into paragraphs for the paragraph-aligned translate op
- * (PRD §3.4) and for rendering. `bodyRaw` from ingestion is HTML-ish feed content;
+ * and for rendering. `bodyRaw` from ingestion is HTML-ish feed content;
  * this normalizes it to a clean, non-empty paragraph list.
  *
  * The contract:

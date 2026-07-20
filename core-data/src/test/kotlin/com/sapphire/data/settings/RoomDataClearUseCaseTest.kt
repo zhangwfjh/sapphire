@@ -6,7 +6,7 @@ import com.sapphire.data.db.ArticleBodyEntity
 import com.sapphire.data.db.CategoryEntity
 import com.sapphire.data.db.FeedItemEntity
 import com.sapphire.data.db.LlmCacheEntity
-import com.sapphire.data.db.OnboardingDao
+import com.sapphire.data.db.SeedDao
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.data.db.SavedItemEntity
 import com.sapphire.data.db.SourceEntity
@@ -33,7 +33,7 @@ import org.robolectric.RobolectricTestRunner
 class RoomDataClearUseCaseTest {
 
     private lateinit var db: SapphireDatabase
-    private lateinit var onboarding: OnboardingDao
+    private lateinit var seedDao: SeedDao
     private lateinit var clear: RoomDataClearUseCase
 
     @Before
@@ -42,7 +42,7 @@ class RoomDataClearUseCaseTest {
             ApplicationProvider.getApplicationContext(),
             SapphireDatabase::class.java,
         ).allowMainThreadQueries().build()
-        onboarding = db.onboardingDao()
+        seedDao = db.seedDao()
         clear = RoomDataClearUseCase(
             feedDao = db.feedDao(),
             llmCacheDao = db.llmCacheDao(),
@@ -52,16 +52,14 @@ class RoomDataClearUseCaseTest {
         )
         // Seed the FK chain (topic/category/source) once so seedItem() can be called repeatedly.
         runBlocking {
-            onboarding.commitOnboarding(
-                topic = TopicEntity(id = "t1", phrase = "AI", createdAt = 0L),
-                categories = listOf(
-                    CategoryEntity(id = "c1", topicId = "t1", level = 1, parentId = null, name = "Tech", sortOrder = 0),
-                ),
-                keywords = emptyList(),
-                sources = listOf(
-                    SourceEntity(id = "s1", categoryId = "c1", topicId = "t1", kind = SourceKind.RSS, url = "https://feed", title = "AI Blog"),
-                ),
-            )
+            seedDao.commitSeed(topic = TopicEntity(id = "t1", phrase = "AI", createdAt = 0L),
+            categories = listOf(
+                CategoryEntity(id = "c1", topicId = "t1", level = 1, parentId = null, name = "Tech", sortOrder = 0),
+            ),
+            keywords = emptyList(),
+            sources = listOf(
+                SourceEntity(id = "s1", categoryId = "c1", topicId = "t1", kind = SourceKind.RSS, url = "https://feed", title = "AI Blog"),
+            ),)
         }
     }
 

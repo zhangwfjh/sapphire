@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * PRD §3.5 dynamic macro table — classification → injected macros. The mapping is the
+ * Dynamic macro table — classification → injected macros. The mapping is the
  * hardcoded spec table; unknown/blank classifications fall back to an empty list (the
  * fallback chat input is always present regardless).
  */

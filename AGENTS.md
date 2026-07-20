@@ -2,10 +2,10 @@
 
 ## Project Overview
 
-Sapphire is a local-first, anonymous, AI-curated Android RSS reader. A user types a topic, a two-tier LLM builds the taxonomy and sources feeds, and the app curates an on-device timeline. No accounts; the only secret is an OpenAI-compatible LLM API key. Built with Jetpack Compose + Hilt + Room + Coroutines/Flow.
+Sapphire is a local-first, anonymous, AI-assisted Android RSS reader. Sources are added via **Explore** — browse a bundled catalog, run a Tier-1 LLM topic search, paste a URL, or import OPML — and the app builds an on-device timeline; the reader runs LLM ops (classify/summarize/translate) on tap. (The prior phrase → AI-taxonomy → review onboarding flow has been removed pending redesign.) No accounts; the only secret is an OpenAI-compatible LLM API key. Built with Jetpack Compose + Hilt + Room + Coroutines/Flow.
 
 Authoritative context docs (read these for product/architecture depth):
-- `docs/prd.md` — feature specs (§3.1 onboarding, §3.2 dual-view dashboard, §3.3 scroll-to-mark-read, §3.4 reader/save-later, §3.5 dynamic AI ops, §3.6/§3.7 agents)
+- `docs/prd.md` — feature specs (§3.1 *removed — AI onboarding pending redesign*, §3.2 dual-view dashboard, §3.3 scroll-to-mark-read, §3.4 reader/save-later, §3.5 dynamic AI ops, §3.6/§3.7 agents)
 - `docs/architecture.md` — locked decisions, entity model, LLM orchestration, mermaid diagrams
 - `docs/roadmap.md` — vertical slices **S01–S07** with Definition of Done and a PRD §x.x coverage table. Phase work is referenced as "Slice S0x".
 
@@ -21,14 +21,13 @@ flowchart LR
   Data --> Feed[(RSS/Atom/JSON<br/>fetchers)]
 ```
 
-**Primary flow (onboarding → review → feed → reader):**
-1. `OnboardingViewModel.generateFeed(phrase)` → `CurateTaxonomyUseCase` (Tier-1 LLM) → `LlmOutcome<ReviewModel>` staged in `OnboardingUiState.Review`.
-2. User edits the model via `ReviewEdit`/`ReviewEditApplier`; `approve()` → `OnboardingRepository.commitReview` → `OnboardingDao.commitOnboarding` (`@Transaction`, atomic, `IGNORE` for idempotent sources).
-3. `FeedViewModel.visibleTimeline` = `combine(_filter.flatMapLatest{...}, _query, _scope).stateIn(...)`. Refresh is `FeedRefreshService.refreshStreaming()` — a `channelFlow` fanning out one IO coroutine per source; the timeline is a live Room Flow.
-4. `ReaderViewModel.open(itemId)` loads + classifies (Tier-1); `summarize`/`translate` are Tier-2 on tap. All ops cache-first via `LlmCacheEntity` keyed by `SHA-256(itemId, op, modelVersion)`.
+**Primary flow (source → feed → reader):**
+1. **Sources are added via Explore**: browse the bundled catalog rails (`explore-catalog.json`), Tier-1 LLM topic search (`SearchFeedsUseCase`), paste a URL, or OPML import/export. The first OPML import creates the topic; new sources land in `SourceEntity` via `OnboardingDao.commitOnboarding` (`@Transaction`, atomic, `IGNORE` for idempotent sources) — the DB seeding primitive.
+2. `FeedViewModel.visibleTimeline` = `combine(_filter.flatMapLatest{...}, _query, _scope).stateIn(...)`. Refresh is `FeedRefreshService.refreshStreaming()` — a `channelFlow` fanning out one IO coroutine per source; the timeline is a live Room Flow.
+3. `ReaderViewModel.open(itemId)` loads + classifies (Tier-1); `summarize`/`translate` are Tier-2 on tap. All ops cache-first via `LlmCacheEntity` keyed by `SHA-256(itemId, op, modelVersion)`.
 
 **Non-obvious must-knows:**
-- **Feed is the start destination**, not onboarding; onboarding is reached via the toolbar "+".
+- **Feed is the start destination**; sources are added from Explore (catalog, LLM topic search, URL paste, OPML import), not a wizard.
 - **Read state is explicit-only**: scroll never marks read. Only reader-open (`markReadOnOpen`) and manual toggles; undo is a first-class `Channel` event.
 - **Saved items are exempt from the 30-day retention purge** (`RetentionWorker`); purge gates on `saved_later = 0`.
 - `RoomSourceRepository` synthesizes **virtual `domain:` L2 sub-folders** at view-time when ≥2 sources share a host — presentation-only, not persisted.
@@ -45,13 +44,12 @@ app/src/main/kotlin/com/sapphire/app/
   ui/                       # @HiltViewModel screens + SapphireNavHost + theme/ + design/
 core-domain/src/main/kotlin/com/sapphire/domain/
   llm/LlmClient.kt          # LlmOutcome<T> = Ok|Err(LlmError) — canonical Result taxonomy
-  onboarding/ review/ feed/ source/ reader/ save/ explore/  # ports + use cases per feature
+  feed/ source/ reader/ save/ explore/  # ports + use cases per feature
   model/Enums.kt            # SourceKind, HealthState, ReadState, ReadMechanism
   util/IdGenerator.kt       # fun interface; injectable for deterministic test ids
 core-data/src/main/kotlin/com/sapphire/data/
   db/                       # SapphireDatabase (@Database v8), Entities.kt, 6 DAOs
   feed/                     # FeedRefreshService, FetcherRegistry, RssAtom/JsonFeed fetchers
-  onboarding/RoomOnboardingRepository.kt + ReviewMapper.kt
   source/RoomSourceRepository.kt + OpmlParser/Serializer
   reader/ save/ explore/ llm/OpenAiCompatibleLlmClient.kt
   work/RetentionWorker.kt   # @HiltWorker; 24h periodic purge
@@ -92,7 +90,7 @@ C:\Users\Shaun\AppData\Local\Android\Sdk\platform-tools\adb.exe
 - `LlmOutcome<out T>` = `Ok(value)` | `Err(LlmError)` — canonical for all LLM calls (`core-domain/llm/LlmClient.kt`).
 - `LlmError` sealed: `Empty`, `Timeout`, `RateLimited`, `InvalidResponse`, `NotConfigured`, `Http(status)`, `Network(message)`; each exposes `userMessage()`.
 - `SourceRepository.Outcome` sealed: `Ok` | `Conflict(existingCategoryId)` — write-collision result surfaced from `INSERT OR IGNORE` rowId `-1`.
-- Per-screen `UiState` sealed interfaces (`OnboardingUiState`, `ReaderUiState`, `ClassificationState`, `SummaryState`, `TranslateState`, etc.).
+- Per-screen `UiState` sealed interfaces (`ReaderUiState`, `ClassificationState`, `SummaryState`, `TranslateState`, etc.).
 
 **Dependency injection (Hilt).** All modules `@InstallIn(SingletonComponent::class)`. `core-data/di/DataModule.kt` is the hub: provides `SapphireDatabase` + 6 DAOs, `OkHttpClient`, `IdGenerator`, use cases, and `@Binds` 10 repository ports to their `Room*` impls. The `BuildConfig` inversion seam: `LlmConfigProvider` interface is declared in core-data but implemented in `app/di/AppConfigModule.kt` (`BuildConfigLlmConfigProvider`) so core-data stays BuildConfig-free. `@HiltWorker RetentionWorker` uses `@AssistedInject`; the app disables WorkManager's default initializer and provides `Configuration.Provider`.
 
@@ -105,7 +103,7 @@ C:\Users\Shaun\AppData\Local\Android\Sdk\platform-tools\adb.exe
 | File | Purpose |
 | --- | --- |
 | `app/src/main/kotlin/com/sapphire/app/SapphireApp.kt` | `@HiltAndroidApp` Application; installs Hilt `WorkerFactory`, global crash handler (tag `SapphireCrash`), schedules retention. |
-| `app/src/main/kotlin/com/sapphire/app/ui/SapphireNavHost.kt` | Single `NavHost`; `object Routes` (ONBOARDING/REVIEW/FEED/SAVED/EXPLORE); **startDestination = FEED**. |
+| `app/src/main/kotlin/com/sapphire/app/ui/SapphireNavHost.kt` | Single `NavHost`; `object Routes` (FEED/SAVED/EXPLORE); **startDestination = FEED**. |
 | `app/src/main/kotlin/com/sapphire/app/di/AppConfigModule.kt` | The ONLY `BuildConfig` touchpoint; bridges `local.properties` → `LlmConfig`. |
 | `core-domain/src/main/kotlin/com/sapphire/domain/llm/LlmClient.kt` | `LlmOutcome`/`LlmError` taxonomy — read before touching any LLM path. |
 | `core-data/src/main/kotlin/com/sapphire/data/db/SapphireDatabase.kt` | `@Database` v8, 9 entities, destructive migration. Bump version on entity change. |

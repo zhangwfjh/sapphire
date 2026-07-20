@@ -34,7 +34,7 @@ data class MarkAllReadEvent(val itemIds: List<String>, val label: String, val co
  *
  * Mark-all-read: swiping a source (or folder) left sweeps its unread items to READ and
  * emits a [MarkAllReadEvent] on [markReadEvents] so the drawer can offer an Undo snackbar
- * (PRD §3.3 "Undo" safety net). Reverting forwards through [undoMarkRead].
+ * (the Undo safety net). Reverting forwards through [undoMarkRead].
  */
 @HiltViewModel
 class SourcesDrawerViewModel @Inject constructor(

@@ -1,7 +1,7 @@
 package com.sapphire.data.db
 
 /**
- * S07: projection of a saved item joined with its feed-item details for the Saved Later
+ * Projection of a saved item joined with its feed-item details for the Saved Later
  * screen. A plain Room result POJO (not an @Entity) — the columns come from the JOIN in
  * [SavedItemDao.observeSavedWithDetails]. See that query for the column-to-field mapping.
  */

@@ -2,7 +2,7 @@ package com.sapphire.domain.llm
 
 /**
  * Provider-agnostic LLM config. Seeded from BuildConfig in the app module (local.properties)
- * and provided via Hilt. Routing tiering (PRD §4.2) maps each operation to a [LlmTier].
+ * and provided via Hilt. Routing tiering maps each operation to a [LlmTier].
  */
 data class LlmConfig(
     /** Base URL must end with '/'. OpenAI-compatible chat completions path is appended. */

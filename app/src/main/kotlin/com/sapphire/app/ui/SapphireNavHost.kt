@@ -8,8 +8,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 
 object Routes {
-    const val ONBOARDING = "onboarding"
-    const val REVIEW = "review"
     const val FEED = "feed"
     const val SAVED = "saved"
     const val EXPLORE = "explore"
@@ -23,34 +21,8 @@ fun SapphireNavHost() {
     val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = Routes.FEED) {
-        composable(Routes.ONBOARDING) {
-            OnboardingScreen(
-                onReviewReady = {
-                    navController.navigate(Routes.REVIEW) {
-                        launchSingleTop = true
-                    }
-                },
-                onCommitted = {
-                    navController.navigate(Routes.FEED) {
-                        popUpTo(Routes.ONBOARDING) { inclusive = true }
-                    }
-                },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-            )
-        }
-        composable(Routes.REVIEW) {
-            ReviewScreen(
-                onBack = { navController.popBackStack() },
-                onApproved = {
-                    navController.navigate(Routes.FEED) {
-                        popUpTo(Routes.ONBOARDING) { inclusive = true }
-                    }
-                },
-            )
-        }
         composable(Routes.FEED) {
             TimelineScreen(
-                onBuildFeed = { navController.navigate(Routes.ONBOARDING) },
                 onOpenReader = { itemId -> navController.navigate(Routes.reader(itemId)) },
                 onOpenSaved = { navController.navigate(Routes.SAVED) },
                 onOpenExplore = { navController.navigate(Routes.EXPLORE) },
@@ -70,7 +42,6 @@ fun SapphireNavHost() {
         composable(Routes.EXPLORE) {
             ExploreScreen(
                 onBack = { navController.popBackStack() },
-                onCurateTopic = { navController.navigate(Routes.ONBOARDING) },
             )
         }
         composable(Routes.SAVED) {

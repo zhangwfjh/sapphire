@@ -1,7 +1,7 @@
 package com.sapphire.domain.reader
 
 /**
- * PRD §3.5 dynamic macro injection. A content [classification] (from the Tier-1 call)
+ * Dynamic macro injection. A content [classification] (from the Tier-1 call)
  * maps to a fixed set of macro actions surfaced at the top of the reader sheet. Each
  * macro carries the label rendered on its chip and a stable [id] the ViewModel uses to
  * route the Tier-2 call.
@@ -22,7 +22,7 @@ enum class ReaderMacro(val id: String, val label: String) {
     ;
 
     companion object {
-        /** PRD §3.5 macro table. */
+        /** Macro table. */
         fun forClassification(classification: String?): List<ReaderMacro> {
             if (classification.isNullOrBlank()) return emptyList()
             return when (classification.trim()) {

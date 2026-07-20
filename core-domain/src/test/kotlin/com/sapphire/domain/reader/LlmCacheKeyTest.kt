@@ -7,7 +7,7 @@ import org.junit.Test
 
 /**
  * [LlmCacheKey] determinism + separation. Same (item, op, model) must collide; any single
- * field change must diverge. This is the idempotent-cache contract (PRD §4.2 re-open is free).
+ * field change must diverge. This is the idempotent-cache contract (re-open is free).
  */
 class LlmCacheKeyTest {
 

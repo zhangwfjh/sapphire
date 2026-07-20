@@ -3,12 +3,12 @@ package com.sapphire.domain.llm
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.KSerializer
 
-/** PRD §4.2 routing tier. Fast models for taxonomy/classification; deep for context ops. */
+/** Routing tier. Fast models for taxonomy/classification; deep for context ops. */
 enum class LlmTier { TIER1_FAST, TIER2_DEEP }
 
 /**
  * Typed outcome for every LLM call. UI pattern-matches on [LlmError]; no raw exceptions
- * cross the domain boundary. PRD §3.1 fallback ("clean Error Popup Modal") maps off
+ * cross the domain boundary. The fallback ("clean Error Popup Modal") maps off
  * [LlmError.Empty] / [LlmError.Timeout] / [LlmError.InvalidResponse].
  */
 sealed interface LlmOutcome<out T> {
@@ -18,7 +18,7 @@ sealed interface LlmOutcome<out T> {
 
 /** Stable, UI-facing error taxonomy. Not throwables — pure data. */
 sealed interface LlmError {
-    /** No high-signal feeds/categories returned — PRD §3.1 "try a broader topic". */
+    /** No high-signal feeds/categories returned — "try a broader topic". */
     data class Empty(val reason: String) : LlmError
     data object Timeout : LlmError
     data object RateLimited : LlmError
@@ -57,7 +57,7 @@ interface LlmClient {
      *
      * Unlike [completeStructured] this uses no JSON mode — callers render raw deltas and
      * parse the final text themselves. The reader summary streams bullets token by token
-     * (PRD §3.4 streaming reveal).
+     * (streaming reveal).
      */
     fun streamText(
         tier: LlmTier,

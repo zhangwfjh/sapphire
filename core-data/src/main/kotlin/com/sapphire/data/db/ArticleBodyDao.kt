@@ -6,7 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 
 /**
- * Readability side-cache DAO (PRD §3.4 reader; architecture §3). PK = the FeedItem hash,
+ * Readability side-cache DAO for the reader. PK = the FeedItem hash,
  * 1:1 with its parent item. `upsert` uses REPLACE so a re-extract overwrites the prior
  * body cleanly. Rows cascade-delete with their FeedItem, so retention purge sweeps them.
  */
@@ -18,7 +18,7 @@ interface ArticleBodyDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: ArticleBodyEntity)
 
-    /** Settings §3.3: clear every article_body row. Returns rows deleted. */
+    /** Clear every article_body row. Returns rows deleted. */
     @Query("DELETE FROM article_body")
     suspend fun deleteAll(): Int
 

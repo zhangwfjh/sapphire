@@ -12,10 +12,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * S07 retention scheduler. Enqueues [RetentionWorker] as a daily periodic work with a
+ * Retention scheduler. Enqueues [RetentionWorker] as a daily periodic work with a
  * KEEP policy — re-calling on every app start is idempotent and never duplicates the job.
  *
- * Architecture §7: network-not-required (local DELETE). The 24h interval is WorkManager's
+ * Network-not-required (local DELETE). The 24h interval is WorkManager's
  * effective cadence; the OS may defer it under doze, which is acceptable for a purge whose
  * cutoff is derived at run time, not at schedule time.
  */

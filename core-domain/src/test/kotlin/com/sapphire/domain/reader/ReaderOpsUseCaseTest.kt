@@ -19,7 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * [ReaderOpsUseCase] — the lazy-compute + idempotent-cache contract (PRD §4.2, S03).
+ * [ReaderOpsUseCase] — the lazy-compute + idempotent-cache contract.
  *
  *
  * - Classification is cache-first: a hit skips the LLM entirely.

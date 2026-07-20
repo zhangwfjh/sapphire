@@ -67,7 +67,7 @@ fun SectionEyebrow(
 
 /**
  * Platform origin badge. UNREAD → brand color outline + label; READ → monochrome mid-gray
- * per PRD §3.3 visual state matrix. Mono label, tight pill, 1px stroke only (no fill)
+ * per the visual state matrix. Mono label, tight pill, 1px stroke only (no fill)
  * so badges read as data tags, not buttons.
  */
 @Composable
@@ -102,7 +102,7 @@ fun PlatformBadge(
 }
 
 /**
- * AI agent provenance badge — the `[✨ AI Search Agent]` / `[🤖 Agent: …]` tag (PRD §3.6/§3.7).
+ * AI agent provenance badge — the `[✨ AI Search Agent]` / `[🤖 Agent: …]` tag.
  * Distinct from platform badges: accent-tinted fill (not outline) so synth items pop as
  * machine-curated against organic feed items.
  */
@@ -132,7 +132,7 @@ fun AIAgentBadge(
 }
 
 /**
- * Soft radial accent glow placed behind a hero element (onboarding title, active card).
+ * Soft radial accent glow placed behind a hero element (title, active card).
  * Uses [Modifier.drawWithCache] to build the radial gradient once per size change.
  */
 fun Modifier.accentGlow(
@@ -186,7 +186,7 @@ fun Modifier.grainOverlay(
 }
 
 /**
- * Shimmer placeholder block (PRD §3.5 shimmer loading). A diagonal gradient sweep that
+ * Shimmer placeholder block (shimmer loading). A diagonal gradient sweep that
  * pans across the target bounds; used by macro/classification loading slots.
  */
 @Composable

@@ -2,7 +2,7 @@ package com.sapphire.domain.reader
 
 /**
  * Extracts the readable article body from a full HTML page. Lazy on first reader-open
- * (PRD §4.2 — no work on unread items). Failure is always non-fatal: callers fall back
+ * (no work on unread items). Failure is always non-fatal: callers fall back
  * to the feed body via [RichContentParser].
  *
  * [Ok.html] is the Readability-cleaned article HTML (block tags preserved); the caller

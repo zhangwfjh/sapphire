@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * [BodyParagraphParser] — splits the reader body into clean paragraphs for the
- * paragraph-aligned translate (PRD §3.4) and rendering. Contract: block tags/br-clusters
+ * paragraph-aligned translate and rendering. Contract: block tags/br-clusters
  * delimit paragraphs, inline HTML is stripped, empties dropped, order preserved.
  */
 class BodyParagraphParserTest {

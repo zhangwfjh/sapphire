@@ -160,7 +160,7 @@ class RoomSourceRepositoryTest {
 
     @Test
     fun `per-source counts reflect unread and total`() = runTest {
-        db.onboardingDao().commitOnboarding(
+        db.seedDao().commitSeed(
             topic = TopicEntity("t1", "Tech", 0L),
             categories = listOf(
                 CategoryEntity("c1", "t1", 1, null, "Tech", 0),
@@ -201,7 +201,7 @@ class RoomSourceRepositoryTest {
     }
 
     private suspend fun seedFlat() {
-        db.onboardingDao().commitOnboarding(
+        db.seedDao().commitSeed(
             topic = TopicEntity("t1", "Tech", 0L),
             categories = listOf(CategoryEntity("c1", "t1", 1, null, "Technology", 0)),
             keywords = emptyList(),
@@ -213,7 +213,7 @@ class RoomSourceRepositoryTest {
     }
 
     private suspend fun seedTwoFolders() {
-        db.onboardingDao().commitOnboarding(
+        db.seedDao().commitSeed(
             topic = TopicEntity("t1", "Tech", 0L),
             categories = listOf(
                 CategoryEntity("c1", "t1", 1, null, "Technology", 0),
@@ -227,9 +227,9 @@ class RoomSourceRepositoryTest {
         )
     }
 
-    /** A topic with no categories — simulates onboarding that left a topic, or all folders deleted. */
+    /** A topic with no categories — simulates a seeded topic left empty, or all folders deleted. */
     private suspend fun seedTopicOnly() {
-        db.onboardingDao().commitOnboarding(
+        db.seedDao().commitSeed(
             topic = TopicEntity("t1", "Tech", 0L),
             categories = emptyList(),
             keywords = emptyList(),

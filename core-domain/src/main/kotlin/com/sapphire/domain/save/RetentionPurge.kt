@@ -1,7 +1,7 @@
 package com.sapphire.domain.save
 
 /**
- * S07 retention purge port (architecture §7). Runs the 30-day rolling retention: deletes
+ * Retention purge port. Runs the 30-day rolling retention: deletes
  * FeedItems that are READ, not saved, and fetched before the cutoff epoch-ms. CASCADE
  * sweeps their `read_log` and `llm_cache` rows.
  *

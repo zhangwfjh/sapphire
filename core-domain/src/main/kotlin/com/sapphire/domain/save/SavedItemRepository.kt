@@ -5,10 +5,10 @@ import com.sapphire.domain.model.SavedItemDetails
 import kotlinx.coroutines.flow.Flow
 
 /**
- * S07 Save Later repository port (PRD §3.4 `[📁 Save Later]`). Room-backed impl in core-data.
+ * Save Later repository port (`[📁 Save Later]`). Room-backed impl in core-data.
  *
- * Promoting an item here flips `FeedItem.saved_later = 1` (architecture §7 — saved items
- * are exempt from the 30-day purge). The repository is the single owner of that flag flip;
+ * Promoting an item here flips `FeedItem.saved_later = 1` (saved items are exempt
+ * from the 30-day purge). The repository is the single owner of that flag flip;
  * callers go through [save] / [unsave].
  */
 interface SavedItemRepository {

@@ -12,10 +12,10 @@ import java.io.IOException
 import javax.inject.Inject
 
 /**
- * JSON Feed (jsonfeed.org, v1 & v1.1) fetcher. The third S02 ingestion kind.
+ * JSON Feed (jsonfeed.org, v1 & v1.1) fetcher. One of the ingestion kinds.
  *
- * Parses only the card-relevant fields. `content_html` → `bodyRaw` for S03; the summary
- * uses `summary` if present, else a stripped snippet of `content_text`.
+ * Parses only the card-relevant fields. `content_html` → `bodyRaw` for the reader; the
+ * summary uses `summary` if present, else a stripped snippet of `content_text`.
  */
 class JsonFeedFetcher @Inject constructor(
     private val client: OkHttpClient,

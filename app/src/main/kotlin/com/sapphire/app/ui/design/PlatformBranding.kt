@@ -3,7 +3,7 @@ package com.sapphire.app.ui.design
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
- * Per-platform accent colors for origin tags (PRD §3.3 platform badges).
+ * Per-platform accent colors for origin tags (platform badges).
  *
  * Native brand hexes when UNREAD (so a reader can scan the timeline by platform);
  * collapsed to a mid-gray when READ per the visual state matrix — see [PlatformBadge].

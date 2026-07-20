@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Sources drawer DAO. Covers the mutations the drawer performs post-onboarding:
+ * Sources drawer DAO. Covers the mutations the drawer performs after seeding:
  * add/update/move/delete source, add/rename/delete category, and the tree-assembly reads.
  * The `(category_id, url)` unique-index conflict path is the one non-obvious behavior —
  * it must surface as a -1 rowid, not an exception.
@@ -145,7 +145,7 @@ class SourceDaoTest {
 
     @Test
     fun `maxSortOrder returns -1 for a topic with no categories`() = runTest {
-        db.onboardingDao().commitOnboarding(
+        db.seedDao().commitSeed(
             topic = TopicEntity("t1", "AI", 0L),
             categories = emptyList(),
             keywords = emptyList(),
@@ -155,7 +155,7 @@ class SourceDaoTest {
     }
 
     private suspend fun seed() {
-        db.onboardingDao().commitOnboarding(
+        db.seedDao().commitSeed(
             topic = TopicEntity("t1", "AI", 0L),
             categories = listOf(
                 CategoryEntity("c2", "t1", 1, null, "Tech", 0),

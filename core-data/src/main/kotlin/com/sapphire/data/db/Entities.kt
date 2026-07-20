@@ -82,7 +82,7 @@ data class KeywordEntity(
     ],
     indices = [
         Index(value = ["category_id"]),
-        // Unique per (category_id, url) so re-onboarding the same topic doesn't duplicate.
+        // Unique per (category_id, url) so re-importing the same source doesn't duplicate.
         Index(value = ["category_id", "url"], unique = true),
     ],
 )
@@ -113,7 +113,7 @@ data class SourceEntity(
         Index(value = ["source_id"]),
         // Unified timeline query: ORDER BY publishedAt DESC, scope by category (folder view).
         Index(value = ["category_id", "published_at"]),
-        // Retention purge (S07): WHERE readState=READ AND savedLater=0 AND fetchedAt<?.
+        // Retention purge: WHERE readState=READ AND savedLater=0 AND fetchedAt<?.
         Index(value = ["read_state", "fetched_at"]),
     ],
 )
@@ -159,12 +159,12 @@ data class ReadLogEntity(
 )
 
 /**
- * S03 reader-op cache (architecture §3 `LlmCache`). PK = the [com.sapphire.domain.util.LlmCacheKey]
+ * Reader-op cache. PK = the [com.sapphire.domain.util.LlmCacheKey]
  * SHA-256 of `(itemId, op, modelVersion)`. Makes reader ops idempotent across re-opens —
- * a second open of the same (item, op, model) is a cache hit, never a re-spend (PRD §4.2).
+ * a second open of the same (item, op, model) is a cache hit, never a re-spend (idempotent).
  *
  * `payload_json` holds the raw structured-output JSON; the domain layer owns decoding.
- * Rows cascade-delete with their FeedItem so retention purge (S07) sweeps stale caches.
+ * Rows cascade-delete with their FeedItem so retention purge sweeps stale caches.
  */
 @Entity(
     tableName = "llm_cache",
@@ -187,13 +187,13 @@ data class LlmCacheEntity(
 )
 
 /**
- * S07 Save Later repository (PRD §3.4 `[📁 Save Later]`, architecture §3/§7). PK = the
+ * Save Later repository (`[📁 Save Later]`). PK = the
  * FeedItem hash — 1:1 with its parent item. Rows survive the 30-day retention purge
- * (architecture §7 exempts saved items); cascade-delete with their FeedItem only.
+ * (saved items are exempt); cascade-delete with their FeedItem only.
  *
  * `labels_json` stores the custom key-value labels as a JSON object string; the domain
- * layer owns encoding/decoding. `folder` is a free-form bucket name (PRD §3.4 "structural
- * folders independent of the active feed lifecycle").
+ * layer owns encoding/decoding. `folder` is a free-form bucket name (structural
+ * folders independent of the active feed lifecycle).
  */
 @Entity(
     tableName = "saved_item",

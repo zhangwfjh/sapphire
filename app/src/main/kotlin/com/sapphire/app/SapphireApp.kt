@@ -12,7 +12,7 @@ import javax.inject.Inject
  * are auto-discovered; [com.sapphire.app.di.AppConfigModule] contributes the app-local
  * [com.sapphire.data.di.LlmConfigProvider].
  *
- * S07: implements [Configuration.Provider] so WorkManager uses the Hilt-injected
+ * Implements [Configuration.Provider] so WorkManager uses the Hilt-injected
  * [HiltWorkerFactory] (required for @HiltWorker). The default WorkManager initializer is
  * disabled in the manifest; WorkManager initializes on-demand on first use.
  */

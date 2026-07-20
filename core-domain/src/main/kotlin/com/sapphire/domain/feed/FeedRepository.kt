@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.Flow
 /**
  * Persistence + query boundary for the unified timeline. Room-backed impl in core-data.
  *
- * The timeline is a single reverse-chronological [Flow] over all sources — the PRD §3.2
- * "unified" view. Folder-view filters the same query by categoryId.
+ * The timeline is a single reverse-chronological [Flow] over all sources — the unified
+ * view. Folder-view filters the same query by categoryId.
  */
 interface FeedRepository {
 
@@ -61,7 +61,7 @@ interface FeedRepository {
 
     /**
      * Batch-revert a set of items to UNREAD. Used by the scroll-past undo snackbar
-     * (PRD §3.3 "Undo" safety net) to restore a swept batch atomically.
+     * (the Undo safety net) to restore a swept batch atomically.
      */
     suspend fun undoMarkRead(itemIds: List<String>)
 

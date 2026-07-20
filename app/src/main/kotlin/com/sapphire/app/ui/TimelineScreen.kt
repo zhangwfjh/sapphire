@@ -114,7 +114,6 @@ private enum class FeedLayout(val label: String) {
 @Composable
 fun TimelineScreen(
     viewModel: FeedViewModel = hiltViewModel(),
-    onBuildFeed: () -> Unit = {},
     onOpenReader: (String) -> Unit = {},
     onOpenSaved: () -> Unit = {},
     onOpenExplore: () -> Unit = {},
@@ -126,8 +125,6 @@ fun TimelineScreen(
     val hasAnyItems by viewModel.hasAnyItems.collectAsStateWithLifecycle()
     val feedScope by viewModel.feedScope.collectAsStateWithLifecycle()
     val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
-    val hasTopic by viewModel.hasTopic.collectAsStateWithLifecycle()
-    val firstRefreshDone by viewModel.firstRefreshDone.collectAsStateWithLifecycle()
 
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -244,17 +241,6 @@ fun TimelineScreen(
                 },
             )
         },
-        floatingActionButton = {
-            if (!inSelection) {
-                FloatingActionButton(
-                    onClick = onBuildFeed,
-                    containerColor = LocalSapphirePalette.current.Accent,
-                    contentColor = Color.White,
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Curate new topic")
-                }
-            }
-        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -270,10 +256,7 @@ fun TimelineScreen(
                     !hasAnyItems -> EmptyTimeline(
                         padding = PaddingValues(0.dp),
                         onRefresh = viewModel::refresh,
-                        onBuildFeed = onBuildFeed,
-                        hasTopic = hasTopic,
                         refreshing = refreshing,
-                        firstRefreshDone = firstRefreshDone,
                     )
                     timeline.isEmpty() && searching -> NoSearchMatches(
                         query = query,
@@ -515,15 +498,9 @@ private fun TimelineTopBar(
 private fun EmptyTimeline(
     padding: PaddingValues,
     onRefresh: () -> Unit,
-    onBuildFeed: () -> Unit,
-    hasTopic: Boolean,
     refreshing: Boolean,
-    firstRefreshDone: Boolean,
 ) {
     val palette = LocalSapphirePalette.current
-    // Cold-start copy: a brand-new install with no sources has nothing to refresh, so lead
-    // with "Curate". Once a topic exists, sources exist and Refresh is meaningful again.
-    val isColdStart = !hasTopic
     Box(
         Modifier
             .fillMaxSize()
@@ -548,33 +525,21 @@ private fun EmptyTimeline(
             ) {
                 Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = palette.Accent)
             }
-            SectionEyebrow(if (isColdStart) "WELCOME" else "EMPTY FEED")
+            SectionEyebrow("EMPTY FEED")
             Text(
-                if (isColdStart) "Curate your first feed" else stringResource(R.string.timeline_empty_title),
+                stringResource(R.string.timeline_empty_title),
                 style = MaterialTheme.typography.headlineMedium,
                 textAlign = TextAlign.Center,
                 color = palette.OnInk,
             )
             Text(
-                if (isColdStart)
-                    "Type a topic and AI builds the taxonomy, sources the feeds, and curates the stream — no accounts, all on-device."
-                else stringResource(R.string.timeline_empty_body),
+                stringResource(R.string.timeline_empty_body),
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = palette.OnInkMuted,
             )
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                // On cold start, "Curate with AI" is primary and Refresh is hidden (nothing
-                // to refresh). After a topic exists, Refresh leads so the user can pull
-                // fresh items; Curate stays as a secondary path.
-                if (isColdStart) {
-                    PrimaryActionButton(onBuildFeed, "Curate with AI")
-                } else {
-                    PrimaryActionButton(onRefresh, if (refreshing) "Refreshing…" else "Refresh feeds")
-                    SecondaryActionButton(onBuildFeed, "Curate with AI")
-                }
-            }
+            PrimaryActionButton(onRefresh, if (refreshing) "Refreshing…" else "Refresh feeds")
         }
     }
 }

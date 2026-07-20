@@ -87,7 +87,7 @@ import com.sapphire.domain.settings.TranslateViewMode
 import com.sapphire.domain.settings.UiPrefsStore
 
 /**
- * PRD §3.4 Full-Screen Reader.
+ * Full-Screen Reader.
  *
  * Full navigation route (promoted from the old ReaderSheet overlay). The action row carries
  * read/unread, save, share, open-in-browser, and preferences — and auto-hides on scroll-down

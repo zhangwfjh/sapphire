@@ -41,9 +41,9 @@ import java.text.DateFormat
 import java.util.Date
 
 /**
- * S07 Saved Later repository (PRD §3.4 `[📁 Save Later]`). Lists items promoted from the
+ * Saved Later repository (`[📁 Save Later]`). Lists items promoted from the
  * reader, newest-save first. Each row shows the title, author/platform, save folder, and
- * a remove (unsave) action. Items here survive the 30-day retention purge (architecture §7).
+ * a remove (unsave) action. Items here survive the 30-day retention purge.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -1,11 +1,5 @@
 <resources>
     <string name="app_name">Sapphire</string>
-    <string name="onboarding_error_title">Couldn\'t build that feed</string>
-    <string name="onboarding_error_dismiss">Dismiss</string>
-
-    <string name="review_add_keyword_hint">Add keyword…</string>
-    <string name="review_add_feed_hint">Paste RSS/Atom/JSON URL</string>
-    <string name="review_empty_feeds">No feeds — an AI search agent will source for this folder.</string>
 
     <string name="timeline_empty_title">No items yet</string>
     <string name="timeline_empty_body">Pull fresh items from your approved sources.</string>

@@ -11,19 +11,19 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Timeline + read-state mutations for [FeedItemEntity]. The PK `hash_uuid` is the ingest
- * dedup guard: `INSERT OR IGNORE` drops a re-fetched duplicate without throwing (PRD §3.2
- * global hash identity). S02 dedup is hash-only; semantic embedding dedup lands in S04.
+ * dedup guard: `INSERT OR IGNORE` drops a re-fetched duplicate without throwing (global
+ * hash identity). Hash-only dedup at this layer; semantic embedding dedup is separate.
  *
  * **Timeline bound.** Every `observe*` query is capped at [TIMELINE_LIMIT] rows (newest
  * first). Only READ items are retention-purged; UNREAD items never expire, so without a
  * bound an active user's timeline grows without limit and re-materializes in full on every
  * single-row change. The limit is generous (a typical mobile feed ceiling); full paging is
- * a future slice.
+ * a future enhancement.
  */
 @Dao
 interface FeedDao {
 
-    /** Unified timeline (PRD §3.2): all sources, newest first. Emits on any change. */
+    /** Unified timeline: all sources, newest first. Emits on any change. */
     @Query("""
         SELECT * FROM feed_item
         ORDER BY COALESCE(published_at, fetched_at) DESC, fetched_at DESC
@@ -31,7 +31,7 @@ interface FeedDao {
     """)
     fun observeTimeline(): Flow<List<FeedItemEntity>>
 
-    /** Folder view (§3.2): one category, newest first. */
+    /** Folder view: one category, newest first. */
     @Query("""
         SELECT * FROM feed_item
         WHERE category_id = :categoryId
@@ -133,8 +133,8 @@ interface FeedDao {
 
     /**
      * Ingest insert. IGNORE on PK conflict: the same item re-fetched from any source is a
-     * no-op — this is the global hash-id dedup PRD §3.2 requires (cheap layer; S04 adds
-     * semantic embedding dedup on top for the AGENT_SEARCH path only).
+     * no-op — this is the global hash-id dedup (the cheap layer; semantic embedding dedup
+     * runs on top for the AGENT_SEARCH path only).
      *
      * @return rowids inserted (-1 rowids are conflicts that were ignored); caller uses the
      *   count to surface "N new" in the refresh UI.
@@ -272,24 +272,24 @@ interface FeedDao {
     @Query("SELECT read_state FROM feed_item WHERE hash_uuid = :itemId")
     suspend fun readStateOf(itemId: String): ReadState?
 
-    /** S03 reader: fetch a single item by PK for the reader sheet. */
+    /** Reader: fetch a single item by PK for the reader sheet. */
     @Query("SELECT * FROM feed_item WHERE hash_uuid = :itemId")
     suspend fun itemById(itemId: String): FeedItemEntity?
 
-    /** S03 reader: persist the Tier-1 classification onto the row (PRD §3.5 macro source). */
+    /** Persist the Tier-1 classification onto the row (macro source). */
     @Query("UPDATE feed_item SET classification = :classification WHERE hash_uuid = :itemId")
     suspend fun setClassification(itemId: String, classification: String)
 
-    /** S07 reader: flip the Save Later flag on an item (PRD §3.4 [📁 Save Later]). */
+    /** Flip the Save Later flag on an item (`[📁 Save Later]`). */
     @Query("UPDATE feed_item SET saved_later = :saved WHERE hash_uuid = :itemId")
     suspend fun setSavedLater(itemId: String, saved: Boolean)
 
     /**
-     * S07 retention purge (architecture §7). Deletes items that are READ, not saved, and
+     * Retention purge. Deletes items that are READ, not saved, and
      * fetched before [cutoff]. CASCADE sweeps `read_log` and `llm_cache`. Returns the row
      * count so the worker can log purge volume.
      *
-     * The `(read_state, fetched_at)` index was added in S02 for this query.
+     * The `(read_state, fetched_at)` index backs this query.
      */
     @Query("""
         DELETE FROM feed_item
@@ -299,7 +299,7 @@ interface FeedDao {
     """)
     suspend fun purgeOldRead(cutoff: Long): Int
 
-    /** Settings §3.3: clear every feed_item row. Returns rows deleted. CASCADE sweeps read_log/llm_cache/article_body/saved_item. */
+    /** Clear every feed_item row. Returns rows deleted. CASCADE sweeps read_log/llm_cache/article_body/saved_item. */
     @Query("DELETE FROM feed_item")
     suspend fun deleteAllFeedItems(): Int
 }

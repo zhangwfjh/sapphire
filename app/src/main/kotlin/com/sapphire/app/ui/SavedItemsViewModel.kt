@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * S07 Saved Later screen state. Backed by [SavedItemRepository.observeDetails] — a live
+ * Saved Later screen state. Backed by [SavedItemRepository.observeDetails] — a live
  * JOIN of saved items with their feed-item display columns. Unsave is exposed so the list
  * can drop an item without navigating to the reader.
  */

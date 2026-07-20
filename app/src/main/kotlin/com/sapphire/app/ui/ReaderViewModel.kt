@@ -30,15 +30,15 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * S03 reader-sheet state (PRD §3.4 / §3.5, architecture §9).
+ * Reader-sheet state.
  *
  * Lazy-compute lifecycle:
  * - [open] resolves the article body first: a cached extraction is reused; otherwise the
  *   full article is fetched + extracted on demand (and cached); on any failure the feed
  *   body is used. Only then does it kick Tier-1 classification. While classification runs
- *   the macro slot shows shimmer (PRD §3.5); the chat input is interactive immediately.
+ *   the macro slot shows shimmer; the chat input is interactive immediately.
  * - [summarize] / [translate] fire Tier-2 on tap. Results are cached by the use case, so
- *   a re-open or re-tap is a free cache hit (PRD §4.2 idempotent).
+ *   a re-open or re-tap is a free cache hit (idempotent).
  * - When translate-view mode is BILINGUAL or TRANSLATION, translate auto-fires on open.
  *
  * The macros set is derived from the classification via [ReaderMacro.forClassification].
@@ -226,7 +226,7 @@ class ReaderViewModel @Inject constructor(
         // Skip the Tier-2 call when the article is already in the target language.
         // Today only Simplified Chinese is detected (Traditional/Japanese/Korean still
         // translate). On skip we surface the originals as-is: no translate block, no
-        // loading state. (PRD §3.4: translate is opt-in per article.)
+        // loading state. Translate is opt-in per article.
         val sourceText = buildString {
             regions.title.forEach { append(it); append(' ') }
             regions.brief.forEach { append(it); append(' ') }

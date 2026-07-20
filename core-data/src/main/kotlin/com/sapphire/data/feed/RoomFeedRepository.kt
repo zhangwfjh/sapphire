@@ -1,7 +1,7 @@
 package com.sapphire.data.feed
 
 import com.sapphire.data.db.FeedDao
-import com.sapphire.data.db.OnboardingDao
+import com.sapphire.data.db.SeedDao
 import com.sapphire.data.db.SourceEntity
 import com.sapphire.domain.feed.FeedRepository
 import com.sapphire.domain.model.FeedItem
@@ -107,11 +107,11 @@ interface SourceFeedQuery {
 
 /** Room-backed [SourceFeedQuery]. */
 class RoomSourceFeedQuery @Inject constructor(
-    private val onboardingDao: OnboardingDao,
+    private val seedDao: SeedDao,
 ) : SourceFeedQuery {
 
     override suspend fun allSources(): List<SourceEntity> = withContext(Dispatchers.IO) {
-        onboardingDao.allSources()
+        seedDao.allSources()
     }
 
     override suspend fun updateSourceFetchState(
@@ -120,6 +120,6 @@ class RoomSourceFeedQuery @Inject constructor(
         now: Long,
         errorAt: Long?,
     ) = withContext(Dispatchers.IO) {
-        onboardingDao.updateFetchState(id, health, now, errorAt)
+        seedDao.updateFetchState(id, health, now, errorAt)
     }
 }

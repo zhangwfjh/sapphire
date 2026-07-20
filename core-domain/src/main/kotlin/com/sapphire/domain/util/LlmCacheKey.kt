@@ -3,11 +3,11 @@ package com.sapphire.domain.util
 import java.security.MessageDigest
 
 /**
- * Cache key for `LlmCache` (architecture §3): `SHA-256(itemId, op, modelVersion)`, hex.
+ * Cache key for `LlmCache`: `SHA-256(itemId, op, modelVersion)`, hex.
  *
  * This makes reader ops idempotent across re-opens — the same (item, op, model) tuple
  * always resolves to the same row, so a second open is a cache hit and never re-spends
- * a token (PRD §4.2 lazy compute + cache). `modelVersion` is folded in so a model swap
+ * a token (lazy compute + cache). `modelVersion` is folded in so a model swap
  * invalidates stale payloads without a migration.
  *
  * Pure (no Android deps) so it's unit-testable alongside [FeedItemId].

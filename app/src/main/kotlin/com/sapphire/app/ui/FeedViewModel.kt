@@ -70,14 +70,6 @@ class FeedViewModel @Inject constructor(
     private val _pendingDeletion = MutableStateFlow<Set<String>>(emptySet())
     private var deleteCommitJob: Job? = null
 
-    /** "Has the user ever onboarded a topic?" — gates the true cold-start empty state. */
-    val hasTopic: StateFlow<Boolean> = sourceRepository.observeHasTopic()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    /** True once the first refresh pass has completed (success or fail). */
-    private val _firstRefreshDone = MutableStateFlow(false)
-    val firstRefreshDone: StateFlow<Boolean> = _firstRefreshDone.asStateFlow()
-
     /** One-shot stream of non-zero source-error counts from a completed refresh pass. */
     private val _refreshErrorEvents = Channel<Int>(Channel.BUFFERED)
     val refreshErrorEvents = _refreshErrorEvents.receiveAsFlow()
@@ -149,7 +141,7 @@ class FeedViewModel @Inject constructor(
     val filterLabel: StateFlow<String?> = _filterLabel.asStateFlow()
 
     /** True when the raw (unfiltered) timeline has at least one item. Lets the UI tell
-     *  "no items at all" (→ onboarding empty state) apart from "search yields nothing". */
+     *  "no items at all" (→ empty state) apart from "search yields nothing". */
     val hasAnyItems: StateFlow<Boolean> = repository.observeHasAny()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -160,8 +152,8 @@ class FeedViewModel @Inject constructor(
     init {
         // One silent streaming refresh per VM lifetime. The VM is scoped to the FEED
         // NavBackStackEntry, which survives navigation, so this fires only on the genuine
-        // first entry to the feed — not on every return from another screen (e.g. the +
-        // / onboarding flow), which would needlessly re-fetch.
+        // first entry to the feed — not on every return from another screen, which
+        // would needlessly re-fetch.
         refresh()
     }
     /**
@@ -186,7 +178,6 @@ class FeedViewModel @Inject constructor(
                 android.util.Log.e("FeedViewModel", "refresh failed", t)
             } finally {
                 _refreshing.value = false
-                _firstRefreshDone.value = true
                 if (errorCount > 0) _refreshErrorEvents.trySend(errorCount)
             }
         }

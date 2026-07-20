@@ -10,13 +10,13 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
 /**
- * S07 retention purge (architecture §7 / PRD §4.3). Runs the 30-day rolling retention:
+ * Retention purge. Runs the 30-day rolling retention:
  * deletes FeedItems that are READ, not saved, and older than the cutoff. CASCADE sweeps
  * their `read_log` and `llm_cache` rows.
  *
- * Scheduled daily by [RetentionScheduler]. Network-unconstrained (it's a local DELETE) —
- * matches the architecture decision. The cutoff is derived from the wall clock at run time
- * via [RetentionPolicy]; WorkManager deferral only affects *when* this fires, not the rule.
+ * Scheduled daily by [RetentionScheduler]. Network-unconstrained (it's a local DELETE).
+ * The cutoff is derived from the wall clock at run time via [RetentionPolicy];
+ * WorkManager deferral only affects *when* this fires, not the rule.
  */
 @HiltWorker
 class RetentionWorker @AssistedInject constructor(

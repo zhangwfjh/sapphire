@@ -26,7 +26,7 @@ import androidx.room.TypeConverters
 )
 @TypeConverters(EnumTypeConverter::class)
 abstract class SapphireDatabase : RoomDatabase() {
-    abstract fun onboardingDao(): OnboardingDao
+    abstract fun seedDao(): SeedDao
     abstract fun feedDao(): FeedDao
     abstract fun sourceDao(): SourceDao
     abstract fun llmCacheDao(): LlmCacheDao

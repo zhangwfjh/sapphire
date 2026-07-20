@@ -4,7 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.sapphire.data.db.CategoryEntity
 import com.sapphire.data.db.FeedItemEntity
-import com.sapphire.data.db.OnboardingDao
+import com.sapphire.data.db.SeedDao
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.data.db.SourceEntity
 import com.sapphire.data.db.TopicEntity
@@ -27,7 +27,7 @@ import org.robolectric.RobolectricTestRunner
 class RoomArticleBodyStoreTest {
 
     private lateinit var db: SapphireDatabase
-    private lateinit var onboarding: OnboardingDao
+    private lateinit var seedDao: SeedDao
     private lateinit var store: RoomArticleBodyStore
 
     @Before
@@ -36,7 +36,7 @@ class RoomArticleBodyStoreTest {
             ApplicationProvider.getApplicationContext(),
             SapphireDatabase::class.java,
         ).allowMainThreadQueries().build()
-        onboarding = db.onboardingDao()
+        seedDao = db.seedDao()
         store = RoomArticleBodyStore(db.articleBodyDao())
     }
 
@@ -82,16 +82,14 @@ class RoomArticleBodyStoreTest {
 
     /** Minimal topic + category + source + a single feed_item with [hash], to satisfy FKs. */
     private suspend fun seedItem(hash: String) {
-        onboarding.commitOnboarding(
-            topic = TopicEntity(id = "t1", phrase = "AI", createdAt = 0L),
-            categories = listOf(
-                CategoryEntity(id = "c1", topicId = "t1", level = 1, parentId = null, name = "Tech", sortOrder = 0),
-            ),
-            keywords = emptyList(),
-            sources = listOf(
-                SourceEntity(id = "s1", categoryId = "c1", topicId = "t1", kind = SourceKind.RSS, url = "https://feed", title = "AI Blog"),
-            ),
-        )
+        seedDao.commitSeed(topic = TopicEntity(id = "t1", phrase = "AI", createdAt = 0L),
+        categories = listOf(
+            CategoryEntity(id = "c1", topicId = "t1", level = 1, parentId = null, name = "Tech", sortOrder = 0),
+        ),
+        keywords = emptyList(),
+        sources = listOf(
+            SourceEntity(id = "s1", categoryId = "c1", topicId = "t1", kind = SourceKind.RSS, url = "https://feed", title = "AI Blog"),
+        ),)
         val now = System.currentTimeMillis()
         db.feedDao().insertItems(
             listOf(FeedItemEntity(hashUuid = hash, sourceId = "s1", categoryId = "c1", title = "Item $hash", fetchedAt = now)),

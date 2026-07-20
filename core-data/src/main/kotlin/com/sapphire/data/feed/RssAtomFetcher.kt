@@ -14,13 +14,13 @@ import java.io.StringReader
 import javax.inject.Inject
 
 /**
- * RSS 2.0 + Atom 1.0 fetcher (architecture §6 / §11). Uses Android's [XmlPullParser]
+ * RSS 2.0 + Atom 1.0 fetcher. Uses Android's [XmlPullParser]
  * (kxml2, bundled) rather than Rome — Rome drags JDK XML APIs that AGP/Android struggle
  * with and adds ~400 KB for one feed parser.
  *
- * Extracts the PRD §3.2 card fields: title, summary, canonical link, author, publishedAt
+ * Extracts the card fields: title, summary, canonical link, author, publishedAt
  * epoch, media thumbnail. `<content:encoded>` (RSS) / `<content>` (Atom) feeds `bodyRaw`
- * for S03's reader body parse; S02 only needs the card fields.
+ * for the reader body parse; the card fields are all this layer needs.
  */
 class RssAtomFetcher @Inject constructor(
     private val client: OkHttpClient,

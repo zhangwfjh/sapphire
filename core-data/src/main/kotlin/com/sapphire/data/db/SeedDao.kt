@@ -8,7 +8,7 @@ import androidx.room.Transaction
 import com.sapphire.domain.model.HealthState
 
 @Dao
-interface OnboardingDao {
+interface SeedDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertTopic(topic: TopicEntity)
@@ -19,7 +19,7 @@ interface OnboardingDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertKeywords(keywords: List<KeywordEntity>)
 
-    /** IGNORE so re-onboarding the same topic is idempotent — no crash, no duplicate row. */
+    /** IGNORE so re-importing the same source is idempotent — no crash, no duplicate row. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertSources(sources: List<SourceEntity>)
 
@@ -29,22 +29,23 @@ interface OnboardingDao {
     @Query("SELECT COUNT(*) FROM source WHERE category_id = :categoryId AND url = :url")
     suspend fun countByCategoryAndUrl(categoryId: String, url: String): Int
 
-    // ---- S02 feed-ingest support ----
+    // ---- feed-ingest support ----
 
     /** All sources the [FeedRefreshService] pulls. */
     @Query("SELECT * FROM source")
     suspend fun allSources(): List<SourceEntity>
 
-    /** Stamp a source's last fetch + health (S06 surfaces FAILED/DEGRADED in UI). */
+    /** Stamp a source's last fetch + health (surfaces FAILED/DEGRADED in UI). */
     @Query("UPDATE source SET health_state = :health, last_fetched_at = :now, last_error_at = :errorAt WHERE id = :id")
     suspend fun updateFetchState(id: String, health: HealthState, now: Long, errorAt: Long?)
 
     /**
-     * Atomic commit of a full onboarding review. All-or-nothing: if any insert throws,
-     * Room rolls back the transaction — the partial topic never lands.
+     * Atomic commit of a full topic tree (topic + categories + keywords + sources).
+     * All-or-nothing: if any insert throws, Room rolls back the transaction — the partial
+     * topic never lands.
      */
     @Transaction
-    suspend fun commitOnboarding(
+    suspend fun commitSeed(
         topic: TopicEntity,
         categories: List<CategoryEntity>,
         keywords: List<KeywordEntity>,

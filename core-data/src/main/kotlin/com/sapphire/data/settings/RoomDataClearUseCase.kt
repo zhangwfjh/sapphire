@@ -12,7 +12,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
- * Room-backed [DataClearUseCase] (PRD §3.3 data-clear controls). Each granular clear runs
+ * Room-backed [DataClearUseCase] for the data-clear controls. Each granular clear runs
  * on the IO dispatcher and returns the deleted-row count; `clearAll` delegates to
  * [RoomDatabase.clearAllTables], which wipes every entity table atomically.
  */

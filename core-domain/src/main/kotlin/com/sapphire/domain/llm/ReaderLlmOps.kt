@@ -4,21 +4,21 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * S03 reader-sheet LLM operations (PRD §3.4 / §3.5, architecture §9).
+ * Reader-sheet LLM operations.
  *
  * Lazy compute contract: no op fires until the reader sheet opens or the user taps a
- * macro. Classification is Tier-1 (fast); summary/translate/macros are Tier-2 (deep)
- * per the routing table in architecture §4. Every result is cached in `LlmCache` keyed
- * by [LlmCacheKey] so re-opening the same item's same op is free (PRD §4.2 idempotent).
+ * macro. Classification is Tier-1 (fast); summary/translate/macros are Tier-2 (deep).
+ * Every result is cached in `LlmCache` keyed by [LlmCacheKey] so re-opening the same
+ * item's same op is free (idempotent).
  *
  * Each op has a typed structured-output DTO (parsed, never free-text) and a companion
  * system prompt that hands the model the exact JSON shape.
  */
 
-// region Classification (§3.5) — Tier-1, fires on reader open ----------------
+// region Classification — Tier-1, fires on reader open ----------------
 
 /**
- * Content classification (PRD §3.5). The `classification` string is the macro-dispatch
+ * Content classification. The `classification` string is the macro-dispatch
  * key consumed by [com.sapphire.domain.reader.ClassificationMacros]; `confidence` is
  * advisory (0..1) and currently unused by the UI.
  */
@@ -48,12 +48,12 @@ Output STRICT JSON: {"classification": string, "confidence": number}
     }
 }
 
-// region Summary (§3.4) — Tier-2, on [✨ Summary] tap -----------------------
+// region Summary — Tier-2, on [✨ Summary] tap -----------------------
 
 /**
- * Three-bullet executive summary (PRD §3.4). Exactly three bullets streamed token by token
- * and pinned beneath the header metadata once complete. The DTO is also the cached payload
- * (PRD §4.2) so a re-open renders instantly without re-streaming.
+ * Three-bullet executive summary. Exactly three bullets streamed token by token
+ * and pinned beneath the header metadata once complete. The DTO is also the cached
+ * payload so a re-open renders instantly without re-streaming.
  */
 @Serializable
 data class SummaryResponse(
@@ -86,11 +86,11 @@ data class SummaryStreamFrame(
     val partial: String = "",
 )
 
-// region Translate (§3.4) — Tier-2, on [🌐 Translate] tap -------------------
+// region Translate — Tier-2, on [🌐 Translate] tap -------------------
 
 /**
  * Ordered source paragraphs grouped by reader region, input to paragraph-aligned
- * translate (PRD §3.4). The reader assembles these from the title, the AI summary
+ * translate. The reader assembles these from the title, the AI summary
  * bullets, the feed brief, and the extracted full article; [flat] yields them in document
  * order so paragraph *i* of the streamed output maps back to a known region + index.
  */
@@ -105,7 +105,7 @@ data class TranslateRegions(
 }
 
 /**
- * Regioned bilingual translation (PRD §3.4). Each list holds the translations for one
+ * Regioned bilingual translation. Each list holds the translations for one
  * reader region, paragraph-aligned with the matching [TranslateRegions] input; the UI
  * renders each beneath its original. Defaults are empty so a cache payload written by an
  * older single-body shape decodes harmlessly (all-empty → caller re-translates).

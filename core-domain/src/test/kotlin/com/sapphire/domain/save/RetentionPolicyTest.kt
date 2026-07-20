@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * S07 retention cutoff math (architecture §7). Pure — no Android, no Room. Pins the
+ * Retention cutoff math. Pure — no Android, no Room. Pins the
  * 30-day derivation so the worker's cutoff can't silently drift.
  */
 class RetentionPolicyTest {

@@ -3,7 +3,7 @@ package com.sapphire.domain.settings
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Runtime-editable LLM config (PRD §3.1 — provider swapping without rebuild). The API key
+ * Runtime-editable LLM config (provider swapping without rebuild). The API key
  * is exposed separately from the rest of the snapshot so the UI can mask it.
  *
  * Persistence is backed by SharedPreferences in core-data; the key is encrypted at rest.

@@ -2,7 +2,7 @@ package com.sapphire.domain.model
 
 /**
  * A content feed/source attached to an L2 category. [hashUuid] identity for feed *items*
- * is S02's concern (FeedItem); here we only need stable source rows.
+ * is the FeedItem's concern; here we only need stable source rows.
  * Unique per (categoryId, url) — see the Room index in SourceEntity.
  */
 data class Source(

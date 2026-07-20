@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 /**
- * PRD §4.2 lazy-compute cache port. Implementations store LLM op payloads keyed by
+ * Lazy-compute cache port. Implementations store LLM op payloads keyed by
  * [LlmCacheKey] so a re-open of the same (item, op, model) is a free cache hit.
  *
  * The port is intentionally stringly-typed (`payloadJson`) so domain stays free of Room —
@@ -33,12 +33,12 @@ interface ReaderOpCache {
  */
 interface ReaderItemStore {
     suspend fun item(itemId: String): FeedItem?
-    /** Persist the Tier-1 classification back onto the row (PRD §3.5 dynamic macro source). */
+    /** Persist the Tier-1 classification back onto the row (dynamic macro source). */
     suspend fun setClassification(itemId: String, classification: String)
 }
 
 /**
- * S03 reader-sheet lazy LLM orchestration (PRD §3.4 / §3.5, architecture §9).
+ * Reader-sheet lazy LLM orchestration.
  *
  * Guarantees the lazy-compute + idempotent-cache contract:
  * - **No op touches an unread item's cost until the reader opens** — methods are only
@@ -48,8 +48,7 @@ interface ReaderItemStore {
  * - **Classification is persisted** onto the feed item row (via [ReaderItemStore]) so the
  *   macro set is stable across re-opens without a second Tier-1 call.
  *
- * All outcomes are typed [LlmOutcome]s — no exceptions cross the boundary, mirroring
- * [com.sapphire.domain.onboarding.CurateTaxonomyUseCase].
+ * All outcomes are typed [LlmOutcome]s — no exceptions cross the boundary.
  *
  * @param tier1ModelVersion folded into the cache key so a model swap invalidates payloads.
  * @param targetLanguage BCP-47-ish locale tag for translate (e.g. "zh"); the human name is
@@ -65,7 +64,7 @@ class ReaderOpsUseCase(
 ) {
 
     /**
-     * Tier-1 classification (PRD §3.5). On reader open: if the item already has a
+     * Tier-1 classification. On reader open: if the item already has a
      * persisted classification, return it (no call). Else check the cache, then call.
      * Persists the result onto the item row so subsequent opens skip entirely.
      *
@@ -107,7 +106,7 @@ class ReaderOpsUseCase(
         }
     }
     /**
-     * Tier-2 streaming summary (PRD §3.4 [✨ Summary], streaming reveal). Cache-first: a hit
+     * Tier-2 streaming summary ([✨ Summary], streaming reveal). Cache-first: a hit
      * emits a single complete frame and skips the LLM entirely (re-open is free). On a miss the
      * plain-text stream is parsed line by line — completed bullets versus the line being typed —
      * and each token chunk emits a [SummaryStreamFrame]; the final frame carries the full bullet
@@ -161,7 +160,7 @@ class ReaderOpsUseCase(
         (err as LlmOutcome.Err).let { LlmOutcome.Err(it.error) }
 
     /**
-     * Tier-2 paragraph-aligned streaming translate (PRD §3.4 [🌐 Translate], streaming
+     * Tier-2 paragraph-aligned streaming translate ([🌐 Translate], streaming
      * reveal), covering every reader region — title, AI summary, brief, and full article.
      * Cache-first, keyed per target language: a hit emits a single complete frame and skips
      * the LLM entirely (re-open is free). On a miss the [TranslateRegions] are flattened in

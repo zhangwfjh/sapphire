@@ -18,7 +18,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Room tests for the S02 feed layer: PK dedup (PRD §3.2 global hash), read-state
+ * Room tests for the feed layer: PK dedup (global hash), read-state
  * transactions, timeline ordering, undo batch, ReadLog append. Runs on Robolectric so the
  * Flow queries resolve synchronously under runTest.
  */
@@ -27,7 +27,7 @@ class FeedDaoTest {
 
     private lateinit var db: SapphireDatabase
     private lateinit var dao: FeedDao
-    private lateinit var onboarding: OnboardingDao
+    private lateinit var seedDao: SeedDao
 
     @Before
     fun setUp() {
@@ -36,24 +36,22 @@ class FeedDaoTest {
             SapphireDatabase::class.java,
         ).allowMainThreadQueries().build()
         dao = db.feedDao()
-        onboarding = db.onboardingDao()
+        seedDao = db.seedDao()
     }
 
     @After fun tearDown() { db.close() }
 
     private suspend fun seedSourceAndItems() {
         // Minimal topic + category + source to satisfy FKs (feed_item.source_id → source.id).
-        onboarding.commitOnboarding(
-            topic = TopicEntity("t1", "AI", 0L),
-            categories = listOf(
-                CategoryEntity("c1", "t1", 1, null, "Tech", 0),
-                CategoryEntity("c2", "t1", 2, "c1", "AI Infra", 0),
-            ),
-            keywords = emptyList(),
-            sources = listOf(
-                SourceEntity("s1", "c2", "t1", SourceKind.RSS, "https://feed", "AI Blog"),
-            ),
-        )
+        seedDao.commitSeed(topic = TopicEntity("t1", "AI", 0L),
+        categories = listOf(
+            CategoryEntity("c1", "t1", 1, null, "Tech", 0),
+            CategoryEntity("c2", "t1", 2, "c1", "AI Infra", 0),
+        ),
+        keywords = emptyList(),
+        sources = listOf(
+            SourceEntity("s1", "c2", "t1", SourceKind.RSS, "https://feed", "AI Blog"),
+        ),)
         val now = System.currentTimeMillis()
         val items = listOf(
             FeedItemEntity("hash-a", "s1", "c2", "Older", publishedAt = now - 2000, fetchedAt = now),
@@ -138,14 +136,12 @@ class FeedDaoTest {
     fun `observeCategories returns union across multiple category ids`() = runTest {
         seedSourceAndItems()
         // Add a second source + items under a different category (c1).
-        onboarding.commitOnboarding(
-            topic = TopicEntity("t2", "AI2", 0L),
-            categories = emptyList(),
-            keywords = emptyList(),
-            sources = listOf(
-                SourceEntity("s2", "c1", "t1", SourceKind.RSS, "https://c1feed", "C1 Blog"),
-            ),
-        )
+        seedDao.commitSeed(topic = TopicEntity("t2", "AI2", 0L),
+        categories = emptyList(),
+        keywords = emptyList(),
+        sources = listOf(
+            SourceEntity("s2", "c1", "t1", SourceKind.RSS, "https://c1feed", "C1 Blog"),
+        ),)
         dao.insertItems(
             listOf(
                 FeedItemEntity("hash-d", "s2", "c1", "C1 Post", publishedAt = 0L, fetchedAt = 0L),
