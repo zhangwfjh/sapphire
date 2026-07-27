@@ -44,8 +44,11 @@ class AgentRunnerWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        val jobId = inputData.getString(INPUT_JOB_ID) ?: return Result.failure()
-
+        val jobId = inputData.getString(INPUT_JOB_ID) ?: run {
+            android.util.Log.e("AgentRunner", "doWork: no jobId in input data")
+            return Result.failure()
+        }
+        android.util.Log.i("AgentRunner", "doWork START for job=$jobId")
         val jobEntity = database.agentJobDao().getById(jobId) ?: return Result.success()
         val job = jobEntity.toDomainJob()
 
@@ -55,6 +58,7 @@ class AgentRunnerWorker @AssistedInject constructor(
                 val items = outcome.value.items
                 if (items.isEmpty()) {
                     repository.recordRun(jobId, AgentRunStatus.EMPTY, 0, 0, "No items worth filing")
+                    android.util.Log.i("AgentRunner", "doWork: empty items from synth")
                     return Result.success()
                 }
                 val now = System.currentTimeMillis()
@@ -84,11 +88,13 @@ class AgentRunnerWorker @AssistedInject constructor(
                     items.size * 1200, // approx tokens (Tier-1 base × items)
                     if (filed < items.size) "$filed/${items.size} items (some deduped)" else "$filed items filed",
                 )
+                android.util.Log.i("AgentRunner", "doWork DONE: filed=$filed/${items.size} items")
                 return Result.success()
             }
             is LlmOutcome.Err -> {
                 val err = outcome.error
                 repository.recordRun(jobId, AgentRunStatus.FAILED, 0, 0, err.userMessage())
+                android.util.Log.e("AgentRunner", "doWork FAILED: ${err.userMessage()}")
                 return when (err) {
                     is LlmError.Timeout, is LlmError.RateLimited, is LlmError.Network -> Result.retry()
                     else -> Result.failure()

@@ -28,14 +28,14 @@ class AgentSourceSeeder @Inject constructor(
      */
     suspend fun ensureAgentSource(jobId: String, jobName: String) {
         // Shared topic + category — created once, reused by all agents.
-        seedDao.insertTopic(
+        seedDao.insertTopicIgnore(
             com.sapphire.data.db.TopicEntity(
                 id = AGENT_TOPIC_ID,
                 phrase = AGENT_TOPIC_PHRASE,
                 createdAt = 0L,
             ),
         )
-        seedDao.insertCategories(
+        seedDao.insertCategoriesIgnore(
             listOf(
                 com.sapphire.data.db.CategoryEntity(
                     id = AGENT_CATEGORY_ID,

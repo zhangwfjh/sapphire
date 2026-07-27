@@ -23,6 +23,13 @@ interface SeedDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertSources(sources: List<SourceEntity>)
 
+    /** Idempotent variants for the agent source seeder — topic/category already exist on 2nd+ agent. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertTopicIgnore(topic: TopicEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertCategoriesIgnore(categories: List<CategoryEntity>)
+
     @Query("SELECT COUNT(*) FROM source")
     suspend fun countSources(): Int
 

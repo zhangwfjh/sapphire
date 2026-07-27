@@ -67,19 +67,25 @@ class AgentScheduler @Inject constructor(
 
     /** Enqueue an immediate one-time run (the detail "Run now" button). */
     fun runNow(jobId: String) {
-        val request = OneTimeWorkRequestBuilder<AgentRunnerWorker>()
-            .setInputData(Data.Builder().putString(AgentRunnerWorker.INPUT_JOB_ID, jobId).build())
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build(),
+        android.util.Log.i("AgentScheduler", "runNow: enqueuing for jobId=$jobId")
+        try {
+            val request = OneTimeWorkRequestBuilder<AgentRunnerWorker>()
+                .setInputData(Data.Builder().putString(AgentRunnerWorker.INPUT_JOB_ID, jobId).build())
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                workName(jobId) + "-now",
+                ExistingWorkPolicy.REPLACE,
+                request,
             )
-            .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            workName(jobId) + "-now",
-            ExistingWorkPolicy.REPLACE,
-            request,
-        )
+            android.util.Log.i("AgentScheduler", "runNow: enqueued OK for jobId=$jobId")
+        } catch (e: Exception) {
+            android.util.Log.e("AgentScheduler", "runNow: FAILED to enqueue", e)
+        }
     }
 
     /** WorkManager periodic minimum is 15 minutes; hourly = N hours; scheduled = 24h. */

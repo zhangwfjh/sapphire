@@ -102,10 +102,6 @@ class AgentBuilderViewModel @Inject constructor(
 
     fun nextRunLabel(): String = nextRunText(_form.value.frequency, _form.value.triggerTime, System.currentTimeMillis())
 
-    fun canCreate(): Boolean {
-        val f = _form.value
-        return f.name.isNotBlank() && f.directive.isNotBlank()
-    }
 
 
     fun submit() {

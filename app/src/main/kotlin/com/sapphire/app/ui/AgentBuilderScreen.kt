@@ -78,7 +78,7 @@ fun AgentBuilderScreen(
 
     LaunchedEffect(saved) { if (saved) onBack() }
 
-    val canCreate = viewModel.canCreate()
+    val canCreate = form.name.isNotBlank() && form.directive.isNotBlank()
 
     Scaffold(
         topBar = {

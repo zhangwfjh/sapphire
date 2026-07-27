@@ -90,6 +90,7 @@ class AgentDetailViewModel @Inject constructor(
     }
 
     fun runNow() {
+        android.util.Log.i("AgentDetail", "runNow called for jobId=$jobId")
         scheduler.runNow(jobId)
     }
 
