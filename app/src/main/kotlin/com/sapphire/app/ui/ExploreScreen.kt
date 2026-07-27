@@ -20,6 +20,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,6 +41,8 @@ import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -199,30 +207,22 @@ fun ExploreScreen(
         containerColor = palette.Ink,
         contentColor = palette.OnInk,
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            SearchRow(
-                query = query,
-                onQueryChange = { query = it },
-                onSubmit = { viewModel.search(query) },
-                onClear = { query = ""; viewModel.clearSearch() },
-            )
-
-            when (searchState) {
-                SearchState.LOADING -> LoadingState()
-                SearchState.ERROR -> MessageState(searchError ?: "Search failed.")
-                SearchState.EMPTY -> MessageState("No feeds found for \"$query\" — try a broader term or paste a URL.")
-                SearchState.RESULTS -> SearchResultsList(
-                    results = searchResults,
-                    onPreview = viewModel::preview,
-                    onSubscribe = { pickingFeed = it },
-                )
-                SearchState.IDLE -> BrowseRails(
-                    sections = sections,
-                    onPreview = viewModel::preview,
-                    onSubscribe = { pickingFeed = it },
-                )
-            }
-        }
+        ExploreBody(
+            query = query,
+            onQueryChange = { query = it },
+            onSubmit = { viewModel.search(query) },
+            onClear = { query = ""; viewModel.clearSearch() },
+            onPasteUrl = { query = it },
+            onImportOpml = { importLauncher.launch(arrayOf("application/xml", "text/xml", "*/*")) },
+            onBuildAgent = onBuildAgent,
+            searchState = searchState,
+            searchResults = searchResults,
+            searchError = searchError,
+            sections = sections,
+            onPreview = viewModel::preview,
+            onSubscribe = { pickingFeed = it },
+            modifier = Modifier.fillMaxSize().padding(padding),
+        )
     }
 
     val feed = pickingFeed
@@ -256,199 +256,450 @@ fun ExploreScreen(
 }
 
 @Composable
-private fun SearchRow(
+private fun ExploreBody(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onClear: () -> Unit,
+    onPasteUrl: (String) -> Unit,
+    onImportOpml: () -> Unit,
+    onBuildAgent: () -> Unit,
+    searchState: SearchState,
+    searchResults: List<ExploreFeedUi>,
+    searchError: String?,
+    sections: List<ExploreSectionUi>,
+    onPreview: (ExploreFeed) -> Unit,
+    onSubscribe: (ExploreFeed) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val collapsed = remember(sections) { mutableStateMapOf<String, Boolean>() }
+    val toggle: (String) -> Unit = { title ->
+        val default = sections.indexOfFirst { it.title == title } < 2
+        collapsed[title] = !(collapsed[title] ?: default)
+    }
+    val searching = query.isNotBlank()
+    LazyColumn(modifier.fillMaxSize()) {
+        item(key = "hero") {
+            HeroSearch(
+                query = query,
+                onQueryChange = onQueryChange,
+                onSubmit = onSubmit,
+                onClear = onClear,
+            )
+        }
+        if (!searching) {
+            // Browse view: mode tiles (URL / OPML / featured agent) then the domain rails.
+            item(key = "modes") {
+                ModeTiles(
+                    onPasteUrl = onPasteUrl,
+                    onImportOpml = onImportOpml,
+                    onBuildAgent = onBuildAgent,
+                )
+            }
+            domainRails(
+                sections = sections,
+                collapsed = collapsed,
+                onToggle = toggle,
+                onPreview = onPreview,
+                onSubscribe = onSubscribe,
+            )
+        } else {
+            // Search view.
+            when (searchState) {
+                SearchState.LOADING -> item(key = "loading") { LoadingState() }
+                SearchState.ERROR -> item(key = "error") { MessageState(searchError ?: "Search failed.") }
+                SearchState.EMPTY -> item(key = "empty") {
+                    MessageState("No feeds found for \"$query\" — try a broader term or paste a URL.")
+                }
+                SearchState.RESULTS -> items(searchResults, key = { it.feed.url }) { feedUi ->
+                    FeedCard(
+                        feedUi = feedUi,
+                        onPreview = { onPreview(feedUi.feed) },
+                        onSubscribe = { onSubscribe(feedUi.feed) },
+                        expanded = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                    )
+                }
+                SearchState.IDLE -> Unit
+            }
+        }
+    }
+}
+
+/**
+ * Hero block: eyebrow + editorial headline + accent glow + search field with the
+ * "AI search · URLs preview instantly" hint. Ported from `design/explore.html` `.hero`.
+ */
+@Composable
+private fun HeroSearch(
     query: String,
     onQueryChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onClear: () -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        placeholder = { Text("Search a topic or paste a feed URL", color = palette.OnInkFaint) },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = palette.Accent) },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = onClear) {
-                    Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = palette.OnInkMuted)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp)) {
+        SectionEyebrow("Explore sources")
+        Text(
+            buildAnnotatedString {
+                append("Find a feed for ")
+                withStyle(SpanStyle(color = palette.AccentBright, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) {
+                    append("anything")
                 }
-            }
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(12.dp),
-        keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
-    )
+                append("\nworth reading.")
+            },
+            style = MaterialTheme.typography.displaySmall,
+            color = palette.OnInk,
+            modifier = Modifier.padding(top = 9.dp),
+        )
+        Text(
+            "Browse a curated newsstand, ask the AI to dig up sources on any topic, or drop in a URL.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = palette.OnInkMuted,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Spacer(Modifier.height(14.dp))
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Search a topic — or paste a feed URL", color = palette.OnInkFaint) },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = palette.Accent) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = onClear) {
+                        Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = palette.OnInkMuted)
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+        )
+        Row(
+            Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                Icons.Filled.AutoAwesome,
+                contentDescription = null,
+                tint = palette.AccentBright,
+                modifier = Modifier.size(12.dp),
+            )
+            Text("AI search · any topic", style = SapphireMono.Label, color = palette.AccentBright, fontWeight = FontWeight.SemiBold)
+            Text("/", style = SapphireMono.Label, color = palette.OnInkFaint)
+            Text("URLs preview instantly", style = SapphireMono.Label, color = palette.OnInkFaint)
+        }
+    }
 }
+
+/**
+ * Mode tiles. First row: two compact tiles (Paste a URL, Import OPML) sharing width.
+ * Second row: the full-width featured "Build an agent" tile with accent tint + arrow.
+ * Ported from `design/explore.html` `.modes.wrap` + `.mode.featured`.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun BrowseRails(
+private fun ModeTiles(
+    onPasteUrl: (String) -> Unit,
+    onImportOpml: () -> Unit,
+    onBuildAgent: () -> Unit,
+) {
+    val palette = LocalSapphirePalette.current
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CompactModeTile(
+                icon = Icons.Filled.Link,
+                index = "01",
+                title = "Paste a URL",
+                desc = "Instant preview, no key needed.",
+                onClick = { onPasteUrl("https://") },
+                modifier = Modifier.weight(1f),
+            )
+            CompactModeTile(
+                icon = Icons.Filled.FileDownload,
+                index = "02",
+                title = "Import OPML",
+                desc = "Bulk-add from another reader.",
+                onClick = onImportOpml,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        // Featured full-width tile: accent-tinted, arrow affordance, deep-links to Agents.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(palette.Accent.copy(alpha = 0.10f))
+                .border(1.dp, palette.Accent.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                .clickable(onClick = onBuildAgent)
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Box(
+                Modifier.size(44.dp).clip(RoundedCornerShape(12.dp))
+                    .background(palette.Accent.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = palette.AccentBright,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text("Build an agent", style = MaterialTheme.typography.titleMedium, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Hand the AI a prompt + a schedule. It searches, synthesizes, and files results into your feed.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.OnInkMuted,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Open Agents", tint = palette.AccentBright)
+        }
+    }
+}
+
+@Composable
+private fun CompactModeTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    index: String,
+    title: String,
+    desc: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalSapphirePalette.current
+    Column(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(palette.InkElevated)
+            .border(1.dp, palette.InkStroke, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(30.dp).clip(RoundedCornerShape(9.dp))
+                    .background(palette.Accent.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = null, tint = palette.AccentBright, modifier = Modifier.size(16.dp))
+            }
+            Text(index, style = SapphireMono.Label, color = palette.OnInkFaint, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(title, style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
+        Text(desc, style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted, modifier = Modifier.padding(top = 1.dp))
+    }
+}
+
+/**
+ * Domain rails. LazyColumn-sourced item sequence: for each domain a clickable header
+ * (code chip + name + count + blurb + chevron), then — if open — a horizontal rail of
+ * feed cards. The first two domains start expanded so the catalog reads as a newsstand,
+ * not a table of contents. Ported from `design/explore.html` `.domain` / `.rail`.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.domainRails(
     sections: List<ExploreSectionUi>,
+    collapsed: androidx.compose.runtime.snapshots.SnapshotStateMap<String, Boolean>,
+    onToggle: (String) -> Unit,
     onPreview: (ExploreFeed) -> Unit,
     onSubscribe: (ExploreFeed) -> Unit,
 ) {
-    val palette = LocalSapphirePalette.current
-    if (sections.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                "Browse curated feeds or search for more.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = palette.OnInkMuted,
-            )
+    sections.forEachIndexed { i, section ->
+        item(key = "header-${section.title}") {
+            val open = collapsed[section.title] ?: (i < 2)
+            DomainHeader(section = section, open = open) { onToggle(section.title) }
         }
-        return
-    }
-    // All categories start collapsed so the catalog reads as a table of contents;
-    // tapping a header expands that section. State keyed by section title so it
-    // survives recomposition without retaining the section list identity.
-    val collapsed = remember { mutableStateMapOf<String, Boolean>() }
-    val isCollapsed = { title: String ->
-        collapsed[title] ?: true
-    }
-    // Single-column list: each section renders as a clickable eyebrow header followed
-    // by its feeds as full-width rows (no horizontal rail). Keeps one LazyColumn so
-    // scroll is linear and cards reflow at any width.
-    LazyColumn(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        sections.forEach { section ->
-            item(key = "header-${section.title}") {
-                val open = !isCollapsed(section.title)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { collapsed[section.title] = open }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    SectionEyebrow(text = section.title.uppercase())
-                    Icon(
-                        imageVector = Icons.Filled.KeyboardArrowDown,
-                        contentDescription = if (open) "Collapse ${section.title}" else "Expand ${section.title}",
-                        tint = palette.OnInkFaint,
-                    )
-                }
-            }
-            if (!isCollapsed(section.title)) {
-                items(
-                    items = section.feeds,
-                    key = { feedUi -> "${section.title}-${feedUi.feed.url}" },
-                ) { feedUi ->
-                    FeedCard(
-                        feedUi = feedUi,
-                        onPreview = { onPreview(feedUi.feed) },
-                        onSubscribe = { onSubscribe(feedUi.feed) },
-                        expanded = true,
-                    )
-                }
+        val open = collapsed[section.title] ?: (i < 2)
+        if (open) {
+            item(key = "rail-${section.title}") {
+                DomainRail(
+                    feeds = section.feeds,
+                    onPreview = { onPreview(it) },
+                    onSubscribe = { onSubscribe(it) },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SearchResultsList(
-    results: List<ExploreFeedUi>,
+private fun DomainHeader(section: ExploreSectionUi, open: Boolean, onClick: () -> Unit) {
+    val palette = LocalSapphirePalette.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // Mono 2-letter code chip — the per-domain identity mark.
+        Box(
+            Modifier.size(34.dp).clip(RoundedCornerShape(9.dp))
+                .background(palette.InkElevated)
+                .border(1.dp, palette.InkStrokeStrong, RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                domainCode(section.title),
+                style = SapphireMono.Label,
+                color = palette.OnInkMuted,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(section.title, style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "%02d feeds".format(section.feeds.size),
+                    style = SapphireMono.Label,
+                    color = palette.OnInkFaint,
+                )
+            }
+            Text(
+                section.kind.name.lowercase(),
+                style = SapphireMono.Label,
+                color = palette.OnInkFaint,
+                modifier = Modifier.padding(top = 1.dp),
+            )
+        }
+        Icon(
+            Icons.Filled.KeyboardArrowDown,
+            contentDescription = if (open) "Collapse ${section.title}" else "Expand ${section.title}",
+            tint = palette.OnInkFaint,
+            modifier = Modifier.graphicsLayer { rotationZ = if (open) 180f else 0f },
+        )
+    }
+}
+
+@Composable
+private fun DomainRail(
+    feeds: List<ExploreFeedUi>,
     onPreview: (ExploreFeed) -> Unit,
     onSubscribe: (ExploreFeed) -> Unit,
 ) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.foundation.lazy.LazyRow(
+        state = rowState,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        items(results, key = { it.feed.url }) { feedUi ->
+        items(feeds, key = { it.feed.url }) { feedUi ->
             FeedCard(
                 feedUi = feedUi,
                 onPreview = { onPreview(feedUi.feed) },
                 onSubscribe = { onSubscribe(feedUi.feed) },
-                expanded = true,
+                expanded = false,
+                modifier = Modifier.width(204.dp).padding(vertical = 2.dp),
             )
         }
     }
+    Spacer(Modifier.height(12.dp))
 }
 
+/**
+ * 2-letter identity code for a section title (the `.codechip` in explore.html).
+ * Deterministic from the title so it's stable across recompositions.
+ */
+private fun domainCode(title: String): String {
+    val letters = title.uppercase().filter { it.isLetter() }
+    return if (letters.length >= 2) letters.take(2) else letters.padEnd(2, 'X')
+}
+
+/**
+ * Feed card. Wide (row layout, full width) for search results; compact (column layout,
+ * fixed 204dp) for browse rails. Tapping anywhere except the +/✓ opens preview.
+ * Subscribed → check glyph; unsubscribed → + button. Ported from `design/explore.html`
+ * `.card` / `.card.wide`.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FeedCard(
     feedUi: ExploreFeedUi,
     onPreview: () -> Unit,
     onSubscribe: () -> Unit,
-    expanded: Boolean = false,
+    expanded: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val palette = LocalSapphirePalette.current
-    val width = if (expanded) Modifier.fillMaxWidth() else Modifier.width(240.dp)
-    // Box + combinedClickable — the proven click pattern from FeedCardSurface. The card
-    // is a visible tappable surface (elevated ink, hairline border, rounded corners) so
-    // the user sees an affordance; tapping anywhere except the +/✓ button opens preview.
     Box(
-        modifier = width
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
+        modifier
+            .clip(RoundedCornerShape(14.dp))
             .background(palette.InkElevated)
-            .border(1.dp, palette.InkStroke, RoundedCornerShape(12.dp))
+            .border(1.dp, palette.InkStroke, RoundedCornerShape(14.dp))
             .combinedClickable(onClick = onPreview),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Favicon(url = feedUi.feed.url)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    PlatformBadge(tag = feedUi.feed.kind.name, read = false)
-                    feedUi.feed.language?.takeIf { it.isNotBlank() }?.let { lang ->
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            lang.uppercase(),
-                            style = SapphireMono.Label,
-                            color = palette.OnInkFaint,
-                        )
+        if (expanded) {
+            // Wide: favicon + body + trailing action.
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+                Favicon(url = feedUi.feed.url)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    CardMeta(feedUi)
+                    Spacer(Modifier.height(5.dp))
+                    Text(feedUi.feed.title, style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    feedUi.feed.description?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
                     }
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    feedUi.feed.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = palette.OnInk,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                feedUi.feed.description?.let {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = palette.OnInkMuted,
-                        maxLines = if (expanded) 3 else 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Spacer(Modifier.width(8.dp))
+                CardAction(feedUi, onSubscribe)
             }
-            Spacer(Modifier.width(8.dp))
-            if (feedUi.subscribed) {
-                Icon(
-                    Icons.Filled.Check,
-                    contentDescription = "Added",
-                    tint = palette.OnInkMuted,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            } else {
-                IconButton(onClick = onSubscribe, modifier = Modifier.padding(top = 2.dp)) {
-                    Icon(
-                        Icons.Filled.Add,
-                        contentDescription = "Subscribe",
-                        tint = palette.Accent,
-                    )
+        } else {
+            // Compact: stacked column for the horizontal rail.
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                CardMeta(feedUi)
+                Spacer(Modifier.height(8.dp))
+                Text(feedUi.feed.title, style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                feedUi.feed.description?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    CardAction(feedUi, onSubscribe)
                 }
             }
         }
     }
 }
+
+@Composable
+private fun CardMeta(feedUi: ExploreFeedUi) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        PlatformBadge(tag = feedUi.feed.kind.name, read = false)
+        feedUi.feed.language?.takeIf { it.isNotBlank() }?.let { lang ->
+            Text(lang.uppercase(), style = SapphireMono.Label, color = palette().OnInkFaint)
+        }
+    }
+}
+
+@Composable
+private fun CardAction(feedUi: ExploreFeedUi, onSubscribe: () -> Unit) {
+    val palette = LocalSapphirePalette.current
+    if (feedUi.subscribed) {
+        Icon(Icons.Filled.Check, contentDescription = "Added", tint = palette.OnInkMuted, modifier = Modifier.padding(top = 2.dp))
+    } else {
+        IconButton(onClick = onSubscribe, modifier = Modifier.padding(top = 2.dp)) {
+            Icon(Icons.Filled.Add, contentDescription = "Subscribe", tint = palette.Accent)
+        }
+    }
+}
+
+@Composable
+private fun palette() = LocalSapphirePalette.current
 
 /**
  * Site favicon with an RssFeed glyph fallback. The DuckDuckGo icon service is reliable
