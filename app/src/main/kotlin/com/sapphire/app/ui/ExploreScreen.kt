@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Close
@@ -87,6 +88,7 @@ import com.sapphire.domain.explore.ExploreFeed
 @Composable
 fun ExploreScreen(
     onBack: () -> Unit,
+    onBuildAgent: () -> Unit = {},
     viewModel: ExploreViewModel = hiltViewModel(),
 ) {
     val palette = LocalSapphirePalette.current
@@ -186,6 +188,9 @@ fun ExploreScreen(
                     }
                     IconButton(onClick = { viewModel.exportOpml() }) {
                         Icon(Icons.Filled.FileUpload, contentDescription = "Export OPML", tint = palette.OnInkMuted)
+                    }
+                    IconButton(onClick = onBuildAgent) {
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = "Build an agent", tint = palette.Accent)
                     }
                 },
             )

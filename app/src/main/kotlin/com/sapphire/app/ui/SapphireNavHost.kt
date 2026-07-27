@@ -12,8 +12,13 @@ object Routes {
     const val SAVED = "saved"
     const val EXPLORE = "explore"
     const val SETTINGS = "settings"
+    const val AGENTS = "agents"
+    const val AGENT_BUILDER = "agentBuilder/{jobId}"
+    const val AGENT_DETAIL = "agentDetail/{jobId}"
     const val READER = "reader/{itemId}"
     fun reader(itemId: String) = "reader/$itemId"
+    fun agentBuilder(jobId: String) = "agentBuilder/$jobId"
+    fun agentDetail(jobId: String) = "agentDetail/$jobId"
 }
 
 @Composable
@@ -42,6 +47,7 @@ fun SapphireNavHost() {
         composable(Routes.EXPLORE) {
             ExploreScreen(
                 onBack = { navController.popBackStack() },
+                onBuildAgent = { navController.navigate(Routes.AGENTS) },
             )
         }
         composable(Routes.SAVED) {
@@ -52,6 +58,25 @@ fun SapphireNavHost() {
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.AGENTS) {
+            AgentListScreen(
+                onBack = { navController.popBackStack() },
+                onNew = { navController.navigate(Routes.agentBuilder("new")) },
+                onOpen = { id -> navController.navigate(Routes.agentDetail(id)) },
+            )
+        }
+        composable(
+            route = Routes.AGENT_BUILDER,
+            arguments = listOf(navArgument("jobId") { type = NavType.StringType }),
+        ) {
+            AgentBuilderScreen(onBack = { navController.popBackStack() })
+        }
+        composable(
+            route = Routes.AGENT_DETAIL,
+            arguments = listOf(navArgument("jobId") { type = NavType.StringType }),
+        ) {
+            AgentDetailScreen(onBack = { navController.popBackStack() })
         }
     }
 }
