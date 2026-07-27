@@ -21,3 +21,5 @@ _gw.bat
 
 # Room schema export (keep tracked)
 !**/schemas/*.json
+
+.worktrees/
