@@ -136,6 +136,13 @@ object DataProvidersModule {
         com.sapphire.domain.explore.SearchFeedsUseCase(llm, webSearch)
 
     @Provides @Singleton
+    fun provideAgentSynthesisService(
+        llm: LlmClient,
+        webSearch: com.sapphire.domain.explore.WebSearchClient,
+    ): com.sapphire.domain.agent.AgentSynthesisService =
+        com.sapphire.domain.agent.AgentSynthesisService(llm, webSearch)
+
+    @Provides @Singleton
     fun provideReaderOpsUseCase(
         llm: LlmClient,
         cache: ReaderOpCache,

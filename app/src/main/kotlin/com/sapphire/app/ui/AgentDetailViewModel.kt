@@ -47,6 +47,7 @@ data class AgentDetailUi(
 @HiltViewModel
 class AgentDetailViewModel @Inject constructor(
     private val repository: AgentRepository,
+    private val scheduler: com.sapphire.data.agent.AgentScheduler,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -81,18 +82,20 @@ class AgentDetailViewModel @Inject constructor(
 
     fun toggle() {
         val job = state.value.job ?: return
-        viewModelScope.launch { repository.setEnabled(job.id, !job.enabled) }
+        viewModelScope.launch {
+            repository.setEnabled(job.id, !job.enabled)
+            if (!job.enabled) scheduler.schedule(job.id, job.frequency, job.triggerTime)
+            else scheduler.cancel(job.id)
+        }
     }
 
     fun runNow() {
-        // Slice A stub: no worker yet. Seed an EMPTY history row so the timeline reflects the tap.
-        viewModelScope.launch {
-            repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.EMPTY, 0, 0, "Run-now queued — execution ships in Slice B")
-        }
+        scheduler.runNow(jobId)
     }
 
     fun delete() {
         viewModelScope.launch {
+            scheduler.cancel(jobId)
             repository.delete(jobId)
             _deleted.value = true
         }

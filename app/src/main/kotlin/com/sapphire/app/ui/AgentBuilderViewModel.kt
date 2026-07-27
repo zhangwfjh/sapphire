@@ -45,6 +45,7 @@ data class BuilderForm(
 @HiltViewModel
 class AgentBuilderViewModel @Inject constructor(
     private val repository: AgentRepository,
+    private val scheduler: com.sapphire.data.agent.AgentScheduler,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -115,8 +116,13 @@ class AgentBuilderViewModel @Inject constructor(
                 f.name, f.directive, f.searchTool, f.frequency, f.triggerTime,
                 f.recency, f.outputLanguage, f.style,
             )
-            if (isEdit) repository.update(editJobId, input) else repository.create(input)
-            _saved.value = true
+            if (isEdit) {
+                repository.update(editJobId, input)
+                scheduler.schedule(editJobId, input.frequency, input.triggerTime)
+            } else {
+                val newId = repository.create(input)
+                scheduler.schedule(newId, input.frequency, input.triggerTime)
+            }
         }
     }
 }

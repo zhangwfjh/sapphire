@@ -111,7 +111,7 @@ fun AgentListScreen(
                 AgentCard(
                     card = card,
                     onClick = { onOpen(card.job.id) },
-                    onToggle = { viewModel.toggle(card.job.id, !card.job.enabled) },
+                    onToggle = { viewModel.toggle(card.job.id, !card.job.enabled, card.job.frequency, card.job.triggerTime) },
                 )
             }
         }

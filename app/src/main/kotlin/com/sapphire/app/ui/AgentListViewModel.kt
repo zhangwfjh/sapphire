@@ -34,6 +34,7 @@ data class AgentListStats(val active: Int, val total: Int, val itemsFiled: Int, 
 @HiltViewModel
 class AgentListViewModel @Inject constructor(
     private val repository: AgentRepository,
+    private val scheduler: com.sapphire.data.agent.AgentScheduler,
 ) : ViewModel() {
 
     val agents: StateFlow<List<AgentCardUi>> = repository.observeJobs()
@@ -52,12 +53,18 @@ class AgentListViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AgentListStats(0, 0, 0, 0))
 
-    fun toggle(id: String, enabled: Boolean) {
-        viewModelScope.launch { repository.setEnabled(id, enabled) }
+    fun toggle(id: String, enabled: Boolean, frequency: com.sapphire.domain.model.AgentFrequency, triggerTime: String) {
+        viewModelScope.launch {
+            repository.setEnabled(id, enabled)
+            if (enabled) scheduler.schedule(id, frequency, triggerTime) else scheduler.cancel(id)
+        }
     }
 
     fun delete(id: String) {
-        viewModelScope.launch { repository.delete(id) }
+        viewModelScope.launch {
+            scheduler.cancel(id)
+            repository.delete(id)
+        }
     }
 
     private fun AgentJob.toCard(): AgentCardUi = AgentCardUi(

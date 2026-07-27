@@ -30,6 +30,7 @@ class RoomAgentRepository @Inject constructor(
     private val jobDao: AgentJobDao,
     private val runDao: AgentRunDao,
     private val ids: IdGenerator,
+    private val sourceSeeder: AgentSourceSeeder,
 ) : AgentRepository {
 
     override fun observeJobs(): Flow<List<AgentJob>> =
@@ -56,6 +57,8 @@ class RoomAgentRepository @Inject constructor(
                 message = "Agent created — waiting for first run",
             ),
         )
+        // Ensure the FK source exists so the worker can file items.
+        sourceSeeder.ensureAgentSource(id, input.name)
         id
     }
 
@@ -78,6 +81,7 @@ class RoomAgentRepository @Inject constructor(
     }
 
     override suspend fun delete(id: String) = withContext(Dispatchers.IO) {
+        sourceSeeder.removeAgentSource(id)
         jobDao.delete(id)
     }
 
