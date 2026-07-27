@@ -189,7 +189,7 @@ private fun AgentCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        tierLabel(job.modelTier) + " · " + job.searchTool.name,
+                        job.searchTool.name,
                         style = SapphireMono.Label,
                         color = palette.OnInkFaint,
                         modifier = Modifier.padding(top = 2.dp),
@@ -289,7 +289,6 @@ private fun EmptyAgents(modifier: Modifier, onNew: () -> Unit) {
     }
 }
 
-private fun tierLabel(tier: Int) = if (tier == 2) "TIER-2 · GLM-4O" else "TIER-1 · MINI"
 
 @Composable
 private fun palette() = LocalSapphirePalette.current

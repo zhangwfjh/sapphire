@@ -74,11 +74,10 @@ class RoomAgentRepositoryTest {
     fun `update changes fields but preserves created_at and enabled`() = runTest {
         val id = repo.create(input("Original"))
         val createdAtBefore = repo.observeJob(id).first()!!.createdAt
-        repo.update(id, input("Renamed", style = AgentStyle.ACADEMIC, tier = 2))
+        repo.update(id, input("Renamed", style = AgentStyle.ACADEMIC))
         val job = repo.observeJob(id).first()!!
         assertEquals("Renamed", job.name)
         assertEquals(AgentStyle.ACADEMIC, job.style)
-        assertEquals(2, job.modelTier)
         assertEquals("created_at must be preserved", createdAtBefore, job.createdAt)
         assertTrue("enabled must be preserved", job.enabled)
     }
@@ -117,14 +116,12 @@ class RoomAgentRepositoryTest {
     private fun input(
         name: String,
         style: AgentStyle = AgentStyle.BRIEF,
-        tier: Int = 1,
     ) = AgentJobInput(
         name = name,
         directive = "directive for $name",
         searchTool = SearchTool.TAVILY,
         frequency = AgentFrequency.DAILY,
         triggerTime = "07:00",
-        modelTier = tier,
         recency = AgentRecency.WEEK,
         outputLanguage = OutputLanguage.EN,
         style = style,

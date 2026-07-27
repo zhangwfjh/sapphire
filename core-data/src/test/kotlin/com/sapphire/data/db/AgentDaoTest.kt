@@ -65,17 +65,16 @@ class AgentDaoTest {
         jobs.upsert(job("id1", "Original", enabled = false, createdAt = 1000))
         jobs.updateFields(
             id = "id1", name = "Renamed", directive = "new directive",
-            searchTool = SearchTool.EXA, frequency = AgentFrequency.WEEKLY,
-            triggerTime = "09:30", modelTier = 2, recency = AgentRecency.MONTH,
+            searchTool = SearchTool.TAVILY, frequency = AgentFrequency.WEEKLY,
+            triggerTime = "09:30", recency = AgentRecency.MONTH,
             outputLanguage = OutputLanguage.ZH, style = AgentStyle.ACADEMIC,
         )
         val row = jobs.getById("id1")!!
         assertEquals("Renamed", row.name)
         assertEquals("new directive", row.directive)
-        assertEquals(SearchTool.EXA, row.searchTool)
+        assertEquals(SearchTool.TAVILY, row.searchTool)
         assertEquals(AgentFrequency.WEEKLY, row.frequency)
         assertEquals("09:30", row.triggerTime)
-        assertEquals(2, row.modelTier)
         assertEquals(AgentRecency.MONTH, row.recency)
         assertEquals(OutputLanguage.ZH, row.outputLanguage)
         assertEquals(AgentStyle.ACADEMIC, row.style)
@@ -127,7 +126,7 @@ class AgentDaoTest {
     ) = AgentJobEntity(
         id = id, name = name, directive = "do something",
         searchTool = SearchTool.TAVILY, frequency = AgentFrequency.DAILY,
-        triggerTime = "07:00", modelTier = 1, recency = AgentRecency.WEEK,
+        triggerTime = "07:00", recency = AgentRecency.WEEK,
         outputLanguage = OutputLanguage.EN, style = AgentStyle.BRIEF,
         enabled = enabled, nextRunIntentEpochMs = null, createdAt = createdAt,
     )

@@ -21,7 +21,6 @@ data class AgentJobInput(
     val searchTool: SearchTool,
     val frequency: AgentFrequency,
     val triggerTime: String,
-    val modelTier: Int,
     val recency: AgentRecency,
     val outputLanguage: OutputLanguage,
     val style: AgentStyle,

@@ -80,7 +80,6 @@ fun AgentBuilderScreen(
     LaunchedEffect(saved) { if (saved) onBack() }
 
     val cost = viewModel.cost()
-    val preview = viewModel.preview()
 
     Scaffold(
         topBar = {
@@ -163,10 +162,7 @@ fun AgentBuilderScreen(
                 modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp),
             )
 
-            FieldLabel("5", "Model tier", "cost vs. depth")
-            TierRow(form.modelTier, viewModel::setTier, Modifier.padding(horizontal = 22.dp))
-
-            FieldLabel("6", "Output & scope", "time, language, voice")
+            FieldLabel("5", "Output & scope", "time, language, voice")
             ScopeRows(form, viewModel, Modifier.padding(horizontal = 22.dp))
 
             // Quick-start templates
@@ -190,7 +186,6 @@ fun AgentBuilderScreen(
                     .clickable { showGallery = true },
             )
 
-            PreviewPane(preview, Modifier.padding(22.dp))
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -331,41 +326,7 @@ private fun CadenceNote(modifier: Modifier) {
     )
 }
 
-@Composable
-private fun TierRow(tier: Int, onPick: (Int) -> Unit, modifier: Modifier) {
-    val palette = LocalSapphirePalette.current
-    Row(
-        modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(palette.InkRaised)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        TierOption(Modifier.weight(1f), "Tier-1 · Fast", "GLM-4O-MINI · cheap scan", tier == 1) { onPick(1) }
-        TierOption(Modifier.weight(1f), "Tier-2 · Deep", "GLM-4O · deep synthesis", tier == 2) { onPick(2) }
-    }
-}
 
-@Composable
-private fun TierOption(modifier: Modifier, title: String, sub: String, selected: Boolean, onClick: () -> Unit) {
-    val palette = LocalSapphirePalette.current
-    Column(
-        modifier
-            .clip(RoundedCornerShape(9.dp))
-            .background(if (selected) palette.InkElevated else palette.InkRaised)
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(title, style = SapphireMono.Label, color = if (selected) palette.OnInk else palette.OnInkMuted, fontWeight = FontWeight.SemiBold)
-        Text(
-            sub,
-            style = SapphireMono.Label,
-            color = if (selected) palette.AccentBright else palette.OnInkFaint,
-            modifier = Modifier.padding(top = 3.dp),
-        )
-    }
-}
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -428,33 +389,6 @@ private fun TemplateRow(t: AgentTemplate, onClick: () -> Unit, modifier: Modifie
 }
 
 @Composable
-private fun PreviewPane(preview: BuilderPreview, modifier: Modifier) {
-    val palette = LocalSapphirePalette.current
-    Column(
-        modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(palette.Accent.copy(alpha = 0.08f))
-            .padding(13.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("✦", color = palette.AccentBright, style = SapphireMono.Label)
-            Text(
-                "WHAT IT'LL FILE INTO YOUR FEED",
-                style = SapphireMono.Label,
-                color = palette.AccentBright,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 6.dp),
-            )
-            Spacer(Modifier.weight(1f))
-            Text(preview.badge, style = SapphireMono.Label, color = palette.OnInkFaint)
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(preview.title, style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
-        Text(preview.body, style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted, modifier = Modifier.padding(top = 2.dp))
-    }
-}
-
-@Composable
 private fun BuilderBottomBar(cost: BuilderCost, isEdit: Boolean, onCreate: () -> Unit) {
     val palette = LocalSapphirePalette.current
     Column(
@@ -513,7 +447,7 @@ private fun GallerySheet(onPick: (AgentTemplate) -> Unit, onDismiss: () -> Unit)
 }
 
 private fun toolLabel(t: SearchTool) = when (t) {
-    SearchTool.TAVILY -> "Tavily"; SearchTool.EXA -> "Exa"; SearchTool.DDG -> "DuckDuckGo"
+    SearchTool.TAVILY -> "Tavily"; SearchTool.DDG -> "DuckDuckGo"
 }
 private fun recencyLabel(r: AgentRecency) = when (r) {
     AgentRecency.H24 -> "24h"; AgentRecency.WEEK -> "Week"; AgentRecency.MONTH -> "Month"

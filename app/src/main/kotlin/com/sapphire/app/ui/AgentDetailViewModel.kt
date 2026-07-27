@@ -27,7 +27,6 @@ data class RunRow(
 /** Detail-screen state — job + its derived display fields + run history. */
 data class AgentDetailUi(
     val job: AgentJob?,
-    val tierLabel: String,
     val toolLabel: String,
     val cadenceLabel: String,
     val recencyLabel: String,
@@ -58,12 +57,11 @@ class AgentDetailViewModel @Inject constructor(
 
     val state: StateFlow<AgentDetailUi> = combine(repository.observeJob(jobId), repository.observeRuns(jobId)) { job, runs ->
         if (job == null) AgentDetailUi(
-            job = null, tierLabel = "", toolLabel = "", cadenceLabel = "",
+        job = null, toolLabel = "", cadenceLabel = "",
             recencyLabel = "", styleLabel = "", langLabel = "", nextRun = "",
             runs = emptyList(), itemsFiled = 0, totalRuns = 0, tokensUsed = "0",
         ) else AgentDetailUi(
             job = job,
-            tierLabel = tierLabel(job.modelTier),
             toolLabel = job.searchTool.name,
             cadenceLabel = cadenceLabel(job.frequency, job.triggerTime),
             recencyLabel = recencyWindow(job),
@@ -76,7 +74,7 @@ class AgentDetailViewModel @Inject constructor(
             tokensUsed = formatTokens(runs.sumOf { it.tokensUsed }),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AgentDetailUi(
-        job = null, tierLabel = "", toolLabel = "", cadenceLabel = "",
+        job = null, toolLabel = "", cadenceLabel = "",
         recencyLabel = "", styleLabel = "", langLabel = "", nextRun = "",
         runs = emptyList(), itemsFiled = 0, totalRuns = 0, tokensUsed = "0",
     ))
@@ -134,7 +132,6 @@ class AgentDetailViewModel @Inject constructor(
         else -> n.toString()
     }
 
-    private fun tierLabel(tier: Int) = if (tier == 2) "TIER-2 · GLM-4O" else "TIER-1 · MINI"
     private fun recencyWindow(job: AgentJob) = when (job.recency) {
         com.sapphire.domain.model.AgentRecency.H24 -> "24h window"
         com.sapphire.domain.model.AgentRecency.WEEK -> "Week window"
