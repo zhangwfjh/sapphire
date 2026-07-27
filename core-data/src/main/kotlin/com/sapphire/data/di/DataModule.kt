@@ -14,6 +14,8 @@ import com.sapphire.data.feed.RoomSourceFeedQuery
 import com.sapphire.data.feed.SourceFeedQuery
 import com.sapphire.data.db.SavedItemDao
 import com.sapphire.data.db.DiscoveredFeedDao
+import com.sapphire.data.db.AgentJobDao
+import com.sapphire.data.db.AgentRunDao
 import com.sapphire.data.save.RoomRetentionPurge
 import com.sapphire.data.source.RoomSourceRepository
 import com.sapphire.data.save.RoomSavedItemRepository
@@ -62,6 +64,8 @@ object DatabaseModule {
     @Provides fun provideSavedItemDao(db: SapphireDatabase): SavedItemDao = db.savedItemDao()
     @Provides fun provideDiscoveredFeedDao(db: SapphireDatabase): DiscoveredFeedDao = db.discoveredFeedDao()
     @Provides fun provideArticleBodyDao(db: SapphireDatabase): com.sapphire.data.db.ArticleBodyDao = db.articleBodyDao()
+    @Provides fun provideAgentJobDao(db: SapphireDatabase): AgentJobDao = db.agentJobDao()
+    @Provides fun provideAgentRunDao(db: SapphireDatabase): AgentRunDao = db.agentRunDao()
 }
 
 @Module
@@ -186,6 +190,8 @@ abstract class RepositoryBindingsModule {
     abstract fun bindExploreCatalogRepository(impl: com.sapphire.data.explore.RoomExploreCatalogRepository): com.sapphire.domain.explore.ExploreCatalogRepository
     @Binds
     abstract fun bindDiscoveredFeedRepository(impl: com.sapphire.data.explore.RoomDiscoveredFeedRepository): com.sapphire.domain.explore.DiscoveredFeedRepository
+    @Binds
+    abstract fun bindAgentRepository(impl: com.sapphire.data.agent.RoomAgentRepository): com.sapphire.domain.agent.AgentRepository
     @Binds
     abstract fun bindFeedPreview(impl: com.sapphire.data.explore.FetcherFeedPreview): com.sapphire.domain.explore.FeedPreview
     @Binds
