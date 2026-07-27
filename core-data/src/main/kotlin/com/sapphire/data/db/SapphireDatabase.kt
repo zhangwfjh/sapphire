@@ -20,8 +20,10 @@ import androidx.room.TypeConverters
         SavedItemEntity::class,
         DiscoveredFeedEntity::class,
         ArticleBodyEntity::class,
+        AgentJobEntity::class,
+        AgentRunEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = false,
 )
 @TypeConverters(EnumTypeConverter::class)
@@ -33,4 +35,6 @@ abstract class SapphireDatabase : RoomDatabase() {
     abstract fun savedItemDao(): SavedItemDao
     abstract fun discoveredFeedDao(): DiscoveredFeedDao
     abstract fun articleBodyDao(): ArticleBodyDao
+    abstract fun agentJobDao(): AgentJobDao
+    abstract fun agentRunDao(): AgentRunDao
 }
