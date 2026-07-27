@@ -62,9 +62,8 @@ import com.sapphire.domain.model.OutputLanguage
 import com.sapphire.domain.model.SearchTool
 
 /**
- * Agent builder (design: `design/agents.html` builder view). Six fields, live cost,
- * dynamic preview, 3 quick-starts, and a "Browse all" gallery bottom sheet.
- * Edit mode loads the existing job (jobId arg) into the form.
+ * Agent builder (design: `design/agents.html` builder view). Five fields, 3 quick-starts,
+ * and a "Browse all" gallery bottom sheet. Edit mode loads the existing job into the form.
  */
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -79,7 +78,7 @@ fun AgentBuilderScreen(
 
     LaunchedEffect(saved) { if (saved) onBack() }
 
-    val cost = viewModel.cost()
+    val canCreate = viewModel.canCreate()
 
     Scaffold(
         topBar = {
@@ -100,7 +99,7 @@ fun AgentBuilderScreen(
             )
         },
         bottomBar = {
-            BuilderBottomBar(cost = cost, isEdit = viewModel.isEdit, onCreate = viewModel::submit)
+            BuilderBottomBar(canCreate = canCreate, isEdit = viewModel.isEdit, onCreate = viewModel::submit)
         },
         containerColor = palette.Ink,
         contentColor = palette.OnInk,
@@ -389,7 +388,7 @@ private fun TemplateRow(t: AgentTemplate, onClick: () -> Unit, modifier: Modifie
 }
 
 @Composable
-private fun BuilderBottomBar(cost: BuilderCost, isEdit: Boolean, onCreate: () -> Unit) {
+private fun BuilderBottomBar(canCreate: Boolean, isEdit: Boolean, onCreate: () -> Unit) {
     val palette = LocalSapphirePalette.current
     Column(
         Modifier
@@ -397,12 +396,9 @@ private fun BuilderBottomBar(cost: BuilderCost, isEdit: Boolean, onCreate: () ->
             .background(palette.Ink)
             .padding(horizontal = 18.dp, vertical = 12.dp),
     ) {
-        Text(cost.perRunLabel, style = SapphireMono.Body, color = palette.OnInkFaint)
-        Text(cost.perMonthLabel, style = SapphireMono.Body, color = palette.OnInkFaint)
-        Spacer(Modifier.height(10.dp))
         Button(
             onClick = onCreate,
-            enabled = cost.canCreate,
+            enabled = canCreate,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(
                 containerColor = palette.Accent,
