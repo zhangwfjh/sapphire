@@ -53,6 +53,9 @@ class AgentDetailViewModel @Inject constructor(
 
     private val jobId: String = savedStateHandle["jobId"] ?: ""
 
+    private val _runQueued = MutableStateFlow(false)
+    val runQueued: StateFlow<Boolean> = _runQueued
+
     private val _deleted = MutableStateFlow(false)
     val deleted: StateFlow<Boolean> = _deleted
 
@@ -91,8 +94,16 @@ class AgentDetailViewModel @Inject constructor(
 
     fun runNow() {
         android.util.Log.i("AgentDetail", "runNow called for jobId=$jobId")
-        scheduler.runNow(jobId)
+        viewModelScope.launch {
+            // Seed an immediate "Run queued" row so the user sees instant feedback.
+            // The worker overwrites this with the real result when it completes.
+            repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.EMPTY, 0, 0, "Run queued — searching & synthesizing…")
+            scheduler.runNow(jobId)
+            _runQueued.value = true
+        }
     }
+
+    fun consumeRunQueued() { _runQueued.value = false }
 
     fun delete() {
         viewModelScope.launch {

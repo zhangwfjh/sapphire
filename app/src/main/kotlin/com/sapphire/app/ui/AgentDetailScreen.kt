@@ -34,6 +34,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,8 +61,17 @@ fun AgentDetailScreen(
     val palette = LocalSapphirePalette.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val deleted by viewModel.deleted.collectAsStateWithLifecycle()
+    val runQueued by viewModel.runQueued.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
 
     LaunchedEffect(deleted) { if (deleted) onBack() }
+    LaunchedEffect(runQueued) {
+        if (runQueued) {
+            snackbarHostState.showSnackbar("Run queued — check back in a moment.")
+            viewModel.consumeRunQueued()
+        }
+    }
+
 
     Scaffold(
         topBar = {
@@ -74,6 +84,7 @@ fun AgentDetailScreen(
                 },
             )
         },
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) },
         containerColor = palette.Ink,
         contentColor = palette.OnInk,
     ) { padding ->
