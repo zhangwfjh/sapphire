@@ -7,6 +7,7 @@ import com.sapphire.data.work.RetentionScheduler
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * Hilt entrypoint. All core-data modules use @InstallIn(SingletonComponent::class) so they
@@ -25,6 +26,9 @@ class SapphireApp : Application(), Configuration.Provider {
     @Inject lateinit var agentScheduler: com.sapphire.data.agent.AgentScheduler
     @Inject lateinit var agentRepository: com.sapphire.domain.agent.AgentRepository
 
+    private val appScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+    )
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -43,8 +47,8 @@ class SapphireApp : Application(), Configuration.Provider {
         }
         // Idempotent: KEEP policy means a re-launch never duplicates the periodic work.
         retentionScheduler.schedule()
-        // Re-schedule all enabled agents (UPDATE policy = idempotent re-schedule).
-        kotlinx.coroutines.runBlocking {
+        // Re-schedule all enabled agents on a background thread (never block main).
+        appScope.launch {
             agentRepository.observeJobs().first().filter { it.enabled }.forEach {
                 agentScheduler.schedule(it.id, it.frequency, it.triggerTime)
             }
