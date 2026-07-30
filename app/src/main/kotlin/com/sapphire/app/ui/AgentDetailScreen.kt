@@ -58,11 +58,12 @@ fun AgentDetailScreen(
     onBack: () -> Unit,
     viewModel: AgentDetailViewModel = hiltViewModel(),
 ) {
-    val palette = LocalSapphirePalette.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val deleted by viewModel.deleted.collectAsStateWithLifecycle()
     val runQueued by viewModel.runQueued.collectAsStateWithLifecycle()
+    val testResult by viewModel.testResult.collectAsStateWithLifecycle()
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    val palette = LocalSapphirePalette.current
 
     LaunchedEffect(deleted) { if (deleted) onBack() }
     LaunchedEffect(runQueued) {
@@ -98,7 +99,11 @@ fun AgentDetailScreen(
                     onRunNow = viewModel::runNow,
                     onDelete = viewModel::delete,
                 )
-                StatsGrid(state)
+                // Test Run button — executes synchronously, shows result + timing inline.
+                TestRunSection(
+                    testResult = testResult,
+                    onTestRun = viewModel::testRun,
+                )
             }
             item {
                 Row(
@@ -285,6 +290,81 @@ private fun RunTimelineRow(row: RunRow) {
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(row.whenLabel, style = SapphireMono.Label, color = palette.OnInkFaint)
                 Text(row.meta, style = SapphireMono.Label, color = if (row.status == "OK") palette.Accent else palette.OnInkFaint)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TestRunSection(testResult: TestRunResult?, onTestRun: () -> Unit) {
+    val palette = LocalSapphirePalette.current
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        OutlinedButton(
+            onClick = onTestRun,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.AccentBright),
+            border = androidx.compose.foundation.BorderStroke(1.dp, palette.Accent),
+        ) {
+            Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(7.dp))
+            Text("Test Run (synchronous — see result immediately)", fontWeight = FontWeight.SemiBold)
+        }
+        testResult?.let { result ->
+            Spacer(Modifier.height(12.dp))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (result.success) palette.Accent.copy(alpha = 0.08f) else palette.Danger.copy(alpha = 0.08f))
+                    .padding(14.dp),
+            ) {
+                // Status + timing
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (result.success) "✓ SUCCESS" else "✗ FAILED",
+                        style = SapphireMono.Label,
+                        color = if (result.success) palette.AccentBright else palette.Danger,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "%.1fs".format(result.durationMs / 1000.0),
+                        style = SapphireMono.Label,
+                        color = palette.OnInkFaint,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                // Error message (if failed)
+                result.error?.let { err ->
+                    Text(
+                        err,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.Danger,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+                // Items filed
+                if (result.items.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "${result.itemCount} items synthesized:",
+                        style = SapphireMono.Label,
+                        color = palette.OnInkMuted,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    result.items.forEach { item ->
+                        Text(
+                            "• $item",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.OnInk,
+                            modifier = Modifier.padding(top = 4.dp, start = 8.dp),
+                        )
+                    }
+                }
             }
         }
     }
