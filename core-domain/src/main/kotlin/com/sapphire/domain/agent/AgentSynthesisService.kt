@@ -31,7 +31,7 @@ class AgentSynthesisService(
         val query = buildSearchQuery(job)
         val hits = runCatching { webSearch.search(query) }.getOrDefault(emptyList())
 
-        val systemPrompt = buildSystemPrompt(job.style, job.outputLanguage)
+        val systemPrompt = buildSystemPrompt(job.style, job.outputLanguage, job.maxItems)
         val userPrompt = buildUserPrompt(job.directive, hits, job.recency, job.outputLanguage)
 
         val outcome = llm.completeStructured(
@@ -71,7 +71,7 @@ class AgentSynthesisService(
         return if (recencyHint.isBlank()) job.directive else "$recencyHint: ${job.directive}"
     }
 
-    private fun buildSystemPrompt(style: AgentStyle, lang: OutputLanguage): String {
+    private fun buildSystemPrompt(style: AgentStyle, lang: OutputLanguage, maxItems: Int): String {
         val styleGuide = when (style) {
             AgentStyle.BRIEF -> "Write terse, high-signal analyst briefs. One paragraph per item, no filler."
             AgentStyle.BULLETED -> "Write scannable bullet-point summaries. Lead with the key fact, then supporting bullets."
@@ -94,7 +94,7 @@ $styleGuide
 $langGuide
 
 Return JSON: {"items":[{"title":"...","summary":"...","body":"...","url":"optional source link if known"}]}
-Only include items worth reading — quality over quantity. 1–5 items per run.
+Only include items worth reading — quality over quantity. Return at most ${maxItems.coerceAtLeast(1)} item(s) per run.
 If nothing notable was found, return an empty items list."""
     }
 

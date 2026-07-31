@@ -126,7 +126,8 @@ class AgentDaoTest {
     ) = AgentJobEntity(
         id = id, name = name, directive = "do something",
         searchTool = SearchTool.TAVILY, frequency = AgentFrequency.DAILY,
-        triggerTime = "07:00", recency = AgentRecency.WEEK,
+        triggerTime = "07:00", maxItems = 1,
+        recency = AgentRecency.WEEK,
         outputLanguage = OutputLanguage.EN, style = AgentStyle.BRIEF,
         enabled = enabled, nextRunIntentEpochMs = null, createdAt = createdAt,
     )

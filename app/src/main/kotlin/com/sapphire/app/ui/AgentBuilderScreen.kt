@@ -74,8 +74,8 @@ fun AgentBuilderScreen(
     val palette = LocalSapphirePalette.current
     val form by viewModel.form.collectAsStateWithLifecycle()
     val saved by viewModel.saved.collectAsStateWithLifecycle()
+    val nameError by viewModel.nameError.collectAsStateWithLifecycle()
     var showGallery by remember { mutableStateOf(false) }
-
     LaunchedEffect(saved) { if (saved) onBack() }
 
     val canCreate = form.name.isNotBlank() && form.directive.isNotBlank()
@@ -115,11 +115,17 @@ fun AgentBuilderScreen(
             FieldLabel("1", "Name", "how it shows in your feed")
             OutlinedTextField(
                 value = form.name,
-                onValueChange = viewModel::setName,
+                onValueChange = { viewModel.setName(it); viewModel.clearNameError() },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
                 placeholder = { Text("e.g. LLM Infra Scanner", color = palette.OnInkFaint) },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
+                isError = nameError != null,
+                supportingText = {
+                    nameError?.let {
+                        Text(it, style = SapphireMono.Label, color = palette.Danger)
+                    }
+                },
             )
 
             FieldLabel("2", "Directive", "what it should synthesize")
@@ -337,6 +343,8 @@ private fun ScopeRows(form: BuilderForm, viewModel: AgentBuilderViewModel, modif
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutputLanguage.entries.forEach { SelectChip(form.outputLanguage == it, langLabel(it)) { viewModel.setLanguage(it) } }
         }
+        // Max items per run — chips: 1, 3, 5, 10
+        MaxItemsRow(form.maxItems, viewModel::setMaxItems)
         // Style as a dropdown (6 options).
         StyleDropdown(form.style, viewModel::setStyle)
     }
@@ -366,6 +374,17 @@ private fun StyleDropdown(style: AgentStyle, onPick: (AgentStyle) -> Unit) {
                     DropdownMenuItem(text = { Text(styleLabel(s), style = SapphireMono.Label) }, onClick = { onPick(s); expanded = false })
                 }
             }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun MaxItemsRow(maxItems: Int, onPick: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("MAX/ RUN", style = SapphireMono.Label, color = LocalSapphirePalette.current.OnInkFaint, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(74.dp))
+        listOf(1, 3, 5, 10).forEach { n ->
+            SelectChip(maxItems == n, n.toString()) { onPick(n) }
         }
     }
 }

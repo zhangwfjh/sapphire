@@ -23,7 +23,7 @@ import androidx.room.TypeConverters
         AgentJobEntity::class,
         AgentRunEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = false,
 )
 @TypeConverters(EnumTypeConverter::class)

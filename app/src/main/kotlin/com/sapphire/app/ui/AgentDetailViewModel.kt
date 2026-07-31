@@ -75,6 +75,8 @@ class AgentDetailViewModel @Inject constructor(
     private val _testResult = MutableStateFlow<TestRunResult?>(null)
     val testResult: StateFlow<TestRunResult?> = _testResult
 
+    private val _isRunning = MutableStateFlow(false)
+    val isRunning: StateFlow<Boolean> = _isRunning
     val state: StateFlow<AgentDetailUi> = combine(repository.observeJob(jobId), repository.observeRuns(jobId)) { job, runs ->
         if (job == null) AgentDetailUi(
         job = null, toolLabel = "", cadenceLabel = "",
@@ -110,7 +112,9 @@ class AgentDetailViewModel @Inject constructor(
 
     fun runNow() {
         val job = state.value.job ?: return
-        _testResult.value = TestRunResult(false, 0, 0, emptyList(), "Running…")
+        // Clear previous result + show "Running…" WITHOUT a FAILED badge.
+        _testResult.value = null
+        _isRunning.value = true
         viewModelScope.launch {
             val start = System.currentTimeMillis()
             try {
@@ -156,11 +160,12 @@ class AgentDetailViewModel @Inject constructor(
                 val elapsed3 = System.currentTimeMillis() - start
                 repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.FAILED, 0, 0, e.message)
                 _testResult.value = TestRunResult(false, elapsed3, 0, emptyList(), e.message)
+            } finally {
+                _isRunning.value = false
             }
         }
     }
-    /** Alias — runNow now handles everything synchronously. */
-    fun testRun() = runNow()
+
 
     fun consumeTestResult() { _testResult.value = null }
 

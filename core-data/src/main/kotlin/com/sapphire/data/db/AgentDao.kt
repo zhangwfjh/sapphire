@@ -38,6 +38,7 @@ interface AgentJobDao {
             search_tool = :searchTool,
             frequency = :frequency,
             trigger_time = :triggerTime,
+            max_items = :maxItems,
             recency = :recency,
             output_language = :outputLanguage,
             style = :style
@@ -51,6 +52,7 @@ interface AgentJobDao {
         searchTool: SearchTool,
         frequency: AgentFrequency,
         triggerTime: String,
+        maxItems: Int,
         recency: AgentRecency,
         outputLanguage: OutputLanguage,
         style: AgentStyle,

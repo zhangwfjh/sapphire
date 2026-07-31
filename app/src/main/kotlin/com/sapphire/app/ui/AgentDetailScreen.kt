@@ -38,7 +38,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,7 +69,9 @@ fun AgentDetailScreen(
     val deleted by viewModel.deleted.collectAsStateWithLifecycle()
     val runQueued by viewModel.runQueued.collectAsStateWithLifecycle()
     val testResult by viewModel.testResult.collectAsStateWithLifecycle()
+    val isRunning by viewModel.isRunning.collectAsStateWithLifecycle()
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     val palette = LocalSapphirePalette.current
 
     LaunchedEffect(deleted) { if (deleted) onBack() }
@@ -105,14 +109,15 @@ fun AgentDetailScreen(
                 DetailHeader(state)
                 DetailActions(
                     enabled = job.enabled,
+                    isRunning = isRunning,
                     onToggle = viewModel::toggle,
                     onRunNow = viewModel::runNow,
-                    onDelete = viewModel::delete,
+                    onDelete = { showDeleteDialog = true },
                 )
-                // Test Run button — executes synchronously, shows result + timing inline.
-                TestRunSection(
+                // Inline result panel — shown after Run now completes.
+                RunResultPanel(
                     testResult = testResult,
-                    onTestRun = viewModel::testRun,
+                    isRunning = isRunning,
                 )
             }
             item {
@@ -127,6 +132,25 @@ fun AgentDetailScreen(
             }
             items(state.runs) { row -> RunTimelineRow(row) }
         }
+    }
+
+    if (showDeleteDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete agent?", style = MaterialTheme.typography.titleMedium) },
+            text = { Text("This removes the agent and all its filed feed items.", style = MaterialTheme.typography.bodyMedium, color = palette.OnInkMuted) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { showDeleteDialog = false; viewModel.delete() },
+                ) { Text("Delete", color = palette.Danger, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel", color = palette.OnInkMuted)
+                }
+            },
+            containerColor = palette.InkElevated,
+        )
     }
 }
 
@@ -212,11 +236,12 @@ private fun StatusPill(enabled: Boolean) {
 }
 
 @Composable
-private fun DetailActions(enabled: Boolean, onToggle: () -> Unit, onRunNow: () -> Unit, onDelete: () -> Unit) {
+private fun DetailActions(enabled: Boolean, isRunning: Boolean, onToggle: () -> Unit, onRunNow: () -> Unit, onDelete: () -> Unit) {
     val palette = LocalSapphirePalette.current
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
             onClick = onToggle,
+            enabled = !isRunning,
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = if (enabled) palette.OnInk else palette.AccentBright),
@@ -228,14 +253,19 @@ private fun DetailActions(enabled: Boolean, onToggle: () -> Unit, onRunNow: () -
         }
         OutlinedButton(
             onClick = onRunNow,
+            enabled = !isRunning,
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.OnInk),
             border = androidx.compose.foundation.BorderStroke(1.dp, palette.InkStroke),
         ) {
-            Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
+            if (isRunning) {
+                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp, color = palette.Accent)
+            } else {
+                Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
+            }
             Spacer(Modifier.width(7.dp))
-            Text("Run now")
+            Text(if (isRunning) "Running…" else "Run now")
         }
         OutlinedButton(
             onClick = onDelete,
@@ -306,22 +336,28 @@ private fun RunTimelineRow(row: RunRow) {
 }
 
 @Composable
-private fun TestRunSection(testResult: TestRunResult?, onTestRun: () -> Unit) {
+private fun RunResultPanel(testResult: TestRunResult?, isRunning: Boolean) {
     val palette = LocalSapphirePalette.current
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        OutlinedButton(
-            onClick = onTestRun,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.AccentBright),
-            border = androidx.compose.foundation.BorderStroke(1.dp, palette.Accent),
-        ) {
-            Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
-            Spacer(Modifier.width(7.dp))
-            Text("Test Run (synchronous — see result immediately)", fontWeight = FontWeight.SemiBold)
+    // Running indicator — spinner, no FAILED badge
+    if (isRunning) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(palette.Accent.copy(alpha = 0.08f))
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = palette.AccentBright)
+                Text("Running — searching & synthesizing…", style = SapphireMono.Label, color = palette.AccentBright)
+            }
         }
-        testResult?.let { result ->
-            Spacer(Modifier.height(12.dp))
+    }
+    // Result panel — success/fail + timing + items
+    testResult?.let { result ->
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -331,7 +367,6 @@ private fun TestRunSection(testResult: TestRunResult?, onTestRun: () -> Unit) {
                     .verticalScroll(rememberScrollState())
                     .padding(14.dp),
             ) {
-                // Status + timing
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -350,16 +385,9 @@ private fun TestRunSection(testResult: TestRunResult?, onTestRun: () -> Unit) {
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
-                // Error message (if failed)
                 result.error?.let { err ->
-                    Text(
-                        err,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = palette.Danger,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
+                    Text(err, style = MaterialTheme.typography.bodySmall, color = palette.Danger, modifier = Modifier.padding(top = 6.dp))
                 }
-                // Items filed
                 if (result.items.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -369,12 +397,7 @@ private fun TestRunSection(testResult: TestRunResult?, onTestRun: () -> Unit) {
                         fontWeight = FontWeight.SemiBold,
                     )
                     result.items.forEach { item ->
-                        Text(
-                            "• $item",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = palette.OnInk,
-                            modifier = Modifier.padding(top = 4.dp, start = 8.dp),
-                        )
+                        Text("• $item", style = MaterialTheme.typography.bodySmall, color = palette.OnInk, modifier = Modifier.padding(top = 4.dp, start = 8.dp))
                     }
                 }
             }

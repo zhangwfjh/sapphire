@@ -126,5 +126,6 @@ class RoomAgentRepositoryTest {
         recency = AgentRecency.WEEK,
         outputLanguage = OutputLanguage.EN,
         style = style,
+        maxItems = 1,
     )
 }

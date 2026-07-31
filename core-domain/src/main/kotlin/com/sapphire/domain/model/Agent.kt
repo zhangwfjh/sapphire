@@ -46,6 +46,7 @@ data class AgentJob(
     val searchTool: SearchTool,
     val frequency: AgentFrequency,
     val triggerTime: String,
+    val maxItems: Int,
     val recency: AgentRecency,
     val outputLanguage: OutputLanguage,
     val style: AgentStyle,

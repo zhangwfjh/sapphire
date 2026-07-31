@@ -29,6 +29,7 @@ data class BuilderForm(
     val searchTool: SearchTool = SearchTool.TAVILY,
     val frequency: AgentFrequency = AgentFrequency.DAILY,
     val triggerTime: String = "07:00",
+    val maxItems: Int = 1,
     val recency: AgentRecency = AgentRecency.WEEK,
     val outputLanguage: OutputLanguage = OutputLanguage.EN,
     val style: AgentStyle = AgentStyle.BRIEF,
@@ -59,6 +60,11 @@ class AgentBuilderViewModel @Inject constructor(
     private val _saved = MutableStateFlow(false)
     val saved: StateFlow<Boolean> = _saved.asStateFlow()
 
+    private val _nameError = MutableStateFlow<String?>(null)
+    val nameError: StateFlow<String?> = _nameError.asStateFlow()
+
+    fun clearNameError() { _nameError.value = null }
+
     init {
         if (isEdit) {
             viewModelScope.launch {
@@ -69,6 +75,7 @@ class AgentBuilderViewModel @Inject constructor(
                         searchTool = job.searchTool,
                         frequency = job.frequency,
                         triggerTime = job.triggerTime,
+                        maxItems = job.maxItems,
                         recency = job.recency,
                         outputLanguage = job.outputLanguage,
                         style = job.style,
@@ -86,6 +93,7 @@ class AgentBuilderViewModel @Inject constructor(
     fun setRecency(v: AgentRecency) = _form.update { it.copy(recency = v) }
     fun setLanguage(v: OutputLanguage) = _form.update { it.copy(outputLanguage = v) }
     fun setStyle(v: AgentStyle) = _form.update { it.copy(style = v) }
+    fun setMaxItems(v: Int) = _form.update { it.copy(maxItems = v) }
 
     fun loadTemplate(t: AgentTemplate) {
         _form.value = BuilderForm(
@@ -94,6 +102,7 @@ class AgentBuilderViewModel @Inject constructor(
             searchTool = t.searchTool,
             frequency = t.frequency,
             triggerTime = t.triggerTime,
+            maxItems = t.maxItems,
             recency = t.recency,
             outputLanguage = t.outputLanguage,
             style = t.style,
@@ -107,10 +116,18 @@ class AgentBuilderViewModel @Inject constructor(
     fun submit() {
         val f = _form.value
         if (f.name.isBlank() || f.directive.isBlank()) return
+        _nameError.value = null
         viewModelScope.launch {
+            // Reject duplicate names — except when editing the same agent.
+            val existing = repository.observeJobs().first()
+            val clash = existing.any { it.name.equals(f.name, ignoreCase = true) && it.id != editJobId }
+            if (clash) {
+                _nameError.value = "An agent with this name already exists"
+                return@launch
+            }
             val input = AgentJobInput(
                 f.name, f.directive, f.searchTool, f.frequency, f.triggerTime,
-                f.recency, f.outputLanguage, f.style,
+                f.maxItems, f.recency, f.outputLanguage, f.style,
             )
             if (isEdit) {
                 repository.update(editJobId, input)
@@ -119,6 +136,8 @@ class AgentBuilderViewModel @Inject constructor(
                 val newId = repository.create(input)
                 scheduler.schedule(newId, input.frequency, input.triggerTime)
             }
+            _saved.value = true
         }
     }
+
 }

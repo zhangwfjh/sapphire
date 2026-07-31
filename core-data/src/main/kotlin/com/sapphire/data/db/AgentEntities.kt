@@ -33,6 +33,7 @@ data class AgentJobEntity(
     @ColumnInfo(name = "search_tool") val searchTool: SearchTool,
     @ColumnInfo(name = "frequency") val frequency: AgentFrequency,
     @ColumnInfo(name = "trigger_time") val triggerTime: String,
+    @ColumnInfo(name = "max_items") val maxItems: Int,
     @ColumnInfo(name = "recency") val recency: AgentRecency,
     @ColumnInfo(name = "output_language") val outputLanguage: OutputLanguage,
     @ColumnInfo(name = "style") val style: AgentStyle,
