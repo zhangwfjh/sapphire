@@ -49,4 +49,5 @@ interface AgentRepository {
         tokensUsed: Int,
         message: String?,
     )
+    suspend fun fileAgentItems(jobId: String, items: List<AgentSynthesisItem>, agentName: String): Int
 }

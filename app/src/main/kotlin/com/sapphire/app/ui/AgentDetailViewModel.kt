@@ -109,99 +109,58 @@ class AgentDetailViewModel @Inject constructor(
     }
 
     fun runNow() {
-        android.util.Log.i("AgentDetail", "runNow called for jobId=$jobId")
-        viewModelScope.launch {
-            // Seed an immediate "Run queued" row so the user sees instant feedback.
-            // The worker overwrites this with the real result when it completes.
-            repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.EMPTY, 0, 0, "Run queued — searching & synthesizing…")
-            scheduler.runNow(jobId)
-            _runQueued.value = true
-        }
-    }
-
-    /**
-     * Synchronous test run — executes search→synth→insert directly (no WorkManager).
-     * Shows timing + result inline so you can verify the pipeline works without waiting
-     * for WM scheduling. Bypasses the CONNECTED constraint.
-     */
-    fun testRun() {
         val job = state.value.job ?: return
         _testResult.value = TestRunResult(false, 0, 0, emptyList(), "Running…")
         viewModelScope.launch {
             val start = System.currentTimeMillis()
             try {
-                // Ensure the source exists (for agents created before the seeder).
                 seeder.ensureAgentSource(job.id, job.name)
-
-                android.util.Log.i("AgentDetail", "testRun: starting synthesis for ${job.name}")
+                android.util.Log.i("AgentDetail", "runNow: starting synthesis for ${job.name}")
                 val outcome = synthesis.run(job)
                 val elapsed = System.currentTimeMillis() - start
-
                 when (outcome) {
                     is LlmOutcome.Ok -> {
                         val items = outcome.value.items
-                        android.util.Log.i("AgentDetail", "testRun: synth returned ${items.size} items in ${elapsed}ms")
-
-                        // Insert items directly into the DB (same logic as the worker).
                         if (items.isEmpty()) {
                             repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.EMPTY, 0, 0, "No items worth filing")
-                            _testResult.value = TestRunResult(true, elapsed, 0, emptyList(), "Synth returned 0 items")
+                            _testResult.value = TestRunResult(true, elapsed, 0, emptyList(), "No items worth filing")
                         } else {
-                            val now = System.currentTimeMillis()
-                            val sourceId = seeder.sourceIdFor(jobId)
-                            val entities = items.mapIndexed { i, item ->
-                                val itemUrl = item.url ?: "agent://$jobId#$now-$i"
-                                val hashUuid = com.sapphire.domain.util.FeedItemId.fromUrl(sourceId, itemUrl)
-                                com.sapphire.data.db.FeedItemEntity(
-                                    hashUuid = hashUuid,
-                                    sourceId = sourceId,
-                                    categoryId = com.sapphire.data.agent.AgentSourceSeeder.AGENT_CATEGORY_ID,
-                                    title = item.title,
-                                    summary = item.summary,
-                                    bodyRaw = item.body,
-                                    publishedAt = now,
-                                    fetchedAt = now,
-                                    agentTag = job.name,
-                                    url = item.url,
-                                )
-                            }
-                            // Insert via repository — it dispatches IO.
-                            // We need the DAO directly for this, so use the worker pattern.
-                            // Actually: the repository doesn't expose insertItems. We need
-                            // to go through the DB. But we don't have DB access here (app module).
-                            // Instead: record the run + result. The worker (or runNow) handles insertion.
-                            // For test: just show the items the LLM produced.
+                            // Actually file items into the DB so they appear in the feed.
+                            val filed = repository.fileAgentItems(jobId, items, job.name)
                             repository.recordRun(
                                 jobId,
-                                com.sapphire.domain.model.AgentRunStatus.OK,
-                                items.size,
+                                if (filed > 0) com.sapphire.domain.model.AgentRunStatus.OK else com.sapphire.domain.model.AgentRunStatus.EMPTY,
+                                filed,
                                 items.size * 1200,
-                                "testRun: ${items.size} items in ${elapsed}ms",
+                                if (filed < items.size) "$filed/${items.size} items filed (some deduped)" else "$filed items filed",
                             )
                             _testResult.value = TestRunResult(
                                 success = true,
                                 durationMs = elapsed,
-                                itemCount = items.size,
-                                items = items.map { "${it.title}${it.summary?.let { s -> " — $s" } ?: ""}" },
+                                itemCount = filed,
+                                items = items.map { item ->
+                                    val sources = item.sources.takeIf { it.isNotEmpty() }?.joinToString(" | ") { "[${it.title}](${it.url})" } ?: ""
+                                    "${item.title}${item.summary?.let { s -> " — $s" } ?: ""}${if (sources.isNotBlank()) "\n  ↳ $sources" else ""}"
+                                },
                                 error = null,
                             )
+                            _runQueued.value = true
                         }
                     }
                     is LlmOutcome.Err -> {
-                        val elapsed2 = System.currentTimeMillis() - start
-                        android.util.Log.e("AgentDetail", "testRun: synth failed in ${elapsed2}ms: ${outcome.error}")
                         repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.FAILED, 0, 0, outcome.error.userMessage())
-                        _testResult.value = TestRunResult(false, elapsed2, 0, emptyList(), outcome.error.userMessage())
+                        _testResult.value = TestRunResult(false, elapsed, 0, emptyList(), outcome.error.userMessage())
                     }
                 }
             } catch (e: Exception) {
                 val elapsed3 = System.currentTimeMillis() - start
-                android.util.Log.e("AgentDetail", "testRun: exception after ${elapsed3}ms", e)
                 repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.FAILED, 0, 0, e.message)
                 _testResult.value = TestRunResult(false, elapsed3, 0, emptyList(), e.message)
             }
         }
     }
+    /** Alias — runNow now handles everything synchronously. */
+    fun testRun() = runNow()
 
     fun consumeTestResult() { _testResult.value = null }
 

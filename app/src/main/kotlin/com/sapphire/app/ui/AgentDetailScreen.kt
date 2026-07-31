@@ -1,6 +1,8 @@
 package com.sapphire.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.Button
@@ -56,6 +60,7 @@ import com.sapphire.app.ui.theme.SapphireMono
 @Composable
 fun AgentDetailScreen(
     onBack: () -> Unit,
+    onEdit: (String) -> Unit,
     viewModel: AgentDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -81,6 +86,11 @@ fun AgentDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = palette.OnInk)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { state.job?.let { onEdit(it.id) } }) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Edit agent", tint = palette.OnInk)
                     }
                 },
             )
@@ -315,8 +325,10 @@ private fun TestRunSection(testResult: TestRunResult?, onTestRun: () -> Unit) {
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 320.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(if (result.success) palette.Accent.copy(alpha = 0.08f) else palette.Danger.copy(alpha = 0.08f))
+                    .verticalScroll(rememberScrollState())
                     .padding(14.dp),
             ) {
                 // Status + timing

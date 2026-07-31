@@ -76,7 +76,10 @@ fun SapphireNavHost() {
             route = Routes.AGENT_DETAIL,
             arguments = listOf(navArgument("jobId") { type = NavType.StringType }),
         ) {
-            AgentDetailScreen(onBack = { navController.popBackStack() })
+            AgentDetailScreen(
+                onBack = { navController.popBackStack() },
+                onEdit = { id -> navController.navigate(Routes.agentBuilder(id)) },
+            )
         }
     }
 }

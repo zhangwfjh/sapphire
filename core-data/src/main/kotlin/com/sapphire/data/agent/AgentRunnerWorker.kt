@@ -64,19 +64,31 @@ class AgentRunnerWorker @AssistedInject constructor(
                 val now = System.currentTimeMillis()
                 val sourceId = sourceSeeder.sourceIdFor(jobId)
                 val entities = items.mapIndexed { i, item ->
-                    val itemUrl = item.url ?: "agent://$jobId#$now-$i"
+                    val itemUrl = item.url
+                        ?: item.sources.firstOrNull()?.url
+                        ?: "agent://$jobId#$now-$i"
                     val hashUuid = FeedItemId.fromUrl(sourceId, itemUrl)
+                    // Build body with appended Sources section so the reader shows
+                    // clickable references the user can follow and verify.
+                    val bodyWithSources = buildString {
+                        item.body?.let { appendLine(it); appendLine() }
+                        if (item.sources.isNotEmpty()) {
+                            appendLine("---")
+                            appendLine("Sources:")
+                            item.sources.forEach { src -> appendLine("• ${src.title}: ${src.url}") }
+                        }
+                    }.ifBlank { null }
                     FeedItemEntity(
                         hashUuid = hashUuid,
                         sourceId = sourceId,
                         categoryId = AgentSourceSeeder.AGENT_CATEGORY_ID,
                         title = item.title,
                         summary = item.summary,
-                        bodyRaw = item.body,
+                        bodyRaw = bodyWithSources,
                         publishedAt = now,
                         fetchedAt = now,
                         agentTag = job.name,
-                        url = item.url,
+                        url = itemUrl,
                     )
                 }
                 val rowIds = database.feedDao().insertItems(entities)

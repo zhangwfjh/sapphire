@@ -4,34 +4,29 @@ import com.sapphire.data.db.AgentJobDao
 import com.sapphire.data.db.AgentJobEntity
 import com.sapphire.data.db.AgentRunDao
 import com.sapphire.data.db.AgentRunEntity
+import com.sapphire.data.db.FeedDao
 import com.sapphire.domain.agent.AgentJobInput
 import com.sapphire.domain.agent.AgentRepository
+import com.sapphire.domain.agent.AgentSynthesisItem
 import com.sapphire.domain.model.AgentJob
 import com.sapphire.domain.model.AgentRun
 import com.sapphire.domain.model.AgentRunStatus
 import com.sapphire.domain.util.IdGenerator
+import com.sapphire.domain.util.FeedItemId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-/**
- * Room-backed [AgentRepository]. Entity↔domain mapping happens here at the boundary
- * (domain code never sees Room types, per the house rule). Writes dispatch IO;
- * Room read Flows are cold and self-dispatched.
- *
- * [update] routes through [AgentJobDao.updateFields] so `created_at`, `enabled`, and
- * `next_run_intent_epoch_ms` are preserved — a REPLACE upsert would clobber all three.
- * [create] seeds a synthetic "Agent created — waiting for first run" history row so the
- * detail view's timeline is never empty (matches the design's created-agent state).
- */
 class RoomAgentRepository @Inject constructor(
     private val jobDao: AgentJobDao,
     private val runDao: AgentRunDao,
+    private val feedDao: FeedDao,
     private val ids: IdGenerator,
     private val sourceSeeder: AgentSourceSeeder,
 ) : AgentRepository {
+
 
     override fun observeJobs(): Flow<List<AgentJob>> =
         jobDao.observeAll().map { list -> list.map { it.toDomain() } }
@@ -103,6 +98,37 @@ class RoomAgentRepository @Inject constructor(
                 message = message,
             ),
         )
+    }
+
+    override suspend fun fileAgentItems(jobId: String, items: List<AgentSynthesisItem>, agentName: String): Int = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val sourceId = sourceSeeder.sourceIdFor(jobId)
+        val entities = items.mapIndexed { i, item ->
+            val itemUrl = item.url ?: item.sources.firstOrNull()?.url ?: "agent://$jobId#$now-$i"
+            val hashUuid = FeedItemId.fromUrl(sourceId, itemUrl)
+            val bodyWithSources = buildString {
+                item.body?.let { appendLine(it); appendLine() }
+                if (item.sources.isNotEmpty()) {
+                    appendLine("---")
+                    appendLine("Sources:")
+                    item.sources.forEach { src -> appendLine("• ${src.title}: ${src.url}") }
+                }
+            }.ifBlank { null }
+            com.sapphire.data.db.FeedItemEntity(
+                hashUuid = hashUuid,
+                sourceId = sourceId,
+                categoryId = AgentSourceSeeder.AGENT_CATEGORY_ID,
+                title = item.title,
+                summary = item.summary,
+                bodyRaw = bodyWithSources,
+                publishedAt = now,
+                fetchedAt = now,
+                agentTag = agentName,
+                url = itemUrl,
+            )
+        }
+        val rowIds = feedDao.insertItems(entities)
+        rowIds.count { it > 0 }
     }
 
     private fun AgentJobEntity.toDomain() = AgentJob(

@@ -11,11 +11,18 @@ import kotlinx.serialization.Serializable
  * double-insert. [bodyRaw] is the full synthesized text (the "article" the reader shows).
  */
 @Serializable
+data class AgentSourceRef(
+    val title: String,
+    val url: String,
+)
+
+@Serializable
 data class AgentSynthesisItem(
     val title: String,
     val summary: String? = null,
     val body: String? = null,
     val url: String? = null,
+    val sources: List<AgentSourceRef> = emptyList(),
 )
 
 /**

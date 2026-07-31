@@ -47,7 +47,7 @@ class RoomAgentRepositoryTest {
             SapphireDatabase::class.java,
         ).allowMainThreadQueries().build()
         val seeder = com.sapphire.data.agent.AgentSourceSeeder(db.seedDao(), db.sourceDao())
-        repo = RoomAgentRepository(db.agentJobDao(), db.agentRunDao(), ids, seeder)
+        repo = RoomAgentRepository(db.agentJobDao(), db.agentRunDao(), db.feedDao(), ids, seeder)
     }
 
     @After fun tearDown() { db.close() }

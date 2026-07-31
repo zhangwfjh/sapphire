@@ -34,12 +34,29 @@ class AgentSynthesisService(
         val systemPrompt = buildSystemPrompt(job.style, job.outputLanguage)
         val userPrompt = buildUserPrompt(job.directive, hits, job.recency, job.outputLanguage)
 
-        return llm.completeStructured(
+        val outcome = llm.completeStructured(
             tier = LlmTier.TIER1_FAST,
             systemPrompt = systemPrompt,
             userPrompt = userPrompt,
             outputSerializer = AgentSynthesisResult.serializer(),
         )
+
+        // Post-process: guarantee every item has verifiable source links. If the LLM
+        // didn't provide sources, attach the search hits as fallback references so the
+        // user can always follow and verify. This is best-effort — we don't know which
+        // specific hit grounded which item, so we attach all hits as general references.
+        return when (outcome) {
+            is LlmOutcome.Ok -> {
+                val fallbackSources = hits.take(5).map { AgentSourceRef(it.title, it.url) }
+                val fixedItems = outcome.value.items.map { item ->
+                    if (item.sources.isEmpty() && fallbackSources.isNotEmpty()) {
+                        item.copy(sources = fallbackSources)
+                    } else item
+                }
+                LlmOutcome.Ok(AgentSynthesisResult(fixedItems))
+            }
+            is LlmOutcome.Err -> outcome
+        }
     }
 
     private fun buildSearchQuery(job: AgentJob): String {
@@ -71,10 +88,12 @@ class AgentSynthesisService(
         return """You are an AI research agent that synthesizes web search results into feed items.
 Each item must have a clear title, a one-line summary, and a body with substance.
 
+CITATIONS: Whenever possible, include a "sources" array with real "title" and "url" from the provided search results. Never fabricate URLs. If you include sources, cite the actual search result URLs. Do not omit items just because you forgot to add sources — sources are best-effort.
+
 $styleGuide
 $langGuide
 
-Return JSON: {"items":[{"title":"...","summary":"...","body":"...","url":"..."}]}
+Return JSON: {"items":[{"title":"...","summary":"...","body":"...","url":"optional source link if known"}]}
 Only include items worth reading — quality over quantity. 1–5 items per run.
 If nothing notable was found, return an empty items list."""
     }
@@ -89,9 +108,7 @@ If nothing notable was found, return an empty items list."""
         sb.appendLine("Directive: $directive")
         sb.appendLine()
         if (hits.isEmpty()) {
-            sb.appendLine("No web search results were available. Synthesize from your knowledge if you can, otherwise return an empty items list.")
-        } else {
-            sb.appendLine("Web search results (use these as grounding — do not fabricate URLs):")
+            sb.appendLine("Web search results (cite these URLs in each item's \"sources\" — never fabricate URLs):")
             hits.take(10).forEachIndexed { i, hit ->
                 sb.appendLine("${i + 1}. ${hit.title}")
                 sb.appendLine("   URL: ${hit.url}")
