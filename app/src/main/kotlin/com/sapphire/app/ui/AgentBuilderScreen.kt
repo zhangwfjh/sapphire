@@ -11,17 +11,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,6 +78,8 @@ fun AgentBuilderScreen(
     val form by viewModel.form.collectAsStateWithLifecycle()
     val saved by viewModel.saved.collectAsStateWithLifecycle()
     val nameError by viewModel.nameError.collectAsStateWithLifecycle()
+    val testResult by viewModel.testResult.collectAsStateWithLifecycle()
+    val isRunning by viewModel.isRunning.collectAsStateWithLifecycle()
     var showGallery by remember { mutableStateOf(false) }
     LaunchedEffect(saved) { if (saved) onBack() }
 
@@ -159,7 +165,13 @@ fun AgentBuilderScreen(
             FieldLabel("4", "Output & scope", "time, language, voice")
             ScopeRows(form, viewModel, Modifier.padding(horizontal = 22.dp))
 
-            // Quick-start templates
+            // Test Run — verify settings without saving.
+            BuilderTestRun(
+                form = form,
+                testResult = testResult,
+                isRunning = isRunning,
+                onTestRun = viewModel::testRun,
+            )
             Text(
                 "Or start from a template",
                 style = SapphireMono.Label,
@@ -461,4 +473,67 @@ private fun styleLabel(s: AgentStyle) = when (s) {
     AgentStyle.BRIEF -> "Analyst brief"; AgentStyle.BULLETED -> "Bulleted"
     AgentStyle.CONVERSATIONAL -> "Conversational"; AgentStyle.ACADEMIC -> "Academic"
     AgentStyle.HOTTAKE -> "Hot take"; AgentStyle.EXPLAINER -> "Explainer"
+}
+
+@Composable
+private fun BuilderTestRun(
+    form: BuilderForm,
+    testResult: TestRunResult?,
+    isRunning: Boolean,
+    onTestRun: () -> Unit,
+) {
+    val palette = LocalSapphirePalette.current
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        OutlinedButton(
+            onClick = onTestRun,
+            enabled = !isRunning && form.directive.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.AccentBright),
+            border = androidx.compose.foundation.BorderStroke(1.dp, palette.Accent),
+        ) {
+            if (isRunning) {
+                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp, color = palette.Accent)
+            } else {
+                Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
+            }
+            Spacer(Modifier.width(7.dp))
+            Text(if (isRunning) "Running…" else "Test Run (preview result)", fontWeight = FontWeight.SemiBold)
+        }
+        // Running indicator
+        if (isRunning) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                    .background(palette.Accent.copy(alpha = 0.08f)).padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("Running — searching & synthesizing…", style = SapphireMono.Label, color = palette.AccentBright)
+            }
+        }
+        // Result panel
+        testResult?.let { result ->
+            Spacer(Modifier.height(8.dp))
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 320.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (result.success) palette.Accent.copy(alpha = 0.08f) else palette.Danger.copy(alpha = 0.08f))
+                    .verticalScroll(rememberScrollState()).padding(14.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (result.success) "✓ SUCCESS" else "✗ FAILED", style = SapphireMono.Label, color = if (result.success) palette.AccentBright else palette.Danger, fontWeight = FontWeight.SemiBold)
+                    Text("%.1fs".format(result.durationMs / 1000.0), style = SapphireMono.Label, color = palette.OnInkFaint, fontWeight = FontWeight.SemiBold)
+                }
+                result.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = palette.Danger, modifier = Modifier.padding(top = 6.dp)) }
+                if (result.items.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("${result.itemCount} items synthesized:", style = SapphireMono.Label, color = palette.OnInkMuted, fontWeight = FontWeight.SemiBold)
+                    result.items.forEach { item ->
+                        Text("• $item", style = MaterialTheme.typography.bodySmall, color = palette.OnInk, modifier = Modifier.padding(top = 4.dp, start = 8.dp))
+                    }
+                }
+            }
+        }
+    }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sapphire.domain.agent.AgentJobInput
+import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.agent.AgentRepository
 import com.sapphire.domain.agent.AgentTemplate
 import com.sapphire.domain.agent.nextRunText
@@ -45,6 +46,7 @@ data class BuilderForm(
 class AgentBuilderViewModel @Inject constructor(
     private val repository: AgentRepository,
     private val scheduler: com.sapphire.data.agent.AgentScheduler,
+    private val synthesis: com.sapphire.domain.agent.AgentSynthesisService,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -57,6 +59,12 @@ class AgentBuilderViewModel @Inject constructor(
 
     private val _saved = MutableStateFlow(false)
     val saved: StateFlow<Boolean> = _saved.asStateFlow()
+
+    private val _testResult = MutableStateFlow<TestRunResult?>(null)
+    val testResult: StateFlow<TestRunResult?> = _testResult.asStateFlow()
+
+    private val _isRunning = MutableStateFlow(false)
+    val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
     private val _nameError = MutableStateFlow<String?>(null)
     val nameError: StateFlow<String?> = _nameError.asStateFlow()
@@ -105,6 +113,51 @@ class AgentBuilderViewModel @Inject constructor(
     }
 
     fun nextRunLabel(): String = nextRunText(_form.value.frequency, _form.value.triggerTime, System.currentTimeMillis())
+
+    /**
+     * Test Run — executes the pipeline with current form values WITHOUT saving or filing.
+     * Builds a temporary AgentJob from the form, runs synthesis, shows results inline.
+     */
+    fun testRun() {
+        val f = _form.value
+        if (f.directive.isBlank()) return
+        _testResult.value = null
+        _isRunning.value = true
+        viewModelScope.launch {
+            val start = System.currentTimeMillis()
+            try {
+                val tempJob = com.sapphire.domain.model.AgentJob(
+                    id = "preview", name = f.name.ifBlank { "Preview" }, directive = f.directive,
+                    frequency = f.frequency, triggerTime = f.triggerTime,
+                    maxItems = f.maxItems, recency = f.recency,
+                    outputLanguage = f.outputLanguage, style = f.style,
+                    enabled = true, nextRunIntentEpochMs = null, createdAt = 0L,
+                )
+                val outcome = synthesis.run(tempJob)
+                val elapsed = System.currentTimeMillis() - start
+                when (outcome) {
+                    is LlmOutcome.Ok -> {
+                        val items = outcome.value.items
+                        _testResult.value = TestRunResult(
+                            success = true, durationMs = elapsed, itemCount = items.size,
+                            items = items.map { item ->
+                                val sources = item.sources.takeIf { it.isNotEmpty() }?.joinToString(" | ") { "[${it.title}](${it.url})" } ?: ""
+                                "${item.title}${item.summary?.let { s -> " — $s" } ?: ""}${if (sources.isNotBlank()) "\n  ↳ $sources" else ""}"
+                            },
+                            error = if (items.isEmpty()) "No items worth filing" else null,
+                        )
+                    }
+                    is LlmOutcome.Err -> {
+                        _testResult.value = TestRunResult(false, System.currentTimeMillis() - start, 0, emptyList(), outcome.error.userMessage())
+                    }
+                }
+            } catch (e: Exception) {
+                _testResult.value = TestRunResult(false, System.currentTimeMillis() - start, 0, emptyList(), e.message)
+            } finally {
+                _isRunning.value = false
+            }
+        }
+    }
 
 
 

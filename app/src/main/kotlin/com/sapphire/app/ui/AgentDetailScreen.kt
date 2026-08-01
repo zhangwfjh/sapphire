@@ -112,27 +112,8 @@ fun AgentDetailScreen(
                     onToggle = viewModel::toggle,
                     onDelete = { showDeleteDialog = true },
                 )
-                // Test Run button — verifies agent settings without filing to feed.
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    OutlinedButton(
-                        onClick = viewModel::testRun,
-                        enabled = !isRunning,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.AccentBright),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.Accent),
-                    ) {
-                        if (isRunning) {
-                            androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp, color = palette.Accent)
-                        } else {
-                            Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
-                        }
-                        Spacer(Modifier.width(7.dp))
-                        Text(if (isRunning) "Running…" else "Test Run", fontWeight = FontWeight.SemiBold)
-                    }
-                }
                 // Run now — executes AND files items to the feed.
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     OutlinedButton(
                         onClick = viewModel::runNow,
                         enabled = !isRunning,
@@ -141,9 +122,13 @@ fun AgentDetailScreen(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.OnInk),
                         border = androidx.compose.foundation.BorderStroke(1.dp, palette.InkStroke),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
+                        if (isRunning) {
+                            androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp, color = palette.Accent)
+                        } else {
+                            Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
+                        }
                         Spacer(Modifier.width(7.dp))
-                        Text("Run now (files to feed)", fontWeight = FontWeight.SemiBold)
+                        Text(if (isRunning) "Running…" else "Run now", fontWeight = FontWeight.SemiBold)
                     }
                 }
                 RunResultPanel(
