@@ -110,17 +110,14 @@ object DataProvidersModule {
         json: Json,
         client: OkHttpClient,
         searchConfig: com.sapphire.domain.explore.SearchConfig,
-        regionResolver: com.sapphire.domain.explore.SearchRegionResolver,
     ): com.sapphire.domain.explore.WebSearchClient {
-        // The Tavily instance uses whichever key is active on each call: runtime override
-        // from SearchConfig.observeTavilyKey() if non-empty, else BuildConfig default.
         val tavily = RuntimeKeyTavilyClient(tavilyConfig, searchConfig, json, client)
         return com.sapphire.data.explore.CompositeSearchClient(
             tavily = tavily,
+            exa = com.sapphire.data.explore.ExaMcpSearchClient(client),
+            bing = com.sapphire.data.explore.BingSearchClient(client),
             ddg = com.sapphire.data.explore.DdgSearchClient(client),
             baidu = com.sapphire.data.explore.BaiduSearchClient(client),
-            config = searchConfig,
-            regionResolver = regionResolver,
         )
     }
 

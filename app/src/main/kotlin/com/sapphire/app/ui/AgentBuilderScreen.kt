@@ -120,7 +120,7 @@ fun AgentBuilderScreen(
         ) {
             BuilderHero(isEdit = viewModel.isEdit)
 
-            // Build from template — opens the gallery sheet to pre-fill all fields.
+            // Inspired from template — opens the gallery sheet to pre-fill all fields.
             TemplateButton(onClick = { showGallery = true })
 
             FieldLabel("1", "Name", "how it shows in your feed")
@@ -219,7 +219,7 @@ private fun TemplateButton(onClick: () -> Unit) {
     ) {
         Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.AccentBright, modifier = Modifier.size(20.dp))
         Column(Modifier.weight(1f)) {
-            Text("Build from template", style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
+            Text("Inspired from template", style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
             Text("12 presets across 4 categories", style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted)
         }
         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = palette.AccentBright)

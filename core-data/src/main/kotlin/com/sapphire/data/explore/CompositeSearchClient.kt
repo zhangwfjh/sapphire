@@ -1,60 +1,41 @@
 package com.sapphire.data.explore
 
-import com.sapphire.domain.explore.SearchConfig
-import com.sapphire.domain.explore.SearchRegion
-import com.sapphire.domain.explore.SearchRegionResolver
 import com.sapphire.domain.explore.WebSearchClient
 import com.sapphire.domain.explore.WebSearchHit
-import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 /**
- * Routes a search to the right backend(s):
+ * Free-first search routing. All engines are keyless/anonymous — no API keys required.
  *
- * 1. If a Tavily key is set (runtime override or BuildConfig), try [tavily] first. On
- *    non-empty result, return. Tavily's contract is non-fatal (failures → empty), so a
- *    failed/empty Tavily call transparently falls through.
- * 2. Else (or after Tavily returned empty) run the no-key failover chain:
- *      - Effective region: [SearchConfig.region], unless [SearchRegion.AUTO], in which
- *        case [regionResolver] decides from `Locale`.
- *      - WEST   / AUTO-non-zh: ddg → baidu
- *      - CHINA  / AUTO-zh    : baidu → ddg
- * 3. First non-empty result wins. All-empty → empty list.
+ * Priority chain (first non-empty result wins):
+ * 1. **Exa MCP** — free public endpoint (`mcp.exa.ai/mcp`), JSON-RPC, structured
+ *    results. Works from China. May throttle on heavy use.
+ * 2. **Bing** — free HTML scraper, works in China, region-localized results.
+ * 3. **DuckDuckGo** — free HTML scraper, blocked in China but good from WEST networks.
+ * 4. **Baidu** — free HTML scraper, captcha-prone, good for zh-CN queries.
+ * 5. **Tavily** — optional paid fallback (needs key). Last resort.
  *
- * Calls are strictly sequential (no parallel dispatch) to avoid tripping rate limits on
- * the fallback that wouldn't have been queried anyway.
+ * All calls are non-fatal (failures → empty list → next engine tries).
  */
 class CompositeSearchClient @Inject constructor(
     private val tavily: WebSearchClient,
+    private val exa: ExaMcpSearchClient,
+    private val bing: BingSearchClient,
     private val ddg: WebSearchClient,
     private val baidu: WebSearchClient,
-    private val config: SearchConfig,
-    private val regionResolver: SearchRegionResolver,
 ) : WebSearchClient {
 
     override suspend fun search(query: String): List<WebSearchHit> {
-        // 1. Tavily path (only if key set).
-        val tavilyKey = config.observeTavilyKey().first()
-        if (tavilyKey.isNotBlank()) {
-            val tavilyHits = runCatching { tavily.search(query) }.getOrDefault(emptyList())
-            if (tavilyHits.isNotEmpty()) return tavilyHits
-        }
-
-        // 2. No-key failover chain.
-        val effectiveRegion = when (config.region()) {
-            SearchRegion.AUTO -> regionResolver.resolve()
-            SearchRegion.WEST -> SearchRegion.WEST
-            SearchRegion.CHINA -> SearchRegion.CHINA
-        }
-        val chain: List<WebSearchClient> = when (effectiveRegion) {
-            SearchRegion.WEST -> listOf(ddg, baidu)
-            SearchRegion.CHINA -> listOf(baidu, ddg)
-            SearchRegion.AUTO -> listOf(ddg, baidu) // defensive; regionResolver above resolves AUTO
-        }
-        for (client in chain) {
+        // Free/anonymous chain first.
+        for (client in listOf<WebSearchClient>(exa, bing, ddg, baidu)) {
             val hits = runCatching { client.search(query) }.getOrDefault(emptyList())
             if (hits.isNotEmpty()) return hits
         }
+
+        // Tavily — optional paid fallback (emptyList on no key).
+        val tavilyHits = runCatching { tavily.search(query) }.getOrDefault(emptyList())
+        if (tavilyHits.isNotEmpty()) return tavilyHits
+
         return emptyList()
     }
 }
