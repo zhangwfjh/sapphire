@@ -1,6 +1,7 @@
 package com.sapphire.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -117,6 +120,9 @@ fun AgentBuilderScreen(
         ) {
             BuilderHero(isEdit = viewModel.isEdit)
 
+            // Build from template — opens the gallery sheet to pre-fill all fields.
+            TemplateButton(onClick = { showGallery = true })
+
             FieldLabel("1", "Name", "how it shows in your feed")
             OutlinedTextField(
                 value = form.name,
@@ -172,26 +178,6 @@ fun AgentBuilderScreen(
                 isRunning = isRunning,
                 onTestRun = viewModel::testRun,
             )
-            Text(
-                "Or start from a template",
-                style = SapphireMono.Label,
-                color = palette.OnInkFaint,
-                modifier = Modifier.padding(start = 22.dp, top = 20.dp, bottom = 8.dp),
-            )
-            AgentTemplates.quickStartIndices.forEach { i ->
-                val t = AgentTemplates.all[i]
-                TemplateRow(t, onClick = { viewModel.loadTemplate(t) }, modifier = Modifier.padding(horizontal = 22.dp))
-            }
-            Text(
-                "BROWSE ALL TEMPLATES",
-                style = SapphireMono.Label,
-                color = palette.OnInkMuted,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .padding(start = 22.dp, top = 4.dp)
-                    .clickable { showGallery = true },
-            )
-
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -213,6 +199,30 @@ private fun BuilderHero(isEdit: Boolean) {
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(top = 8.dp),
         )
+    }
+}
+
+@Composable
+private fun TemplateButton(onClick: () -> Unit) {
+    val palette = LocalSapphirePalette.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(palette.Accent.copy(alpha = 0.10f))
+            .border(1.dp, palette.Accent.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.AccentBright, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Build from template", style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
+            Text("12 presets across 4 categories", style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted)
+        }
+        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = palette.AccentBright)
     }
 }
 
