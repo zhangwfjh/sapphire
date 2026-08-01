@@ -110,9 +110,66 @@ class AgentDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Test Run — executes search→synth synchronously and shows the result inline
+     * (items, timing, sources) WITHOUT filing anything to the feed. Lets the user
+     * verify their agent settings are correct before committing to scheduled runs.
+     * Records a history row so the timeline reflects the test.
+     */
+    fun testRun() {
+        val job = state.value.job ?: return
+        _testResult.value = null
+        _isRunning.value = true
+        viewModelScope.launch {
+            val start = System.currentTimeMillis()
+            try {
+                android.util.Log.i("AgentDetail", "testRun: starting synthesis for ${job.name}")
+                val outcome = synthesis.run(job)
+                val elapsed = System.currentTimeMillis() - start
+                when (outcome) {
+                    is LlmOutcome.Ok -> {
+                        val items = outcome.value.items
+                        android.util.Log.i("AgentDetail", "testRun: ${items.size} items in ${elapsed}ms")
+                        repository.recordRun(
+                            jobId,
+                            if (items.isNotEmpty()) com.sapphire.domain.model.AgentRunStatus.OK else com.sapphire.domain.model.AgentRunStatus.EMPTY,
+                            items.size,
+                            items.size * 1200,
+                            "Test run: ${items.size} items in ${elapsed}ms",
+                        )
+                        _testResult.value = TestRunResult(
+                            success = true,
+                            durationMs = elapsed,
+                            itemCount = items.size,
+                            items = items.map { item ->
+                                val sources = item.sources.takeIf { it.isNotEmpty() }?.joinToString(" | ") { "[${it.title}](${it.url})" } ?: ""
+                                "${item.title}${item.summary?.let { s -> " — $s" } ?: ""}${if (sources.isNotBlank()) "\n  ↳ $sources" else ""}"
+                            },
+                            error = if (items.isEmpty()) "No items worth filing" else null,
+                        )
+                    }
+                    is LlmOutcome.Err -> {
+                        repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.FAILED, 0, 0, outcome.error.userMessage())
+                        _testResult.value = TestRunResult(false, elapsed, 0, emptyList(), outcome.error.userMessage())
+                    }
+                }
+            } catch (e: Exception) {
+                val elapsed3 = System.currentTimeMillis() - start
+                android.util.Log.e("AgentDetail", "testRun: exception", e)
+                repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.FAILED, 0, 0, e.message)
+                _testResult.value = TestRunResult(false, elapsed3, 0, emptyList(), e.message)
+            } finally {
+                _isRunning.value = false
+            }
+        }
+    }
+
+    /**
+     * Run now — executes search→synth AND files items to the feed (unlike testRun
+     * which only shows results). Used from the Agents list context menu.
+     */
     fun runNow() {
         val job = state.value.job ?: return
-        // Clear previous result + show "Running…" WITHOUT a FAILED badge.
         _testResult.value = null
         _isRunning.value = true
         viewModelScope.launch {
@@ -129,14 +186,13 @@ class AgentDetailViewModel @Inject constructor(
                             repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.EMPTY, 0, 0, "No items worth filing")
                             _testResult.value = TestRunResult(true, elapsed, 0, emptyList(), "No items worth filing")
                         } else {
-                            // Actually file items into the DB so they appear in the feed.
                             val filed = repository.fileAgentItems(jobId, items, job.name)
                             repository.recordRun(
                                 jobId,
                                 if (filed > 0) com.sapphire.domain.model.AgentRunStatus.OK else com.sapphire.domain.model.AgentRunStatus.EMPTY,
                                 filed,
                                 items.size * 1200,
-                                if (filed < items.size) "$filed/${items.size} items filed (some deduped)" else "$filed items filed",
+                                if (filed < items.size) "$filed/${items.size} filed (some deduped)" else "$filed items filed",
                             )
                             _testResult.value = TestRunResult(
                                 success = true,

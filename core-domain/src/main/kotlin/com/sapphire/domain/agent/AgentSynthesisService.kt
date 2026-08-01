@@ -29,7 +29,11 @@ class AgentSynthesisService(
 
     suspend fun run(job: AgentJob): LlmOutcome<AgentSynthesisResult> {
         val query = buildSearchQuery(job)
-        val hits = runCatching { webSearch.search(query) }.getOrDefault(emptyList())
+        val rawHits = runCatching { webSearch.search(query) }.getOrDefault(emptyList())
+        // Filter out junk hits: captcha pages, redirects, and near-empty content.
+        // Baidu returns captcha HTML (~1.5KB) when it detects automated traffic —
+        // the LLM correctly rejects these as "nothing notable", yielding 0 items.
+        val hits = rawHits.filter { hit -> hit.content.length > 200 && !hit.title.contains("captcha", ignoreCase = true) }
 
         val systemPrompt = buildSystemPrompt(job.style, job.outputLanguage, job.maxItems)
         val userPrompt = buildUserPrompt(job.directive, hits, job.recency, job.outputLanguage)
@@ -107,13 +111,15 @@ If nothing notable was found, return an empty items list."""
         val sb = StringBuilder()
         sb.appendLine("Directive: $directive")
         sb.appendLine()
-        if (hits.isEmpty()) {
+        if (hits.isNotEmpty()) {
             sb.appendLine("Web search results (cite these URLs in each item's \"sources\" — never fabricate URLs):")
             hits.take(10).forEachIndexed { i, hit ->
                 sb.appendLine("${i + 1}. ${hit.title}")
                 sb.appendLine("   URL: ${hit.url}")
                 hit.content.take(500).let { c -> if (c.isNotBlank()) sb.appendLine("   $c") }
             }
+        } else {
+            sb.appendLine("No web search results were available. If this is a news or current-events topic, return an empty items list — do not fabricate news. If this is an evergreen/knowledge topic (concepts, history, language), you may synthesize from your knowledge.")
         }
         return sb.toString()
     }

@@ -109,12 +109,43 @@ fun AgentDetailScreen(
                 DetailHeader(state)
                 DetailActions(
                     enabled = job.enabled,
-                    isRunning = isRunning,
                     onToggle = viewModel::toggle,
-                    onRunNow = viewModel::runNow,
                     onDelete = { showDeleteDialog = true },
                 )
-                // Inline result panel — shown after Run now completes.
+                // Test Run button — verifies agent settings without filing to feed.
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    OutlinedButton(
+                        onClick = viewModel::testRun,
+                        enabled = !isRunning,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.AccentBright),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.Accent),
+                    ) {
+                        if (isRunning) {
+                            androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp, color = palette.Accent)
+                        } else {
+                            Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
+                        }
+                        Spacer(Modifier.width(7.dp))
+                        Text(if (isRunning) "Running…" else "Test Run", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                // Run now — executes AND files items to the feed.
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    OutlinedButton(
+                        onClick = viewModel::runNow,
+                        enabled = !isRunning,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.OnInk),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.InkStroke),
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text("Run now (files to feed)", fontWeight = FontWeight.SemiBold)
+                    }
+                }
                 RunResultPanel(
                     testResult = testResult,
                     isRunning = isRunning,
@@ -236,12 +267,11 @@ private fun StatusPill(enabled: Boolean) {
 }
 
 @Composable
-private fun DetailActions(enabled: Boolean, isRunning: Boolean, onToggle: () -> Unit, onRunNow: () -> Unit, onDelete: () -> Unit) {
+private fun DetailActions(enabled: Boolean, onToggle: () -> Unit, onDelete: () -> Unit) {
     val palette = LocalSapphirePalette.current
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
             onClick = onToggle,
-            enabled = !isRunning,
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = if (enabled) palette.OnInk else palette.AccentBright),
@@ -250,22 +280,6 @@ private fun DetailActions(enabled: Boolean, isRunning: Boolean, onToggle: () -> 
             if (enabled) Icon(Icons.Filled.Pause, null, modifier = Modifier.size(15.dp)) else Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(7.dp))
             Text(if (enabled) "Pause" else "Resume")
-        }
-        OutlinedButton(
-            onClick = onRunNow,
-            enabled = !isRunning,
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.OnInk),
-            border = androidx.compose.foundation.BorderStroke(1.dp, palette.InkStroke),
-        ) {
-            if (isRunning) {
-                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp, color = palette.Accent)
-            } else {
-                Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
-            }
-            Spacer(Modifier.width(7.dp))
-            Text(if (isRunning) "Running…" else "Run now")
         }
         OutlinedButton(
             onClick = onDelete,
