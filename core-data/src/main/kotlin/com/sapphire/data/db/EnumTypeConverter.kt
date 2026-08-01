@@ -10,7 +10,6 @@ import com.sapphire.domain.model.HealthState
 import com.sapphire.domain.model.OutputLanguage
 import com.sapphire.domain.model.ReadMechanism
 import com.sapphire.domain.model.ReadState
-import com.sapphire.domain.model.SearchTool
 import com.sapphire.domain.model.SourceKind
 
 /** Room type converters for domain enums. Stored as name() for readability in DB browser. */
@@ -47,9 +46,6 @@ class EnumTypeConverter {
     @TypeConverter fun toOutputLanguage(value: String): OutputLanguage =
         runCatching { OutputLanguage.valueOf(value) }.getOrDefault(OutputLanguage.EN)
 
-    @TypeConverter fun fromSearchTool(t: SearchTool): String = t.name
-    @TypeConverter fun toSearchTool(value: String): SearchTool =
-        runCatching { SearchTool.valueOf(value) }.getOrDefault(SearchTool.TAVILY)
 
     @TypeConverter fun fromAgentRunStatus(s: AgentRunStatus): String = s.name
     @TypeConverter fun toAgentRunStatus(value: String): AgentRunStatus =

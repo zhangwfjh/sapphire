@@ -121,7 +121,6 @@ class AgentRunnerWorker @AssistedInject constructor(
         id = id,
         name = name,
         directive = directive,
-        searchTool = searchTool,
         frequency = frequency,
         triggerTime = triggerTime,
         maxItems = maxItems,

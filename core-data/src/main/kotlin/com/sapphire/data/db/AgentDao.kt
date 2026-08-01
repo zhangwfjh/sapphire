@@ -8,7 +8,6 @@ import com.sapphire.domain.model.AgentFrequency
 import com.sapphire.domain.model.AgentRecency
 import com.sapphire.domain.model.AgentStyle
 import com.sapphire.domain.model.OutputLanguage
-import com.sapphire.domain.model.SearchTool
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -35,7 +34,6 @@ interface AgentJobDao {
         UPDATE agent_job SET
             name = :name,
             directive = :directive,
-            search_tool = :searchTool,
             frequency = :frequency,
             trigger_time = :triggerTime,
             max_items = :maxItems,
@@ -49,7 +47,6 @@ interface AgentJobDao {
         id: String,
         name: String,
         directive: String,
-        searchTool: SearchTool,
         frequency: AgentFrequency,
         triggerTime: String,
         maxItems: Int,

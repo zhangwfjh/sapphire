@@ -29,7 +29,6 @@ data class RunRow(
 /** Detail-screen state — job + its derived display fields + run history. */
 data class AgentDetailUi(
     val job: AgentJob?,
-    val toolLabel: String,
     val cadenceLabel: String,
     val recencyLabel: String,
     val styleLabel: String,
@@ -79,12 +78,10 @@ class AgentDetailViewModel @Inject constructor(
     val isRunning: StateFlow<Boolean> = _isRunning
     val state: StateFlow<AgentDetailUi> = combine(repository.observeJob(jobId), repository.observeRuns(jobId)) { job, runs ->
         if (job == null) AgentDetailUi(
-        job = null, toolLabel = "", cadenceLabel = "",
-            recencyLabel = "", styleLabel = "", langLabel = "", nextRun = "",
+            job = null, cadenceLabel = "", recencyLabel = "", styleLabel = "", langLabel = "", nextRun = "",
             runs = emptyList(), itemsFiled = 0, totalRuns = 0, tokensUsed = "0",
         ) else AgentDetailUi(
             job = job,
-            toolLabel = job.searchTool.name,
             cadenceLabel = cadenceLabel(job.frequency, job.triggerTime),
             recencyLabel = recencyWindow(job),
             styleLabel = styleName(job),
@@ -96,8 +93,7 @@ class AgentDetailViewModel @Inject constructor(
             tokensUsed = formatTokens(runs.sumOf { it.tokensUsed }),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AgentDetailUi(
-        job = null, toolLabel = "", cadenceLabel = "",
-        recencyLabel = "", styleLabel = "", langLabel = "", nextRun = "",
+        job = null, cadenceLabel = "", recencyLabel = "", styleLabel = "", langLabel = "", nextRun = "",
         runs = emptyList(), itemsFiled = 0, totalRuns = 0, tokensUsed = "0",
     ))
 

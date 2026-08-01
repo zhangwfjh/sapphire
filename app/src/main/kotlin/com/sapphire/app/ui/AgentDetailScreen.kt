@@ -214,7 +214,6 @@ private fun DetailHeader(state: AgentDetailUi) {
         // Config pills
         PillFlow(
             listOf(
-                state.toolLabel,
                 state.cadenceLabel,
                 state.recencyLabel,
                 state.styleLabel,

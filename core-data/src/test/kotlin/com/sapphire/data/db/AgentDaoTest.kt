@@ -7,7 +7,6 @@ import com.sapphire.domain.model.AgentRecency
 import com.sapphire.domain.model.AgentRunStatus
 import com.sapphire.domain.model.AgentStyle
 import com.sapphire.domain.model.OutputLanguage
-import com.sapphire.domain.model.SearchTool
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -65,14 +64,12 @@ class AgentDaoTest {
         jobs.upsert(job("id1", "Original", enabled = false, createdAt = 1000))
         jobs.updateFields(
             id = "id1", name = "Renamed", directive = "new directive",
-            searchTool = SearchTool.TAVILY, frequency = AgentFrequency.WEEKLY,
             triggerTime = "09:30", recency = AgentRecency.MONTH,
             outputLanguage = OutputLanguage.ZH, style = AgentStyle.ACADEMIC,
         )
         val row = jobs.getById("id1")!!
         assertEquals("Renamed", row.name)
         assertEquals("new directive", row.directive)
-        assertEquals(SearchTool.TAVILY, row.searchTool)
         assertEquals(AgentFrequency.WEEKLY, row.frequency)
         assertEquals("09:30", row.triggerTime)
         assertEquals(AgentRecency.MONTH, row.recency)
@@ -125,7 +122,6 @@ class AgentDaoTest {
         createdAt: Long = 0L,
     ) = AgentJobEntity(
         id = id, name = name, directive = "do something",
-        searchTool = SearchTool.TAVILY, frequency = AgentFrequency.DAILY,
         triggerTime = "07:00", maxItems = 1,
         recency = AgentRecency.WEEK,
         outputLanguage = OutputLanguage.EN, style = AgentStyle.BRIEF,

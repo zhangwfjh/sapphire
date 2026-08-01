@@ -29,7 +29,6 @@ enum class AgentStyle { BRIEF, BULLETED, CONVERSATIONAL, ACADEMIC, HOTTAKE, EXPL
 enum class OutputLanguage { EN, ZH, MATCH_SOURCE }
 
 /** Which search provider the agent uses. All are non-fatal (empty list on failure). */
-enum class SearchTool { TAVILY, DDG }
 
 /** Outcome of a single run — maps to the run-history dot states (ok / fail / empty). */
 enum class AgentRunStatus { OK, FAILED, EMPTY }
@@ -43,7 +42,6 @@ data class AgentJob(
     val id: String,
     val name: String,
     val directive: String,
-    val searchTool: SearchTool,
     val frequency: AgentFrequency,
     val triggerTime: String,
     val maxItems: Int,

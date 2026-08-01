@@ -9,7 +9,6 @@ import com.sapphire.domain.model.AgentRecency
 import com.sapphire.domain.model.AgentRunStatus
 import com.sapphire.domain.model.AgentStyle
 import com.sapphire.domain.model.OutputLanguage
-import com.sapphire.domain.model.SearchTool
 import com.sapphire.domain.util.IdGenerator
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -120,7 +119,6 @@ class RoomAgentRepositoryTest {
     ) = AgentJobInput(
         name = name,
         directive = "directive for $name",
-        searchTool = SearchTool.TAVILY,
         frequency = AgentFrequency.DAILY,
         triggerTime = "07:00",
         recency = AgentRecency.WEEK,

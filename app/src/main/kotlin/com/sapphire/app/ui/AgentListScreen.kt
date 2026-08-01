@@ -188,12 +188,6 @@ private fun AgentCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        job.searchTool.name,
-                        style = SapphireMono.Label,
-                        color = palette.OnInkFaint,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
                 }
                 StatusPill(enabled = job.enabled)
             }

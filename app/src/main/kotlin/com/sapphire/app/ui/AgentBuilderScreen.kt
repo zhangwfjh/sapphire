@@ -59,7 +59,6 @@ import com.sapphire.domain.model.AgentFrequency
 import com.sapphire.domain.model.AgentRecency
 import com.sapphire.domain.model.AgentStyle
 import com.sapphire.domain.model.OutputLanguage
-import com.sapphire.domain.model.SearchTool
 
 /**
  * Agent builder (design: `design/agents.html` builder view). Five fields, 3 quick-starts,
@@ -139,18 +138,8 @@ fun AgentBuilderScreen(
                 shape = RoundedCornerShape(12.dp),
             )
 
-            FieldLabel("3", "Search tool", "where it looks")
-            ChipRow(modifier = Modifier.padding(horizontal = 22.dp)) {
-                SearchTool.entries.forEach { tool ->
-                    SelectChip(
-                        selected = form.searchTool == tool,
-                        label = toolLabel(tool),
-                        onClick = { viewModel.setTool(tool) },
-                    )
-                }
-            }
 
-            FieldLabel("4", "Frequency", "interval or schedule")
+            FieldLabel("3", "Frequency", "interval or schedule")
             FrequencyRow(form.frequency, viewModel::setFrequency, Modifier.padding(horizontal = 22.dp))
             // Trigger/Start time — always shown; label swaps for hourly vs scheduled.
             TimeRow(
@@ -167,7 +156,7 @@ fun AgentBuilderScreen(
                 modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp),
             )
 
-            FieldLabel("5", "Output & scope", "time, language, voice")
+            FieldLabel("4", "Output & scope", "time, language, voice")
             ScopeRows(form, viewModel, Modifier.padding(horizontal = 22.dp))
 
             // Quick-start templates
@@ -461,9 +450,6 @@ private fun GallerySheet(onPick: (AgentTemplate) -> Unit, onDismiss: () -> Unit)
     }
 }
 
-private fun toolLabel(t: SearchTool) = when (t) {
-    SearchTool.TAVILY -> "Tavily"; SearchTool.DDG -> "DuckDuckGo"
-}
 private fun recencyLabel(r: AgentRecency) = when (r) {
     AgentRecency.H24 -> "24h"; AgentRecency.WEEK -> "Week"; AgentRecency.MONTH -> "Month"
     AgentRecency.YEAR -> "Year"; AgentRecency.ALL -> "All"

@@ -10,7 +10,6 @@ import com.sapphire.domain.model.AgentRecency
 import com.sapphire.domain.model.AgentRunStatus
 import com.sapphire.domain.model.AgentStyle
 import com.sapphire.domain.model.OutputLanguage
-import com.sapphire.domain.model.SearchTool
 
 /**
  * A persisted prompt-agent job (PRD §3.7). Top-level config row — no foreign keys:
@@ -30,7 +29,6 @@ data class AgentJobEntity(
     @PrimaryKey @ColumnInfo(name = "id") val id: String,
     @ColumnInfo(name = "name") val name: String,
     @ColumnInfo(name = "directive") val directive: String,
-    @ColumnInfo(name = "search_tool") val searchTool: SearchTool,
     @ColumnInfo(name = "frequency") val frequency: AgentFrequency,
     @ColumnInfo(name = "trigger_time") val triggerTime: String,
     @ColumnInfo(name = "max_items") val maxItems: Int,

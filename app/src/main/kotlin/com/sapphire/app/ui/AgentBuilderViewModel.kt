@@ -11,7 +11,6 @@ import com.sapphire.domain.model.AgentFrequency
 import com.sapphire.domain.model.AgentRecency
 import com.sapphire.domain.model.AgentStyle
 import com.sapphire.domain.model.OutputLanguage
-import com.sapphire.domain.model.SearchTool
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +25,6 @@ import javax.inject.Inject
 data class BuilderForm(
     val name: String = "",
     val directive: String = "",
-    val searchTool: SearchTool = SearchTool.TAVILY,
     val frequency: AgentFrequency = AgentFrequency.DAILY,
     val triggerTime: String = "07:00",
     val maxItems: Int = 1,
@@ -72,7 +70,6 @@ class AgentBuilderViewModel @Inject constructor(
                     _form.value = BuilderForm(
                         name = job.name,
                         directive = job.directive,
-                        searchTool = job.searchTool,
                         frequency = job.frequency,
                         triggerTime = job.triggerTime,
                         maxItems = job.maxItems,
@@ -87,7 +84,6 @@ class AgentBuilderViewModel @Inject constructor(
 
     fun setName(v: String) = _form.update { it.copy(name = v) }
     fun setDirective(v: String) = _form.update { it.copy(directive = v) }
-    fun setTool(v: SearchTool) = _form.update { it.copy(searchTool = v) }
     fun setFrequency(v: AgentFrequency) = _form.update { it.copy(frequency = v) }
     fun setTriggerTime(v: String) = _form.update { it.copy(triggerTime = v) }
     fun setRecency(v: AgentRecency) = _form.update { it.copy(recency = v) }
@@ -99,7 +95,6 @@ class AgentBuilderViewModel @Inject constructor(
         _form.value = BuilderForm(
             name = t.name,
             directive = t.directive,
-            searchTool = t.searchTool,
             frequency = t.frequency,
             triggerTime = t.triggerTime,
             maxItems = t.maxItems,
@@ -126,7 +121,7 @@ class AgentBuilderViewModel @Inject constructor(
                 return@launch
             }
             val input = AgentJobInput(
-                f.name, f.directive, f.searchTool, f.frequency, f.triggerTime,
+                f.name, f.directive, f.frequency, f.triggerTime,
                 f.maxItems, f.recency, f.outputLanguage, f.style,
             )
             if (isEdit) {

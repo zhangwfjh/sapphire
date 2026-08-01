@@ -7,7 +7,6 @@ import com.sapphire.domain.model.AgentRun
 import com.sapphire.domain.model.AgentRunStatus
 import com.sapphire.domain.model.AgentStyle
 import com.sapphire.domain.model.OutputLanguage
-import com.sapphire.domain.model.SearchTool
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -18,7 +17,6 @@ import kotlinx.coroutines.flow.Flow
 data class AgentJobInput(
     val name: String,
     val directive: String,
-    val searchTool: SearchTool,
     val frequency: AgentFrequency,
     val triggerTime: String,
     val maxItems: Int,
