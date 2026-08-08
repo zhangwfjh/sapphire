@@ -50,6 +50,19 @@ interface LlmClient {
         userPrompt: String,
         outputSerializer: KSerializer<T>,
     ): LlmOutcome<T>
+
+    /**
+     * One OpenAI-compatible function-calling round-trip. The caller drives the multi-turn
+     * loop ([com.sapphire.domain.agent.AgentLoopService]); this does NOT loop internally —
+     * it sends the current [conversation] + [tools] and returns the model's turn (plain
+     * content, tool calls, or both). Reuses the [LlmOutcome]/[LlmError] taxonomy; never throws.
+     */
+    suspend fun completeWithTools(
+        tier: LlmTier,
+        systemPrompt: String,
+        conversation: List<ToolMessage>,
+        tools: List<ToolDefinition>,
+    ): LlmOutcome<ToolTurn>
     /**
      * Streams a plain-text completion as progressive partials. Each [LlmOutcome.Ok] carries
      * the full text accumulated so far; the final emission is the complete text. A failure

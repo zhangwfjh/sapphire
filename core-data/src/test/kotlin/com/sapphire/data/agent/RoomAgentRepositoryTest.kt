@@ -5,10 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.domain.agent.AgentJobInput
 import com.sapphire.domain.model.AgentFrequency
-import com.sapphire.domain.model.AgentRecency
 import com.sapphire.domain.model.AgentRunStatus
-import com.sapphire.domain.model.AgentStyle
-import com.sapphire.domain.model.OutputLanguage
 import com.sapphire.domain.util.IdGenerator
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -74,10 +71,9 @@ class RoomAgentRepositoryTest {
     fun `update changes fields but preserves created_at and enabled`() = runTest {
         val id = repo.create(input("Original"))
         val createdAtBefore = repo.observeJob(id).first()!!.createdAt
-        repo.update(id, input("Renamed", style = AgentStyle.ACADEMIC))
+        repo.update(id, input("Renamed"))
         val job = repo.observeJob(id).first()!!
         assertEquals("Renamed", job.name)
-        assertEquals(AgentStyle.ACADEMIC, job.style)
         assertEquals("created_at must be preserved", createdAtBefore, job.createdAt)
         assertTrue("enabled must be preserved", job.enabled)
     }
@@ -115,15 +111,12 @@ class RoomAgentRepositoryTest {
 
     private fun input(
         name: String,
-        style: AgentStyle = AgentStyle.BRIEF,
     ) = AgentJobInput(
         name = name,
-        directive = "directive for $name",
-        frequency = AgentFrequency.DAILY,
+        goal = "goal for " + name,
+        task = "", format = "", rules = "",
+        frequency = com.sapphire.domain.model.AgentFrequency.DAILY,
         triggerTime = "07:00",
-        recency = AgentRecency.WEEK,
-        outputLanguage = OutputLanguage.EN,
-        style = style,
         maxItems = 1,
     )
 }

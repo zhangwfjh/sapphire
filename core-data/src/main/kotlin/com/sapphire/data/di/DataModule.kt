@@ -139,11 +139,33 @@ object DataProvidersModule {
         com.sapphire.domain.explore.SearchFeedsUseCase(llm, webSearch)
 
     @Provides @Singleton
-    fun provideAgentSynthesisService(
+    fun provideEnhanceDirectiveService(
+        llm: LlmClient,
+    ): com.sapphire.domain.agent.EnhanceDirectiveService =
+        com.sapphire.domain.agent.EnhanceDirectiveService(llm)
+
+    @Provides @Singleton
+    fun provideAgentLoopService(
         llm: LlmClient,
         webSearch: com.sapphire.domain.explore.WebSearchClient,
-    ): com.sapphire.domain.agent.AgentSynthesisService =
-        com.sapphire.domain.agent.AgentSynthesisService(llm, webSearch)
+        extractor: com.sapphire.domain.reader.ArticleExtractor,
+        browser: com.sapphire.domain.browser.BrowserClient,
+    ): com.sapphire.domain.agent.AgentLoopService =
+        com.sapphire.domain.agent.AgentLoopService(llm, webSearch, extractor, browser)
+
+    @Provides @Singleton
+    fun provideBrowserConfig(
+        @dagger.hilt.android.qualifiers.ApplicationContext ctx: android.content.Context,
+    ): com.sapphire.domain.browser.BrowserConfig =
+        com.sapphire.data.settings.SharedPrefsBrowserConfig(ctx)
+
+    @Provides @Singleton
+    fun provideBrowserClient(
+        client: OkHttpClient,
+        json: Json,
+        config: com.sapphire.domain.browser.BrowserConfig,
+    ): com.sapphire.domain.browser.BrowserClient =
+        com.sapphire.data.browser.HttpBrowserClient(client, json, config)
 
     @Provides @Singleton
     fun provideReaderOpsUseCase(

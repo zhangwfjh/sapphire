@@ -5,6 +5,10 @@ import com.sapphire.domain.llm.LlmConfig
 import com.sapphire.domain.llm.LlmError
 import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.llm.LlmTier
+import com.sapphire.domain.llm.ToolCall
+import com.sapphire.domain.llm.ToolDefinition
+import com.sapphire.domain.llm.ToolMessage
+import com.sapphire.domain.llm.ToolTurn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -84,6 +88,106 @@ class OpenAiCompatibleLlmClient(
             attempt++
         }
         last
+    }
+
+    override suspend fun completeWithTools(
+        tier: LlmTier,
+        systemPrompt: String,
+        conversation: List<ToolMessage>,
+        tools: List<ToolDefinition>,
+    ): LlmOutcome<ToolTurn> = withContext(Dispatchers.IO) {
+        if (config.apiKey.isBlank()) return@withContext LlmOutcome.Err(LlmError.NotConfigured)
+
+        val messages = buildList {
+            add(ChatMessage(role = "system", content = systemPrompt))
+            conversation.forEach { msg ->
+                when (msg) {
+                    is ToolMessage.User -> add(ChatMessage(role = "user", content = msg.content))
+                    is ToolMessage.Assistant -> add(ChatMessage(
+                        role = "assistant",
+                        content = msg.content,
+                        toolCalls = msg.toolCalls.takeIf { it.isNotEmpty() }?.map { tc ->
+                            ToolCallDto(id = tc.id, function = ToolCallFunction(name = tc.name, arguments = tc.arguments))
+                        },
+                    ))
+                    is ToolMessage.ToolResult -> add(ChatMessage(
+                        role = "tool",
+                        content = msg.content,
+                        toolCallId = msg.toolCallId,
+                    ))
+                }
+            }
+        }
+        val request = ChatRequest(
+            model = config.modelFor(tier),
+            messages = messages,
+            tools = tools.map { td ->
+                ToolDefDto(function = ToolDefFunction(
+                    name = td.name,
+                    description = td.description,
+                    parameters = json.parseToJsonElement(td.jsonSchema),
+                ))
+            },
+            toolChoice = "auto",
+            thinking = Thinking(type = "disabled"),
+        )
+        val body = json.encodeToString(ChatRequest.serializer(), request)
+        val url = config.baseUrl + config.chatPath
+
+        var last: LlmOutcome<ToolTurn> = LlmOutcome.Err(LlmError.Network("no attempt"))
+        var attempt = 0
+        while (attempt <= MAX_RETRIES) {
+            val outcome = runOnceToolTurn(url, body)
+            val transient = when (val err = (outcome as? LlmOutcome.Err)?.error) {
+                is LlmError.Timeout, is LlmError.RateLimited, is LlmError.Network -> true
+                is LlmError.Http -> err.status in 500..599
+                else -> false
+            }
+            if (!transient) return@withContext outcome
+            last = outcome
+            if (attempt < MAX_RETRIES) delayBackoff(attempt)
+            attempt++
+        }
+        last
+    }
+
+    private suspend fun runOnceToolTurn(url: String, body: String): LlmOutcome<ToolTurn> {
+        val httpResponse: Response = try {
+            client.newCall(
+                Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer " + config.apiKey)
+                    .header("Content-Type", "application/json")
+                    .post(body.toRequestBody("application/json".toMediaType()))
+                    .build(),
+            ).execute()
+        } catch (e: IOException) {
+            val msg = e.message ?: "network failure"
+            return if (isTimeout(e)) LlmOutcome.Err(LlmError.Timeout)
+            else LlmOutcome.Err(LlmError.Network(msg))
+        }
+        val code = httpResponse.code
+        val rawBody = httpResponse.body?.string().orEmpty()
+        httpResponse.close()
+
+        if (code == 429) return LlmOutcome.Err(LlmError.RateLimited)
+        if (code == 408 || code == 504) return LlmOutcome.Err(LlmError.Timeout)
+        if (!httpResponse.isSuccessful) return LlmOutcome.Err(LlmError.Http(code))
+
+        val chat = try {
+            json.decodeFromString(ChatResponse.serializer(), rawBody)
+        } catch (e: Exception) {
+            return LlmOutcome.Err(LlmError.InvalidResponse)
+        }
+
+        val message = chat.choices.firstOrNull()?.message
+            ?: return LlmOutcome.Err(LlmError.InvalidResponse)
+
+        val toolCalls = message.toolCalls?.map { dto ->
+            ToolCall(id = dto.id, name = dto.function.name, arguments = dto.function.arguments)
+        } ?: emptyList()
+
+        return LlmOutcome.Ok(ToolTurn(content = message.content, toolCalls = toolCalls))
     }
 
     override fun streamText(

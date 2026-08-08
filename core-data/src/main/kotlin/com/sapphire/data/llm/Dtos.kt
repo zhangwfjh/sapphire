@@ -27,6 +27,8 @@ internal data class ChatRequest(
      * (Json.explicitNulls = false), so non-Zhipu providers are unaffected.
      */
     val thinking: Thinking? = null,
+    val tools: List<ToolDefDto>? = null,
+    @SerialName("tool_choice") val toolChoice: String? = null,
 )
 
 /** Wire shape for Zhipu's `thinking` request field. */
@@ -38,7 +40,35 @@ internal data class Thinking(
 @Serializable
 internal data class ChatMessage(
     val role: String,
-    val content: String,
+    val content: String? = null,
+    @SerialName("tool_calls") val toolCalls: List<ToolCallDto>? = null,
+    @SerialName("tool_call_id") val toolCallId: String? = null,
+)
+
+@Serializable
+internal data class ToolCallDto(
+    val id: String,
+    val type: String = "function",
+    val function: ToolCallFunction,
+)
+
+@Serializable
+internal data class ToolCallFunction(
+    val name: String,
+    val arguments: String,
+)
+
+@Serializable
+internal data class ToolDefDto(
+    val type: String = "function",
+    val function: ToolDefFunction,
+)
+
+@Serializable
+internal data class ToolDefFunction(
+    val name: String,
+    val description: String,
+    val parameters: kotlinx.serialization.json.JsonElement,
 )
 
 @Serializable
@@ -59,6 +89,7 @@ internal data class Choice(
 @Serializable
 internal data class ChoiceMessage(
     val content: String? = null,
+    @SerialName("tool_calls") val toolCalls: List<ToolCallDto>? = null,
 )
 
 /**

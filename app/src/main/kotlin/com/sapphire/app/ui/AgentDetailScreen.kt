@@ -200,9 +200,9 @@ private fun DetailHeader(state: AgentDetailUi) {
         PillFlow(
             listOf(
                 state.cadenceLabel,
-                state.recencyLabel,
-                state.styleLabel,
-                state.langLabel,
+                "",
+                "",
+                state.goalLabel,
                 if (job.enabled) "next: ${state.nextRun}" else "paused",
             ),
         )

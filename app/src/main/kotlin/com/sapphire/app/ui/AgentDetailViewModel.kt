@@ -30,9 +30,7 @@ data class RunRow(
 data class AgentDetailUi(
     val job: AgentJob?,
     val cadenceLabel: String,
-    val recencyLabel: String,
-    val styleLabel: String,
-    val langLabel: String,
+    val goalLabel: String,
     val nextRun: String,
     val runs: List<RunRow>,
     val itemsFiled: Int,
@@ -41,13 +39,6 @@ data class AgentDetailUi(
 )
 
 /** Synchronous test-run result — shown inline on the detail screen. */
-data class TestRunResult(
-    val success: Boolean,
-    val durationMs: Long,
-    val itemCount: Int,
-    val items: List<String>,
-    val error: String?,
-)
 
 /**
  * Agent detail. Combines the job + its run history into [AgentDetailUi]. Toggle/delete
@@ -58,7 +49,7 @@ data class TestRunResult(
 class AgentDetailViewModel @Inject constructor(
     private val repository: AgentRepository,
     private val scheduler: com.sapphire.data.agent.AgentScheduler,
-    private val synthesis: com.sapphire.domain.agent.AgentSynthesisService,
+    private val loop: com.sapphire.domain.agent.AgentLoopService,
     private val seeder: com.sapphire.data.agent.AgentSourceSeeder,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -78,14 +69,12 @@ class AgentDetailViewModel @Inject constructor(
     val isRunning: StateFlow<Boolean> = _isRunning
     val state: StateFlow<AgentDetailUi> = combine(repository.observeJob(jobId), repository.observeRuns(jobId)) { job, runs ->
         if (job == null) AgentDetailUi(
-            job = null, cadenceLabel = "", recencyLabel = "", styleLabel = "", langLabel = "", nextRun = "",
+            job = null, cadenceLabel = "", goalLabel = "", nextRun = "",
             runs = emptyList(), itemsFiled = 0, totalRuns = 0, tokensUsed = "0",
         ) else AgentDetailUi(
             job = job,
             cadenceLabel = cadenceLabel(job.frequency, job.triggerTime),
-            recencyLabel = recencyWindow(job),
-            styleLabel = styleName(job),
-            langLabel = langName(job),
+            goalLabel = job.goal,
             nextRun = if (job.enabled) com.sapphire.domain.agent.nextRunText(job.frequency, job.triggerTime, System.currentTimeMillis()) else "paused",
             runs = runs.map { it.toRow() },
             itemsFiled = runs.filter { it.status == com.sapphire.domain.model.AgentRunStatus.OK }.sumOf { it.itemsFiled },
@@ -93,7 +82,7 @@ class AgentDetailViewModel @Inject constructor(
             tokensUsed = formatTokens(runs.sumOf { it.tokensUsed }),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AgentDetailUi(
-        job = null, cadenceLabel = "", recencyLabel = "", styleLabel = "", langLabel = "", nextRun = "",
+        job = null, cadenceLabel = "", goalLabel = "", nextRun = "",
         runs = emptyList(), itemsFiled = 0, totalRuns = 0, tokensUsed = "0",
     ))
 
@@ -120,7 +109,7 @@ class AgentDetailViewModel @Inject constructor(
             val start = System.currentTimeMillis()
             try {
                 android.util.Log.i("AgentDetail", "testRun: starting synthesis for ${job.name}")
-                val outcome = synthesis.run(job)
+                val outcome = loop.run(job)
                 val elapsed = System.currentTimeMillis() - start
                 when (outcome) {
                     is LlmOutcome.Ok -> {
@@ -173,7 +162,7 @@ class AgentDetailViewModel @Inject constructor(
             try {
                 seeder.ensureAgentSource(job.id, job.name)
                 android.util.Log.i("AgentDetail", "runNow: starting synthesis for ${job.name}")
-                val outcome = synthesis.run(job)
+                val outcome = loop.run(job)
                 val elapsed = System.currentTimeMillis() - start
                 when (outcome) {
                     is LlmOutcome.Ok -> {
@@ -265,24 +254,5 @@ class AgentDetailViewModel @Inject constructor(
         else -> n.toString()
     }
 
-    private fun recencyWindow(job: AgentJob) = when (job.recency) {
-        com.sapphire.domain.model.AgentRecency.H24 -> "24h window"
-        com.sapphire.domain.model.AgentRecency.WEEK -> "Week window"
-        com.sapphire.domain.model.AgentRecency.MONTH -> "Month window"
-        com.sapphire.domain.model.AgentRecency.YEAR -> "Year window"
-        com.sapphire.domain.model.AgentRecency.ALL -> "All-time window"
-    }
-    private fun styleName(job: AgentJob) = when (job.style) {
-        com.sapphire.domain.model.AgentStyle.BRIEF -> "Analyst brief"
-        com.sapphire.domain.model.AgentStyle.BULLETED -> "Bulleted"
-        com.sapphire.domain.model.AgentStyle.CONVERSATIONAL -> "Conversational"
-        com.sapphire.domain.model.AgentStyle.ACADEMIC -> "Academic"
-        com.sapphire.domain.model.AgentStyle.HOTTAKE -> "Hot take"
-        com.sapphire.domain.model.AgentStyle.EXPLAINER -> "Explainer"
-    }
-    private fun langName(job: AgentJob) = when (job.outputLanguage) {
-        com.sapphire.domain.model.OutputLanguage.EN -> "EN"
-        com.sapphire.domain.model.OutputLanguage.ZH -> "中文"
-        com.sapphire.domain.model.OutputLanguage.MATCH_SOURCE -> "Match source"
-    }
+
 }

@@ -171,6 +171,14 @@ class SearchFeedsUseCaseTest {
             userPrompt: String,
         ): kotlinx.coroutines.flow.Flow<LlmOutcome<String>> =
             kotlinx.coroutines.flow.flowOf(LlmOutcome.Err(LlmError.InvalidResponse))
+
+        override suspend fun completeWithTools(
+            tier: LlmTier,
+            systemPrompt: String,
+            conversation: List<com.sapphire.domain.llm.ToolMessage>,
+            tools: List<com.sapphire.domain.llm.ToolDefinition>,
+        ): LlmOutcome<com.sapphire.domain.llm.ToolTurn> =
+            throw NotImplementedError("not used by feed search")
     }
 
     private class RecordingWebSearch(private val hits: List<WebSearchHit> = emptyList()) : WebSearchClient {

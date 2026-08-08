@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,7 +27,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,10 +38,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,21 +58,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.sapphire.app.ui.design.SectionEyebrow
 import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
 import com.sapphire.domain.agent.AgentTemplate
 import com.sapphire.domain.agent.AgentTemplates
 import com.sapphire.domain.model.AgentFrequency
-import com.sapphire.domain.model.AgentRecency
-import com.sapphire.domain.model.AgentStyle
-import com.sapphire.domain.model.OutputLanguage
 
-/**
- * Agent builder (design: `design/agents.html` builder view). Five fields, 3 quick-starts,
- * and a "Browse all" gallery bottom sheet. Edit mode loads the existing job into the form.
- */
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentBuilderScreen(
     onBack: () -> Unit,
@@ -80,150 +73,112 @@ fun AgentBuilderScreen(
     val palette = LocalSapphirePalette.current
     val form by viewModel.form.collectAsStateWithLifecycle()
     val saved by viewModel.saved.collectAsStateWithLifecycle()
-    val nameError by viewModel.nameError.collectAsStateWithLifecycle()
+    val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
+    val generateError by viewModel.generateError.collectAsStateWithLifecycle()
     val testResult by viewModel.testResult.collectAsStateWithLifecycle()
     val isRunning by viewModel.isRunning.collectAsStateWithLifecycle()
+    val nameError by viewModel.nameError.collectAsStateWithLifecycle()
+    val isEdit = viewModel.isEdit
     var showGallery by remember { mutableStateOf(false) }
-    LaunchedEffect(saved) { if (saved) onBack() }
 
-    val canCreate = form.name.isNotBlank() && form.directive.isNotBlank()
+    LaunchedEffect(saved) { if (saved) onBack() }
+    val canCreate = form.name.isNotBlank() && form.goal.isNotBlank()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        if (viewModel.isEdit) "EDIT AGENT" else "NEW AGENT",
-                        style = SapphireMono.Label,
-                        color = palette.OnInk,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Cancel", tint = palette.OnInk)
-                    }
-                },
+                title = { Text(if (isEdit) "EDIT AGENT" else "NEW AGENT", style = SapphireMono.Label, color = palette.OnInk, fontWeight = FontWeight.SemiBold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Cancel", tint = palette.OnInk) } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.Ink, navigationIconContentColor = palette.OnInk, titleContentColor = palette.OnInk),
             )
         },
-        bottomBar = {
-            BuilderBottomBar(canCreate = canCreate, isEdit = viewModel.isEdit, onCreate = viewModel::submit)
-        },
-        containerColor = palette.Ink,
-        contentColor = palette.OnInk,
+        bottomBar = { BuilderBottomBar(canCreate, isEdit, viewModel::submit) },
     ) { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            BuilderHero(isEdit = viewModel.isEdit)
-
-            // Inspired from template — opens the gallery sheet to pre-fill all fields.
-            TemplateButton(onClick = { showGallery = true })
+        Column(Modifier.fillMaxSize().background(palette.Ink).padding(padding).verticalScroll(rememberScrollState())) {
+            if (!isEdit) TemplateButton(onClick = { showGallery = true })
 
             FieldLabel("1", "Name", "how it shows in your feed")
             OutlinedTextField(
-                value = form.name,
-                onValueChange = { viewModel.setName(it); viewModel.clearNameError() },
+                value = form.name, onValueChange = { viewModel.setName(it); viewModel.clearNameError() },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
                 placeholder = { Text("e.g. LLM Infra Scanner", color = palette.OnInkFaint) },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
+                singleLine = true, shape = RoundedCornerShape(12.dp),
                 isError = nameError != null,
-                supportingText = {
-                    nameError?.let {
-                        Text(it, style = SapphireMono.Label, color = palette.Danger)
-                    }
-                },
+                supportingText = { nameError?.let { Text(it, style = SapphireMono.Label, color = palette.Danger) } },
             )
 
-            FieldLabel("2", "Directive", "what it should synthesize")
+            FieldLabel("2", "Goal", "what the agent should do")
             OutlinedTextField(
-                value = form.directive,
-                onValueChange = viewModel::setDirective,
+                value = form.goal, onValueChange = viewModel::setGoal,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
-                placeholder = { Text("Describe what the agent should search for and synthesize…", color = palette.OnInkFaint) },
-                minLines = 3,
-                maxLines = 5,
+                placeholder = { Text("e.g. Summarize a random TED talk daily", color = palette.OnInkFaint) },
+                minLines = 2, maxLines = 4, shape = RoundedCornerShape(12.dp),
+            )
+            OutlinedButton(
+                onClick = viewModel::generateDirective,
+                enabled = !isGenerating && form.goal.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp),
                 shape = RoundedCornerShape(12.dp),
-            )
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.AccentBright),
+                border = androidx.compose.foundation.BorderStroke(1.dp, palette.Accent),
+            ) {
+                if (isGenerating) { CircularProgressIndicator(modifier = Modifier.size(15.dp), strokeWidth = 2.dp, color = palette.Accent) }
+                else { Icon(Icons.Filled.AutoAwesome, null, modifier = Modifier.size(15.dp)) }
+                Spacer(Modifier.width(6.dp))
+                Text(if (isGenerating) "Generating..." else "Generate structured prompt", style = SapphireMono.Label)
+            }
+            generateError?.let { Text(it, style = SapphireMono.Label, color = palette.Danger, modifier = Modifier.padding(horizontal = 22.dp)) }
 
+            FieldLabel("3", "Task", "step-by-step procedure")
+            PromptField(form.task, viewModel::setTask, "Tap Generate, or write the steps yourself")
+            FieldLabel("4", "Format", "how each item looks in your feed")
+            PromptField(form.format, viewModel::setFormat, "e.g. Title + 3 bullets + takeaway. Max 200 words.")
+            FieldLabel("5", "Rules", "constraints, skips, quality guards")
+            PromptField(form.rules, viewModel::setRules, "e.g. Skip musical performances. No fabricated quotes.")
 
-            FieldLabel("3", "Frequency", "interval or schedule")
+            FieldLabel("6", "Max items", "items per run")
+            MaxItemsRow(form.maxItems, viewModel::setMaxItems, Modifier.padding(horizontal = 22.dp))
+
+            FieldLabel("7", "Frequency", "interval or schedule")
             FrequencyRow(form.frequency, viewModel::setFrequency, Modifier.padding(horizontal = 22.dp))
-            // Trigger/Start time — always shown; label swaps for hourly vs scheduled.
-            TimeRow(
-                isHourly = form.frequency.isHourly,
-                time = form.triggerTime,
-                onTimeChange = viewModel::setTriggerTime,
-                modifier = Modifier.padding(horizontal = 22.dp),
-            )
+            TimeRow(isHourly = form.frequency.isHourly, time = form.triggerTime, onTimeChange = viewModel::setTriggerTime, modifier = Modifier.padding(horizontal = 22.dp))
             CadenceNote(modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
-            Text(
-                "≈ Next run: ${viewModel.nextRunLabel()}",
-                style = SapphireMono.Label,
-                color = palette.AccentBright,
-                modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp),
-            )
+            Text("\u2248 Next run: " + viewModel.nextRunLabel(), style = SapphireMono.Label, color = palette.AccentBright, modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp))
 
-            FieldLabel("4", "Output & scope", "time, language, voice")
-            ScopeRows(form, viewModel, Modifier.padding(horizontal = 22.dp))
-
-            // Test Run — verify settings without saving.
-            BuilderTestRun(
-                form = form,
-                testResult = testResult,
-                isRunning = isRunning,
-                onTestRun = viewModel::testRun,
-            )
+            BuilderTestRun(form = form, testResult = testResult, isRunning = isRunning, onTestRun = viewModel::testRun)
             Spacer(Modifier.height(24.dp))
         }
     }
-
-    if (showGallery) {
-        GallerySheet(onPick = { viewModel.loadTemplate(it); showGallery = false }, onDismiss = { showGallery = false })
-    }
+    if (showGallery) { GallerySheet(onPick = { viewModel.loadTemplate(it); showGallery = false }, onDismiss = { showGallery = false }) }
 }
 
 @Composable
-private fun BuilderHero(isEdit: Boolean) {
+private fun PromptField(value: String, onChange: (String) -> Unit, placeholder: String) {
     val palette = LocalSapphirePalette.current
-    Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
-        SectionEyebrow(if (isEdit) "Edit agent" else "Prompt agent · §3.7")
-        Text(
-            if (isEdit) "Refine the agent." else "Describe a feed\nthat doesn't exist yet.",
-            style = MaterialTheme.typography.headlineSmall,
-            color = palette.OnInk,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-    }
+    OutlinedTextField(
+        value = value, onValueChange = onChange,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+        placeholder = { Text(placeholder, color = palette.OnInkFaint) },
+        minLines = 2, maxLines = 5, shape = RoundedCornerShape(12.dp),
+    )
 }
 
 @Composable
-private fun TemplateButton(onClick: () -> Unit) {
+private fun SelectChip(selected: Boolean, label: String, onClick: () -> Unit) {
     val palette = LocalSapphirePalette.current
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(palette.Accent.copy(alpha = 0.10f))
-            .border(1.dp, palette.Accent.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.AccentBright, modifier = Modifier.size(20.dp))
-        Column(Modifier.weight(1f)) {
-            Text("Inspired from template", style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
-            Text("12 presets across 4 categories", style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted)
-        }
-        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = palette.AccentBright)
-    }
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, style = SapphireMono.Label) },
+        shape = RoundedCornerShape(10.dp),
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = palette.InkElevated,
+            labelColor = palette.OnInkMuted,
+            selectedContainerColor = palette.Accent.copy(alpha = 0.16f),
+            selectedLabelColor = palette.AccentBright,
+        ),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) palette.Accent else palette.InkStroke),
+    )
 }
 
 @Composable
@@ -249,28 +204,28 @@ private fun FieldLabel(num: String, label: String, hint: String) {
     }
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun ChipRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    FlowRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() }
-}
-
-@Composable
-private fun SelectChip(selected: Boolean, label: String, onClick: () -> Unit) {
+private fun TemplateButton(onClick: () -> Unit) {
     val palette = LocalSapphirePalette.current
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label, style = SapphireMono.Label) },
-        shape = RoundedCornerShape(10.dp),
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = palette.InkElevated,
-            labelColor = palette.OnInkMuted,
-            selectedContainerColor = palette.Accent.copy(alpha = 0.16f),
-            selectedLabelColor = palette.AccentBright,
-        ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) palette.Accent else palette.InkStroke),
-    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(palette.Accent.copy(alpha = 0.10f))
+            .border(1.dp, palette.Accent.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = palette.AccentBright, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Inspired from template", style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
+            Text("12 presets across 4 categories", style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted)
+        }
+        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = palette.AccentBright)
+    }
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -342,56 +297,9 @@ private fun CadenceNote(modifier: Modifier) {
     )
 }
 
-
-
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun ScopeRows(form: BuilderForm, viewModel: AgentBuilderViewModel, modifier: Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AgentRecency.entries.forEach { SelectChip(form.recency == it, recencyLabel(it)) { viewModel.setRecency(it) } }
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutputLanguage.entries.forEach { SelectChip(form.outputLanguage == it, langLabel(it)) { viewModel.setLanguage(it) } }
-        }
-        // Max items per run — chips: 1, 3, 5, 10
-        MaxItemsRow(form.maxItems, viewModel::setMaxItems)
-        // Style as a dropdown (6 options).
-        StyleDropdown(form.style, viewModel::setStyle)
-    }
-}
-
-@Composable
-private fun StyleDropdown(style: AgentStyle, onPick: (AgentStyle) -> Unit) {
-    val palette = LocalSapphirePalette.current
-    var expanded by remember { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("STYLE", style = SapphireMono.Label, color = palette.OnInkFaint, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(74.dp))
-        Box {
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(palette.Accent.copy(alpha = 0.12f))
-                    .clickable { expanded = true }
-                    .padding(horizontal = 11.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(styleLabel(style), style = SapphireMono.Label, color = palette.AccentBright, fontWeight = FontWeight.SemiBold)
-                Icon(Icons.Filled.ArrowDropDown, null, tint = palette.AccentBright)
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                AgentStyle.entries.forEach { s ->
-                    DropdownMenuItem(text = { Text(styleLabel(s), style = SapphireMono.Label) }, onClick = { onPick(s); expanded = false })
-                }
-            }
-        }
-    }
-}
-
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun MaxItemsRow(maxItems: Int, onPick: (Int) -> Unit) {
+private fun MaxItemsRow(maxItems: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("MAX/ RUN", style = SapphireMono.Label, color = LocalSapphirePalette.current.OnInkFaint, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(74.dp))
         listOf(1, 3, 5, 10).forEach { n ->
@@ -413,7 +321,7 @@ private fun TemplateRow(t: AgentTemplate, onClick: () -> Unit, modifier: Modifie
     ) {
         Text(t.name, style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
         Text(t.tagline, style = MaterialTheme.typography.bodySmall, color = palette.AccentBright, modifier = Modifier.padding(top = 1.dp))
-        Text(t.directive, style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+        Text(t.goal, style = MaterialTheme.typography.bodySmall, color = palette.OnInkMuted, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
@@ -472,19 +380,6 @@ private fun GallerySheet(onPick: (AgentTemplate) -> Unit, onDismiss: () -> Unit)
     }
 }
 
-private fun recencyLabel(r: AgentRecency) = when (r) {
-    AgentRecency.H24 -> "24h"; AgentRecency.WEEK -> "Week"; AgentRecency.MONTH -> "Month"
-    AgentRecency.YEAR -> "Year"; AgentRecency.ALL -> "All"
-}
-private fun langLabel(l: OutputLanguage) = when (l) {
-    OutputLanguage.EN -> "EN"; OutputLanguage.ZH -> "中文"; OutputLanguage.MATCH_SOURCE -> "Match source"
-}
-private fun styleLabel(s: AgentStyle) = when (s) {
-    AgentStyle.BRIEF -> "Analyst brief"; AgentStyle.BULLETED -> "Bulleted"
-    AgentStyle.CONVERSATIONAL -> "Conversational"; AgentStyle.ACADEMIC -> "Academic"
-    AgentStyle.HOTTAKE -> "Hot take"; AgentStyle.EXPLAINER -> "Explainer"
-}
-
 @Composable
 private fun BuilderTestRun(
     form: BuilderForm,
@@ -496,7 +391,7 @@ private fun BuilderTestRun(
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         OutlinedButton(
             onClick = onTestRun,
-            enabled = !isRunning && form.directive.isNotBlank(),
+            enabled = !isRunning && form.goal.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.AccentBright),
@@ -547,3 +442,4 @@ private fun BuilderTestRun(
         }
     }
 }
+

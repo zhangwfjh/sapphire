@@ -10,7 +10,6 @@ import com.sapphire.data.db.FeedDao
 import com.sapphire.data.db.FeedItemEntity
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.domain.agent.AgentRepository
-import com.sapphire.domain.agent.AgentSynthesisService
 import com.sapphire.domain.llm.LlmError
 import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.model.AgentRunStatus
@@ -39,7 +38,7 @@ class AgentRunnerWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val database: SapphireDatabase,
     private val repository: AgentRepository,
-    private val synthesis: AgentSynthesisService,
+    private val loop: com.sapphire.domain.agent.AgentLoopService,
     private val sourceSeeder: AgentSourceSeeder,
 ) : CoroutineWorker(appContext, params) {
 
@@ -51,9 +50,8 @@ class AgentRunnerWorker @AssistedInject constructor(
         android.util.Log.i("AgentRunner", "doWork START for job=$jobId")
         val jobEntity = database.agentJobDao().getById(jobId) ?: return Result.success()
         val job = jobEntity.toDomainJob()
-
-        // Run the pipeline.
-        when (val outcome = synthesis.run(job)) {
+        // Run the tool-calling loop (the only engine).
+        when (val outcome = loop.run(job)) {
             is LlmOutcome.Ok -> {
                 val items = outcome.value.items
                 if (items.isEmpty()) {
@@ -120,13 +118,13 @@ class AgentRunnerWorker @AssistedInject constructor(
     private fun AgentJobEntity.toDomainJob() = com.sapphire.domain.model.AgentJob(
         id = id,
         name = name,
-        directive = directive,
+        goal = goal,
+        task = task,
+        format = format,
+        rules = rules,
         frequency = frequency,
         triggerTime = triggerTime,
         maxItems = maxItems,
-        recency = recency,
-        outputLanguage = outputLanguage,
-        style = style,
         enabled = enabled,
         nextRunIntentEpochMs = nextRunIntentEpochMs,
         createdAt = createdAt,

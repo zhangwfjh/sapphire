@@ -100,6 +100,16 @@ class ReaderViewModel @Inject constructor(
                 autoTranslateIfWarranted()
                 return@launch
             }
+            // Agent items: the synthesized body IS the full article. Skip extraction
+            // (the item URL is often agent://... or a source link, not the article itself).
+            // Treat the feed blocks as the article blocks so "Show full article" shows them.
+            if (item.agentTag != null) {
+                publish(item, feedBlocks, feedBlocks, ExtractionState.Done)
+                classify(itemId)
+                autoSummarizeIfLongEnough(feedBlocks)
+                autoTranslateIfWarranted()
+                return@launch
+            }
 
             val url = item.url
             if (url.isNullOrBlank()) {

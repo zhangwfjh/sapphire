@@ -2,11 +2,8 @@ package com.sapphire.domain.agent
 
 import com.sapphire.domain.model.AgentFrequency
 import com.sapphire.domain.model.AgentJob
-import com.sapphire.domain.model.AgentRecency
 import com.sapphire.domain.model.AgentRun
 import com.sapphire.domain.model.AgentRunStatus
-import com.sapphire.domain.model.AgentStyle
-import com.sapphire.domain.model.OutputLanguage
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -16,13 +13,13 @@ import kotlinx.coroutines.flow.Flow
  */
 data class AgentJobInput(
     val name: String,
-    val directive: String,
+    val goal: String,
+    val task: String,
+    val format: String,
+    val rules: String,
+    val maxItems: Int,
     val frequency: AgentFrequency,
     val triggerTime: String,
-    val maxItems: Int,
-    val recency: AgentRecency,
-    val outputLanguage: OutputLanguage,
-    val style: AgentStyle,
 )
 
 /**

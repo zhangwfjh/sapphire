@@ -19,8 +19,8 @@ import javax.inject.Inject
  */
 class CompositeSearchClient @Inject constructor(
     private val tavily: WebSearchClient,
-    private val exa: ExaMcpSearchClient,
-    private val bing: BingSearchClient,
+    private val exa: WebSearchClient,
+    private val bing: WebSearchClient,
     private val ddg: WebSearchClient,
     private val baidu: WebSearchClient,
 ) : WebSearchClient {

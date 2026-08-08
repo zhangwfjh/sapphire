@@ -367,5 +367,13 @@ class ReaderOpsUseCaseTest {
             if (mid > 0) emit(LlmOutcome.Ok(full.substring(0, mid)))
             emit(LlmOutcome.Ok(full))
         }
+
+        override suspend fun completeWithTools(
+            tier: LlmTier,
+            systemPrompt: String,
+            conversation: List<com.sapphire.domain.llm.ToolMessage>,
+            tools: List<com.sapphire.domain.llm.ToolDefinition>,
+        ): LlmOutcome<com.sapphire.domain.llm.ToolTurn> =
+            throw NotImplementedError("not used by reader ops")
     }
 }

@@ -3,10 +3,7 @@ package com.sapphire.data.db
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.sapphire.domain.model.AgentFrequency
-import com.sapphire.domain.model.AgentRecency
 import com.sapphire.domain.model.AgentRunStatus
-import com.sapphire.domain.model.AgentStyle
-import com.sapphire.domain.model.OutputLanguage
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -63,18 +60,16 @@ class AgentDaoTest {
     fun `updateFields changes editable fields but preserves created_at and enabled`() = runTest {
         jobs.upsert(job("id1", "Original", enabled = false, createdAt = 1000))
         jobs.updateFields(
-            id = "id1", name = "Renamed", directive = "new directive",
-            triggerTime = "09:30", recency = AgentRecency.MONTH,
-            outputLanguage = OutputLanguage.ZH, style = AgentStyle.ACADEMIC,
+            id = "id1", name = "Renamed", goal = "new goal",
+            task = "new task", format = "new format", rules = "new rules",
+            maxItems = 5, frequency = com.sapphire.domain.model.AgentFrequency.DAILY,
+            triggerTime = "09:30",
         )
         val row = jobs.getById("id1")!!
         assertEquals("Renamed", row.name)
-        assertEquals("new directive", row.directive)
-        assertEquals(AgentFrequency.WEEKLY, row.frequency)
+        assertEquals("new goal", row.goal)
+        assertEquals(AgentFrequency.DAILY, row.frequency)
         assertEquals("09:30", row.triggerTime)
-        assertEquals(AgentRecency.MONTH, row.recency)
-        assertEquals(OutputLanguage.ZH, row.outputLanguage)
-        assertEquals(AgentStyle.ACADEMIC, row.style)
         // preserved:
         assertEquals(1000L, row.createdAt)
         assertFalse("enabled must be preserved across updateFields", row.enabled)
@@ -121,10 +116,10 @@ class AgentDaoTest {
         enabled: Boolean = true,
         createdAt: Long = 0L,
     ) = AgentJobEntity(
-        id = id, name = name, directive = "do something",
+        id = id, name = name, goal = "do something",
+        task = "", format = "", rules = "",
+        frequency = com.sapphire.domain.model.AgentFrequency.WEEKLY,
         triggerTime = "07:00", maxItems = 1,
-        recency = AgentRecency.WEEK,
-        outputLanguage = OutputLanguage.EN, style = AgentStyle.BRIEF,
         enabled = enabled, nextRunIntentEpochMs = null, createdAt = createdAt,
     )
 

@@ -5,9 +5,6 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.sapphire.domain.model.AgentFrequency
-import com.sapphire.domain.model.AgentRecency
-import com.sapphire.domain.model.AgentStyle
-import com.sapphire.domain.model.OutputLanguage
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -29,30 +26,28 @@ interface AgentJobDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: AgentJobEntity)
 
-    @Query(
-        """
+    @Query("""
         UPDATE agent_job SET
             name = :name,
-            directive = :directive,
-            frequency = :frequency,
-            trigger_time = :triggerTime,
+            goal = :goal,
+            task = :task,
+            format = :format,
+            rules = :rules,
             max_items = :maxItems,
-            recency = :recency,
-            output_language = :outputLanguage,
-            style = :style
+            frequency = :frequency,
+            trigger_time = :triggerTime
         WHERE id = :id
-        """,
-    )
+        """)
     suspend fun updateFields(
         id: String,
         name: String,
-        directive: String,
+        goal: String,
+        task: String,
+        format: String,
+        rules: String,
+        maxItems: Int,
         frequency: AgentFrequency,
         triggerTime: String,
-        maxItems: Int,
-        recency: AgentRecency,
-        outputLanguage: OutputLanguage,
-        style: AgentStyle,
     )
 
     @Query("UPDATE agent_job SET enabled = :enabled WHERE id = :id")

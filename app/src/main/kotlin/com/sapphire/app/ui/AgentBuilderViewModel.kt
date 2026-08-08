@@ -4,14 +4,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sapphire.domain.agent.AgentJobInput
-import com.sapphire.domain.llm.LlmOutcome
+import com.sapphire.domain.agent.AgentLoopService
 import com.sapphire.domain.agent.AgentRepository
 import com.sapphire.domain.agent.AgentTemplate
+import com.sapphire.domain.agent.EnhanceDirectiveService
 import com.sapphire.domain.agent.nextRunText
+import com.sapphire.domain.llm.LlmOutcome
 import com.sapphire.domain.model.AgentFrequency
-import com.sapphire.domain.model.AgentRecency
-import com.sapphire.domain.model.AgentStyle
-import com.sapphire.domain.model.OutputLanguage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,36 +20,26 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-
-/** The builder form state (the HTML `B` object). */
 data class BuilderForm(
     val name: String = "",
-    val directive: String = "",
+    val goal: String = "",
+    val task: String = "",
+    val format: String = "",
+    val rules: String = "",
+    val maxItems: Int = 1,
     val frequency: AgentFrequency = AgentFrequency.DAILY,
     val triggerTime: String = "07:00",
-    val maxItems: Int = 1,
-    val recency: AgentRecency = AgentRecency.WEEK,
-    val outputLanguage: OutputLanguage = OutputLanguage.EN,
-    val style: AgentStyle = AgentStyle.BRIEF,
 )
 
-
-
-
-/**
- * Builder form. In edit mode (jobId != "new") the existing job loads into the form on
- * init. Cost + preview derive from [BuilderForm] so they update on every field change.
- * [saved] flips true once create/update completes — the screen observes it to navigate back.
- */
 @HiltViewModel
 class AgentBuilderViewModel @Inject constructor(
     private val repository: AgentRepository,
     private val scheduler: com.sapphire.data.agent.AgentScheduler,
-    private val synthesis: com.sapphire.domain.agent.AgentSynthesisService,
+    private val loop: AgentLoopService,
+    private val enhanceService: EnhanceDirectiveService,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    // Mirrors Routes.agentBuilder("{jobId}") arg name.
     private val editJobId: String = savedStateHandle["jobId"] ?: "new"
     val isEdit: Boolean = editJobId != "new"
 
@@ -59,6 +48,12 @@ class AgentBuilderViewModel @Inject constructor(
 
     private val _saved = MutableStateFlow(false)
     val saved: StateFlow<Boolean> = _saved.asStateFlow()
+
+    private val _isGenerating = MutableStateFlow(false)
+    val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
+
+    private val _generateError = MutableStateFlow<String?>(null)
+    val generateError: StateFlow<String?> = _generateError.asStateFlow()
 
     private val _testResult = MutableStateFlow<TestRunResult?>(null)
     val testResult: StateFlow<TestRunResult?> = _testResult.asStateFlow()
@@ -70,20 +65,16 @@ class AgentBuilderViewModel @Inject constructor(
     val nameError: StateFlow<String?> = _nameError.asStateFlow()
 
     fun clearNameError() { _nameError.value = null }
+    fun clearGenerateError() { _generateError.value = null }
 
     init {
         if (isEdit) {
             viewModelScope.launch {
                 repository.observeJob(editJobId).first()?.let { job ->
                     _form.value = BuilderForm(
-                        name = job.name,
-                        directive = job.directive,
-                        frequency = job.frequency,
-                        triggerTime = job.triggerTime,
-                        maxItems = job.maxItems,
-                        recency = job.recency,
-                        outputLanguage = job.outputLanguage,
-                        style = job.style,
+                        name = job.name, goal = job.goal, task = job.task,
+                        format = job.format, rules = job.rules,
+                        maxItems = job.maxItems, frequency = job.frequency, triggerTime = job.triggerTime,
                     )
                 }
             }
@@ -91,101 +82,85 @@ class AgentBuilderViewModel @Inject constructor(
     }
 
     fun setName(v: String) = _form.update { it.copy(name = v) }
-    fun setDirective(v: String) = _form.update { it.copy(directive = v) }
+    fun setGoal(v: String) = _form.update { it.copy(goal = v) }
+    fun setTask(v: String) = _form.update { it.copy(task = v) }
+    fun setFormat(v: String) = _form.update { it.copy(format = v) }
+    fun setRules(v: String) = _form.update { it.copy(rules = v) }
+    fun setMaxItems(v: Int) = _form.update { it.copy(maxItems = v) }
     fun setFrequency(v: AgentFrequency) = _form.update { it.copy(frequency = v) }
     fun setTriggerTime(v: String) = _form.update { it.copy(triggerTime = v) }
-    fun setRecency(v: AgentRecency) = _form.update { it.copy(recency = v) }
-    fun setLanguage(v: OutputLanguage) = _form.update { it.copy(outputLanguage = v) }
-    fun setStyle(v: AgentStyle) = _form.update { it.copy(style = v) }
-    fun setMaxItems(v: Int) = _form.update { it.copy(maxItems = v) }
 
     fun loadTemplate(t: AgentTemplate) {
         _form.value = BuilderForm(
-            name = t.name,
-            directive = t.directive,
-            frequency = t.frequency,
-            triggerTime = t.triggerTime,
-            maxItems = t.maxItems,
-            recency = t.recency,
-            outputLanguage = t.outputLanguage,
-            style = t.style,
+            name = t.name, goal = t.goal, maxItems = t.maxItems, frequency = t.frequency, triggerTime = t.triggerTime,
         )
     }
 
     fun nextRunLabel(): String = nextRunText(_form.value.frequency, _form.value.triggerTime, System.currentTimeMillis())
 
-    /**
-     * Test Run — executes the pipeline with current form values WITHOUT saving or filing.
-     * Builds a temporary AgentJob from the form, runs synthesis, shows results inline.
-     */
+    fun generateDirective() {
+        val f = _form.value
+        if (f.goal.isBlank()) return
+        _generateError.value = null
+        _isGenerating.value = true
+        viewModelScope.launch {
+            try {
+                when (val outcome = enhanceService.enhance(f.goal, f.maxItems)) {
+                    is LlmOutcome.Ok -> {
+                        val g = outcome.value
+                        _form.update { it.copy(task = g.task, format = g.format, rules = g.rules) }
+                    }
+                    is LlmOutcome.Err -> _generateError.value = outcome.error.userMessage()
+                }
+            } catch (e: Exception) { _generateError.value = e.message }
+            finally { _isGenerating.value = false }
+        }
+    }
+
     fun testRun() {
         val f = _form.value
-        if (f.directive.isBlank()) return
+        if (f.goal.isBlank()) return
         _testResult.value = null
         _isRunning.value = true
         viewModelScope.launch {
             val start = System.currentTimeMillis()
             try {
                 val tempJob = com.sapphire.domain.model.AgentJob(
-                    id = "preview", name = f.name.ifBlank { "Preview" }, directive = f.directive,
-                    frequency = f.frequency, triggerTime = f.triggerTime,
-                    maxItems = f.maxItems, recency = f.recency,
-                    outputLanguage = f.outputLanguage, style = f.style,
+                    id = "preview", name = f.name.ifBlank { "Preview" },
+                    goal = f.goal, task = f.task, format = f.format, rules = f.rules,
+                    maxItems = f.maxItems, frequency = f.frequency, triggerTime = f.triggerTime,
                     enabled = true, nextRunIntentEpochMs = null, createdAt = 0L,
                 )
-                val outcome = synthesis.run(tempJob)
+                val outcome = loop.run(tempJob)
                 val elapsed = System.currentTimeMillis() - start
                 when (outcome) {
                     is LlmOutcome.Ok -> {
                         val items = outcome.value.items
-                        _testResult.value = TestRunResult(
-                            success = true, durationMs = elapsed, itemCount = items.size,
-                            items = items.map { item ->
-                                val sources = item.sources.takeIf { it.isNotEmpty() }?.joinToString(" | ") { "[${it.title}](${it.url})" } ?: ""
-                                "${item.title}${item.summary?.let { s -> " — $s" } ?: ""}${if (sources.isNotBlank()) "\n  ↳ $sources" else ""}"
-                            },
-                            error = if (items.isEmpty()) "No items worth filing" else null,
-                        )
+                        _testResult.value = TestRunResult(true, elapsed, items.size,
+                            items.map { it.title + (it.summary?.let { s -> " - $s" } ?: "") },
+                            if (items.isEmpty()) "No items worth filing" else null)
                     }
-                    is LlmOutcome.Err -> {
-                        _testResult.value = TestRunResult(false, System.currentTimeMillis() - start, 0, emptyList(), outcome.error.userMessage())
-                    }
+                    is LlmOutcome.Err -> _testResult.value = TestRunResult(false, elapsed, 0, emptyList(), outcome.error.userMessage())
                 }
-            } catch (e: Exception) {
-                _testResult.value = TestRunResult(false, System.currentTimeMillis() - start, 0, emptyList(), e.message)
-            } finally {
-                _isRunning.value = false
-            }
+            } catch (e: Exception) { _testResult.value = TestRunResult(false, System.currentTimeMillis() - start, 0, emptyList(), e.message) }
+            finally { _isRunning.value = false }
         }
     }
-
-
 
     fun submit() {
         val f = _form.value
-        if (f.name.isBlank() || f.directive.isBlank()) return
+        if (f.name.isBlank() || f.goal.isBlank()) return
         _nameError.value = null
         viewModelScope.launch {
-            // Reject duplicate names — except when editing the same agent.
             val existing = repository.observeJobs().first()
             val clash = existing.any { it.name.equals(f.name, ignoreCase = true) && it.id != editJobId }
-            if (clash) {
-                _nameError.value = "An agent with this name already exists"
-                return@launch
-            }
-            val input = AgentJobInput(
-                f.name, f.directive, f.frequency, f.triggerTime,
-                f.maxItems, f.recency, f.outputLanguage, f.style,
-            )
-            if (isEdit) {
-                repository.update(editJobId, input)
-                scheduler.schedule(editJobId, input.frequency, input.triggerTime)
-            } else {
-                val newId = repository.create(input)
-                scheduler.schedule(newId, input.frequency, input.triggerTime)
-            }
+            if (clash) { _nameError.value = "An agent with this name already exists"; return@launch }
+            val input = AgentJobInput(f.name, f.goal, f.task, f.format, f.rules, f.maxItems, f.frequency, f.triggerTime)
+            if (isEdit) { repository.update(editJobId, input); scheduler.schedule(editJobId, input.frequency, input.triggerTime) }
+            else { val newId = repository.create(input); scheduler.schedule(newId, input.frequency, input.triggerTime) }
             _saved.value = true
         }
     }
-
 }
+
+data class TestRunResult(val success: Boolean, val durationMs: Long, val itemCount: Int, val items: List<String>, val error: String?)
