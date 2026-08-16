@@ -40,7 +40,7 @@ class RoomDataClearUseCase @Inject constructor(
         withContext(Dispatchers.IO) { database.clearAllTables() }
 
     override suspend fun storageUsageBytes(): Long = withContext(Dispatchers.IO) {
-        val path = database.openHelper.readableDatabase.path
+        val path = database.openHelper.readableDatabase.path ?: return@withContext 0L
         java.io.File(path).length()
     }
 

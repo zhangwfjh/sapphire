@@ -30,7 +30,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class AgentScheduler @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) {
 
     private fun workName(jobId: String) = AgentRunnerWorker.UNIQUE_WORK_PREFIX + jobId

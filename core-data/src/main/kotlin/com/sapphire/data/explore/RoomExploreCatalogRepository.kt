@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.map
  * degrades to the discovered rail only.
  */
 class RoomExploreCatalogRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val parser: CatalogAssetParser,
     private val discoveredDao: DiscoveredFeedDao,
 ) : ExploreCatalogRepository {

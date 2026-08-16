@@ -161,7 +161,7 @@ class SearchFeedsUseCaseTest {
             lastUserPrompt = userPrompt
             return when {
                 error != null -> LlmOutcome.Err(error)
-                else -> LlmOutcome.Ok(response as T)
+                else -> @Suppress("UNCHECKED_CAST") (LlmOutcome.Ok(response as T))
             }
         }
 

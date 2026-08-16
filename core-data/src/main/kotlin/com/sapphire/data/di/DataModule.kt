@@ -54,7 +54,7 @@ object DatabaseModule {
         SapphireDatabase::class.java,
         "sapphire.db",
     )
-        .fallbackToDestructiveMigration()
+        .fallbackToDestructiveMigration(dropAllTables = true)
         .build()
 
     @Provides fun provideSeedDao(db: SapphireDatabase): SeedDao = db.seedDao()

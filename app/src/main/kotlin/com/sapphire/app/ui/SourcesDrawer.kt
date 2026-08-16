@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -39,7 +39,7 @@ import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -344,7 +344,7 @@ private fun DrawerSheetContent(
             Spacer(Modifier.weight(1f))
             if (inSelection) {
                 IconButton(onClick = onBatchMove, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Filled.DriveFileMove, contentDescription = "Move selected", tint = palette.Accent, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = "Move selected", tint = palette.Accent, modifier = Modifier.size(18.dp))
                 }
                 IconButton(onClick = onBatchDelete, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Outlined.DeleteOutline, contentDescription = "Remove selected", tint = palette.Danger, modifier = Modifier.size(18.dp))
@@ -354,7 +354,7 @@ private fun DrawerSheetContent(
                 }
             }
         }
-        Divider(color = palette.InkStroke, thickness = 1.dp)
+        HorizontalDivider(color = palette.InkStroke, thickness = 1.dp)
 
         LazyColumn(modifier = Modifier.fillMaxSize().padding(bottom = 24.dp)) {
             item(key = "explore") {
@@ -533,7 +533,7 @@ private fun AllFeedsRow(onClick: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
         )
     }
-    Divider(color = palette.InkStroke, thickness = 0.5.dp)
+    HorizontalDivider(color = palette.InkStroke, thickness = 0.5.dp)
 }
 
 @Composable
@@ -586,7 +586,7 @@ private fun ReadLaterRow(onClick: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
         )
     }
-    Divider(color = palette.InkStroke, thickness = 0.5.dp)
+    HorizontalDivider(color = palette.InkStroke, thickness = 0.5.dp)
 }
 
 @Composable
@@ -613,7 +613,7 @@ private fun AddFolderRow(onClick: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
         )
     }
-    Divider(color = palette.InkStroke, thickness = 0.5.dp)
+    HorizontalDivider(color = palette.InkStroke, thickness = 0.5.dp)
 }
 @Composable
 private fun FolderHeader(
@@ -685,7 +685,7 @@ private fun FolderHeader(
             }
         }
     }
-    Divider(color = palette.InkStroke, thickness = 0.5.dp)
+    HorizontalDivider(color = palette.InkStroke, thickness = 0.5.dp)
 }
 
 /**

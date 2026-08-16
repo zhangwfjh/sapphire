@@ -1,7 +1,6 @@
 import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -58,8 +57,8 @@ android {
 }
 
 dependencies {
-    implementation(project(":core-domain"))
-    implementation(project(":core-data"))
+    implementation(projects.coreDomain)
+    implementation(projects.coreData)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

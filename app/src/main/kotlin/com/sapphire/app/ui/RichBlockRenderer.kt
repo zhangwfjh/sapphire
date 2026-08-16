@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,7 +26,6 @@ import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -35,7 +33,9 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withAnnotation
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
@@ -48,7 +48,6 @@ import com.sapphire.domain.reader.RichBlock
 import com.sapphire.domain.reader.RichSpan
 import com.sapphire.domain.reader.isTextBlock
 
-private const val URL_TAG = "url"
 
 /**
  * Renders an ordered list of [RichBlock]s — the rich article body. Each block
@@ -278,10 +277,10 @@ private fun blockGap(prev: RichBlock, cur: RichBlock): Dp = when {
 
 /**
  * Clickable rich-text line. Builds an [AnnotatedString] from [spans] (bold/italic/strike/
- * inline-code/links) and routes link taps through the platform [LocalUriHandler]. Uses
- * [ClickableText] so per-span link clicks resolve by offset.
+ * inline-code/links) and renders it via [Text]; link ranges carry a
+ * [LinkAnnotation.Url], whose default click behavior opens the URI through the
+ * platform [LocalUriHandler].
  */
-@OptIn(ExperimentalTextApi::class)
 @Composable
 private fun RichSpanText(
     spans: List<RichSpan>,
@@ -294,18 +293,13 @@ private fun RichSpanText(
     ),
 ) {
     val palette = LocalSapphirePalette.current
-    val uriHandler = LocalUriHandler.current
     val spanBase = base.toSpanStyle().merge(SpanStyle(color = color))
     val annotated = remember(spans, spanBase) {
         buildRichString(spans, spanBase, palette.AccentBright)
     }
-    ClickableText(
+    Text(
         text = annotated,
         style = base.copy(color = color),
-        onClick = { offset ->
-            annotated.getStringAnnotations(URL_TAG, offset, offset)
-                .firstOrNull()?.item?.let { uriHandler.openUri(it) }
-        },
     )
 }
 
@@ -319,7 +313,6 @@ private fun buildRichString(
     }
 }
 
-@OptIn(ExperimentalTextApi::class)
 private fun AnnotatedString.Builder.appendSpan(
     span: RichSpan,
     base: SpanStyle,
@@ -339,9 +332,9 @@ private fun AnnotatedString.Builder.appendSpan(
         is RichSpan.Code -> withStyle(base.merge(SpanStyle(fontFamily = SapphireFonts.mono))) {
             append(span.text)
         }
-        is RichSpan.Link -> withAnnotation(URL_TAG, span.url) {
+        is RichSpan.Link -> {
             val linkBase = base.merge(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
-            withStyle(linkBase) {
+            withLink(LinkAnnotation.Url(span.url, TextLinkStyles(style = linkBase))) {
                 span.children.forEach { appendSpan(it, linkBase, linkColor) }
             }
         }

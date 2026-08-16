@@ -21,7 +21,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class RetentionScheduler @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) {
     fun schedule() {
         val request = PeriodicWorkRequestBuilder<RetentionWorker>(
