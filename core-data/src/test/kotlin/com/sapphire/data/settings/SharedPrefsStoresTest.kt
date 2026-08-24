@@ -1,5 +1,5 @@
 package com.sapphire.data.settings
-
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.sapphire.domain.settings.LlmConfigBuildConfigDefaults
 import com.sapphire.domain.settings.ThemePreference
@@ -38,6 +38,31 @@ class SharedPrefsStoresTest {
         assertEquals(ThemePreference.DARK, store.observe().first())
         store.set(ThemePreference.LIGHT)
         assertEquals(ThemePreference.LIGHT, store.observe().first())
+    }
+
+    @Test
+    fun `theme persists across store instances`() = runTest {
+        val prefsName = "test-theme-persist"
+        SharedPrefsThemeConfigStore(ctx, prefsName).set(ThemePreference.LIGHT)
+        assertEquals(ThemePreference.LIGHT, SharedPrefsThemeConfigStore(ctx, prefsName).observe().first())
+    }
+
+    @Test
+    fun `retention persists across store instances`() = runTest {
+        val prefsName = "test-retention-persist"
+        SharedPrefsRetentionConfigStore(ctx, prefsName).setDays(90)
+        assertEquals(90, SharedPrefsRetentionConfigStore(ctx, prefsName).observe().first())
+    }
+
+    @Test
+    fun `unknown stored enum name degrades to default`() = runTest {
+        // Simulates a removed/renamed enum constant in an upgraded install.
+        ctx.getSharedPreferences("test-theme-corrupt", Context.MODE_PRIVATE)
+            .edit().putString("theme_pref", "OBSOLETE_VARIANT").commit()
+        assertEquals(
+            ThemePreference.DARK,
+            SharedPrefsThemeConfigStore(ctx, "test-theme-corrupt").observe().first(),
+        )
     }
 
     @Test

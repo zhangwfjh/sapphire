@@ -1,49 +1,34 @@
 package com.sapphire.data.settings
 
 import android.content.Context
-import androidx.core.content.edit
 import com.sapphire.domain.settings.TranslateViewMode
 import com.sapphire.domain.settings.UiPrefsStore
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 class SharedPrefsUiPrefsStore(
     context: Context,
-    private val prefsName: String,
+    prefsName: String,
 ) : UiPrefsStore {
 
     @Inject constructor(@ApplicationContext context: Context) : this(context, "settings_ui")
 
     private val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
-    private val _density = MutableStateFlow(readDensity())
-    private val _translateView = MutableStateFlow(readTranslateView())
+    // Density persists as its Boolean core (isDense).
+    private val density = PrefsEntry.bool(prefs, KEY_DENSITY, UiPrefsStore.FeedDensity.DEFAULT.isDense)
+    private val translateView = PrefsEntry.enum(prefs, KEY_TR_VIEW, TranslateViewMode.BILINGUAL)
 
-    override fun observeDensity(): Flow<UiPrefsStore.FeedDensity> = _density.asStateFlow()
-    override fun observeTranslateView(): Flow<TranslateViewMode> = _translateView.asStateFlow()
+    override fun observeDensity(): Flow<UiPrefsStore.FeedDensity> =
+        density.flow.map { UiPrefsStore.FeedDensity(it) }
 
-    override suspend fun setDensity(density: UiPrefsStore.FeedDensity) = withContext(Dispatchers.IO) {
-        prefs.edit { putBoolean(KEY_DENSITY, density.isDense) }
-        _density.value = density
-    }
+    override fun observeTranslateView(): Flow<TranslateViewMode> = translateView.flow
 
-    override suspend fun setTranslateView(mode: TranslateViewMode) = withContext(Dispatchers.IO) {
-        prefs.edit { putString(KEY_TR_VIEW, mode.name) }
-        _translateView.value = mode
-    }
+    override suspend fun setDensity(d: UiPrefsStore.FeedDensity) = density.set(d.isDense)
 
-    private fun readDensity(): UiPrefsStore.FeedDensity =
-        UiPrefsStore.FeedDensity(prefs.getBoolean(KEY_DENSITY, UiPrefsStore.FeedDensity.DEFAULT.isDense))
-
-    private fun readTranslateView(): TranslateViewMode {
-        val name = prefs.getString(KEY_TR_VIEW, null) ?: TranslateViewMode.BILINGUAL.name
-        return runCatching { TranslateViewMode.valueOf(name) }.getOrDefault(TranslateViewMode.BILINGUAL)
-    }
+    override suspend fun setTranslateView(mode: TranslateViewMode) = translateView.set(mode)
 
     private companion object {
         const val KEY_DENSITY = "feed_density_dense"

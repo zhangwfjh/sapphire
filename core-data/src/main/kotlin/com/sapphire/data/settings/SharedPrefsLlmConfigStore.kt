@@ -2,19 +2,15 @@ package com.sapphire.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.sapphire.domain.settings.LlmConfigBuildConfigDefaults
 import com.sapphire.domain.settings.LlmConfigSnapshot
 import com.sapphire.domain.settings.LlmConfigStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withContext
-import javax.inject.Inject
 import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 
 /**
  * Encrypted-SharedPreferences-backed [LlmConfigStore]. The API key lives in an encrypted
@@ -24,14 +20,14 @@ import dagger.hilt.android.qualifiers.ApplicationContext
  * The secret [SharedPreferences] is provided by [secretPrefsProvider] so tests can inject
  * a plain instance (Robolectric lacks the Android Keystore that EncryptedSharedPreferences needs).
  *
- * Both [observe] and [observeApiKey] are hot (backed by [MutableStateFlow]) so cross-component
- * consumers like [com.sapphire.app.di.StoreBackedLlmConfigProvider] and the Settings UI react
- * to runtime edits.
+ * Hot flows so cross-component consumers like [com.sapphire.app.di.StoreBackedLlmConfigProvider]
+ * and the Settings UI react to runtime edits. Non-secret fields are [PrefsEntry] definitions;
+ * the encrypted key and the snapshot merge are this store's own weight.
  */
 class SharedPrefsLlmConfigStore private constructor(
     private val defaults: LlmConfigBuildConfigDefaults,
-    private val plainPrefs: SharedPreferences,
-    private val secretPrefsProvider: () -> SharedPreferences,
+    plainPrefs: SharedPreferences,
+    secretPrefsProvider: () -> SharedPreferences,
 ) : LlmConfigStore {
 
     @Inject
@@ -55,38 +51,30 @@ class SharedPrefsLlmConfigStore private constructor(
 
     private val secretPrefs: SharedPreferences by lazy { secretPrefsProvider() }
 
-    private val _snapshot = MutableStateFlow(
-        LlmConfigSnapshot(baseUrl = readBaseUrl(), tier1Model = readTier1(), tier2Model = readTier2()),
+    private val baseUrl = PrefsEntry.string(
+        plainPrefs, KEY_BASE_URL,
+        default = ensureTrailingSlash(defaults.baseUrl()),
+        canonicalize = ::ensureTrailingSlash,
     )
-    private val _apiKey = MutableStateFlow(readApiKey())
+    private val tier1 = PrefsEntry.string(plainPrefs, KEY_TIER1, defaults.tier1Model())
+    private val tier2 = PrefsEntry.string(plainPrefs, KEY_TIER2, defaults.tier2Model())
+    private val apiKey = PrefsEntry.string(secretPrefs, KEY_API_KEY, defaults.apiKey())
 
-    override fun observe(): Flow<LlmConfigSnapshot> = _snapshot.asStateFlow()
-    override fun observeApiKey(): Flow<String> = _apiKey.asStateFlow()
+    override fun observe(): Flow<LlmConfigSnapshot> =
+        combine(baseUrl.flow, tier1.flow, tier2.flow) { url, t1, t2 ->
+            LlmConfigSnapshot(baseUrl = url, tier1Model = t1, tier2Model = t2)
+        }
 
-    override suspend fun setApiKey(key: String) = withContext(Dispatchers.IO) {
-        secretPrefs.edit { putString(KEY_API_KEY, key) }
-        _apiKey.value = key
-    }
+    override fun observeApiKey(): Flow<String> = apiKey.flow
 
-    override suspend fun setBaseUrl(url: String) = withContext(Dispatchers.IO) {
-        plainPrefs.edit { putString(KEY_BASE_URL, ensureTrailingSlash(url)) }
-        _snapshot.value = _snapshot.value.copy(baseUrl = ensureTrailingSlash(url))
-    }
+    override suspend fun setApiKey(key: String) = apiKey.set(key)
 
-    override suspend fun setTier1Model(model: String) = withContext(Dispatchers.IO) {
-        plainPrefs.edit { putString(KEY_TIER1, model) }
-        _snapshot.value = _snapshot.value.copy(tier1Model = model)
-    }
+    override suspend fun setBaseUrl(url: String) = baseUrl.set(url)
 
-    override suspend fun setTier2Model(model: String) = withContext(Dispatchers.IO) {
-        plainPrefs.edit { putString(KEY_TIER2, model) }
-        _snapshot.value = _snapshot.value.copy(tier2Model = model)
-    }
+    override suspend fun setTier1Model(model: String) = tier1.set(model)
 
-    private fun readApiKey(): String = secretPrefs.getString(KEY_API_KEY, null) ?: defaults.apiKey()
-    private fun readBaseUrl(): String = ensureTrailingSlash(plainPrefs.getString(KEY_BASE_URL, null) ?: defaults.baseUrl())
-    private fun readTier1(): String = plainPrefs.getString(KEY_TIER1, null) ?: defaults.tier1Model()
-    private fun readTier2(): String = plainPrefs.getString(KEY_TIER2, null) ?: defaults.tier2Model()
+    override suspend fun setTier2Model(model: String) = tier2.set(model)
+
     private fun ensureTrailingSlash(url: String) = if (url.endsWith("/")) url else "$url/"
 
     private companion object {

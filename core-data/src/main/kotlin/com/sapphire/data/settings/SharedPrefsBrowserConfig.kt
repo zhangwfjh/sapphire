@@ -2,27 +2,20 @@ package com.sapphire.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.core.content.edit
 import com.sapphire.domain.browser.BrowserConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
  * SharedPreferences-backed [BrowserConfig]. The optional browser-service base URL lives in
  * plain prefs (non-secret; the render service is the user's own server or a metered API).
  *
- * Hot [MutableStateFlow] so Settings reacts to runtime edits and [com.sapphire.data.browser.HttpBrowserClient]
- * reads a consistent snapshot.
- *
- * Follows the SharedPrefs store house pattern.
+ * Hot flow so Settings reacts to runtime edits and [com.sapphire.data.browser.HttpBrowserClient]
+ * reads a consistent snapshot. Key definitions over [PrefsEntry].
  */
 class SharedPrefsBrowserConfig private constructor(
-    private val prefs: SharedPreferences,
+    prefs: SharedPreferences,
 ) : BrowserConfig {
 
     @Inject
@@ -35,20 +28,17 @@ class SharedPrefsBrowserConfig private constructor(
         context.getSharedPreferences(prefsName, Context.MODE_PRIVATE),
     )
 
-    private val _baseUrl = MutableStateFlow(readBaseUrl())
+    private val entry = PrefsEntry.string(prefs, KEY_BASE_URL, default = "", canonicalize = ::normalize)
 
-    override fun baseUrl(): String = _baseUrl.value
-    override fun observeBaseUrl(): Flow<String> = _baseUrl.asStateFlow()
+    override fun baseUrl(): String = entry.current
 
-    override suspend fun setBaseUrl(baseUrl: String) = withContext(Dispatchers.IO) {
-        val normalized = baseUrl.trim().let { if (it.isNotEmpty() && !it.endsWith("/")) "$it/" else it }
-        prefs.edit { putString(KEY_BASE_URL, normalized) }
-        _baseUrl.value = normalized
-    }
+    override fun observeBaseUrl(): Flow<String> = entry.flow
 
-    private fun readBaseUrl(): String = prefs.getString(KEY_BASE_URL, null)?.trim()?.let {
+    override suspend fun setBaseUrl(baseUrl: String) = entry.set(baseUrl)
+
+    private fun normalize(url: String): String = url.trim().let {
         if (it.isNotEmpty() && !it.endsWith("/")) "$it/" else it
-    } ?: ""
+    }
 
     private companion object {
         const val DEFAULT_PREFS_NAME = "settings_browser"
