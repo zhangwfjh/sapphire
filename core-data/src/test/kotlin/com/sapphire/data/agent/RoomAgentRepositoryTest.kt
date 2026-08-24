@@ -119,6 +119,7 @@ class RoomAgentRepositoryTest {
             AgentSynthesisItem(
                 title = "T", summary = "s", body = "B", url = "https://u/1",
                 sources = listOf(AgentSourceRef("Src", "https://src")),
+                coverUrl = "https://cdn.example/cover.jpg",
             ),
         )
 
@@ -131,6 +132,7 @@ class RoomAgentRepositoryTest {
         assertEquals("T", row.title)
         assertEquals("Ghost", row.agentTag)
         assertTrue(row.bodyRaw!!.contains("Sources:"))
+        assertEquals("https://cdn.example/cover.jpg", row.mediaUrl)
         assertTrue(row.bodyRaw!!.contains("• Src: https://src"))
     }
 

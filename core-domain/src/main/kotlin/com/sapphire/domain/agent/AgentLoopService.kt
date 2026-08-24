@@ -64,8 +64,11 @@ class AgentLoopService(
         val pageCache = mutableMapOf<String, String>()
         // URLs the run has actually seen: search-result hits + successfully fetched pages.
         val seenUrls = mutableSetOf<String>()
-        var fetchCount = 0
+        // Content images harvested from fetched pages (pre-plain-text-strip), with the page
+        // they came from — the provenance gate for cover selection and figure injection.
+        val pageImages = mutableListOf<PageImage>()
         var searchCount = 0
+        var fetchCount = 0
         var sectionCount = 0
         var idleRounds = 0       // consecutive turns with no tool call
         var toolRounds = 0       // turns that produced tool calls (idle nudges are free)
@@ -125,7 +128,7 @@ class AgentLoopService(
                             ToolResultPayload.error("fetch budget exhausted ($MAX_FETCHES max); work with what you have.")
                         } else {
                             fetchCount++
-                            doFetch(call, budget, pageCache, seenUrls, pageCapFor(conversation, budget))
+                            doFetch(call, budget, pageCache, seenUrls, pageImages, pageCapFor(conversation, budget))
                         }
                     }
                     "fetch_page_section" -> {
@@ -150,7 +153,7 @@ class AgentLoopService(
                                     """{"error":"you have not fetched any page yet — snippets are not enough to ground a digest. Call fetch_page on the most promising result, then call finalize."}""",
                                 )
                             } else {
-                                return LlmOutcome.Ok(accept(items, seenUrls, job.maxItems))
+                                return LlmOutcome.Ok(accept(items, seenUrls, job.maxItems, pageImages))
                             }
                         }
                         is FinalizeParse.Malformed -> {
@@ -176,10 +179,10 @@ class AgentLoopService(
         }
 
         // Tool rounds exhausted without finalize — force one more turn that must finalize.
-        return forceFinalize(systemPrompt, conversation, tools, seenUrls, job.maxItems)
+        return forceFinalize(systemPrompt, conversation, tools, seenUrls, pageImages, job.maxItems)
     }
 
-    // ---- Acceptance: citation scrubbing + dedup + item cap ----
+    // ---- Acceptance: citation scrubbing + dedup + item cap + images ----
 
     /**
      * Applies acceptance discipline. When the run gathered evidence, HTTP(S) URLs that never
@@ -187,11 +190,18 @@ class AgentLoopService(
      * first seen source (or nulled), unseen sources are dropped. Items are never dropped on
      * citation grounds — an item with no surviving citation files under the synthetic
      * agent:// URL, keeping provenance honest without destroying content.
+     *
+     * Images: content images harvested from the item's cited pages (matched by normalized
+     * page URL) become the item's [AgentSynthesisItem.coverUrl] (first meaningful one,
+     * preferring the primary url's page) and are appended into the body as `<figure>`
+     * blocks — all meaningful ones, capped. Only harvested images are used, so a cover or
+     * figure can never be fabricated.
      */
     private fun accept(
         items: List<AgentSynthesisItem>,
         seenUrls: Set<String>,
         maxItems: Int,
+        pageImages: List<PageImage>,
     ): AgentSynthesisResult {
         val deduped = items
             .map { item ->
@@ -211,7 +221,36 @@ class AgentLoopService(
             }
             .distinctBy { it.url?.let(::normalize) ?: "title:" + it.title.lowercase().trim() }
             .take(maxItems)
+            .map { item -> withImages(item, pageImages) }
         return AgentSynthesisResult(deduped)
+    }
+
+    /** Attaches provenance-gated images: one cover + inline `<figure>` blocks in the body. */
+    private fun withImages(item: AgentSynthesisItem, pageImages: List<PageImage>): AgentSynthesisItem {
+        if (pageImages.isEmpty()) return item
+        val citedPages = buildList {
+            item.url?.let { add(normalize(it)) }
+            item.sources.forEach { add(normalize(it.url)) }
+        }.toSet()
+        if (citedPages.isEmpty()) return item
+        val candidates = pageImages.filter { it.pageUrl in citedPages }
+        if (candidates.isEmpty()) return item
+        // Cover prefers an image from the primary source's own page.
+        val primaryPage = item.url?.let(::normalize)
+        val cover = candidates.firstOrNull { primaryPage != null && it.pageUrl == primaryPage }
+            ?: candidates.first()
+        val inline = (listOf(cover) + candidates.filterNot { it == cover })
+            .distinctBy { it.url }
+            .take(MAX_IMAGES_PER_ITEM)
+        val figures = inline.joinToString("\n") { img ->
+            buildString {
+                append("""<figure><img src="${img.url}" alt="${img.alt.orEmpty().replace("\"", "'")}">""")
+                if (!img.alt.isNullOrBlank()) append("<figcaption>${img.alt}</figcaption>")
+                append("</figure>")
+            }
+        }
+        val body = item.body.orEmpty().let { if (it.isBlank()) figures else "$it\n$figures" }
+        return item.copy(coverUrl = cover.url, body = body)
     }
 
     /** Lower-cases scheme/host and drops trailing slash — the same URL in two spellings matches. */
@@ -222,12 +261,13 @@ class AgentLoopService(
         val scheme = url.substring(0, idx).lowercase()
         val rest = url.substring(idx + marker.length)
         val hostEnd = rest.indexOfFirst { it == '/' || it == '?' || it == '#' }
-        val host = if (hostEnd < 0) rest else rest.substring(0, hostEnd)
+        val host = (if (hostEnd < 0) rest else rest.substring(0, hostEnd)).lowercase().removePrefix("www.")
         val tail = if (hostEnd < 0) "" else rest.substring(hostEnd)
-        return "$scheme$marker${host.lowercase().removePrefix("www.")}$tail".trimEnd('/')
+        return "$scheme$marker$host$tail".trimEnd('/')
     }
 
     // ---- Tool implementations ----
+
 
     private suspend fun doSearch(call: ToolCall, seenUrls: MutableSet<String>): ToolResultPayload {
         val query = parseStringArg(call.arguments, "query")
@@ -252,11 +292,13 @@ class AgentLoopService(
         return ToolResultPayload.ok(json)
     }
 
+
     private suspend fun doFetch(
         call: ToolCall,
         budget: LoopBudget,
         pageCache: MutableMap<String, String>,
         seenUrls: MutableSet<String>,
+        pageImages: MutableList<PageImage>,
         pageCap: Int,
     ): ToolResultPayload {
         val url = parseStringArg(call.arguments, "url")
@@ -265,6 +307,7 @@ class AgentLoopService(
         // Cheap tier: readability extractor (plain HTTP + Readability).
         when (val outcome = runCatching { extractor.extract(url) }.getOrNull()) {
             is ExtractionOutcome.Ok -> {
+                harvestImages(outcome.html, url, pageImages)
                 val text = outcome.html.toPlainText()
                 if (text.isNotBlank() && text.length > 100) {
                     pageCache[url] = text
@@ -287,6 +330,51 @@ class AgentLoopService(
             }
         }
     }
+
+    /**
+     * Extracts content images from the readability-cleaned HTML (which preserves content
+     * `<img>` but drops most chrome) before the caller strips tags. Junk filter removes
+     * trackers/icons/logos by URL shape; relative srcs resolve against the page URL;
+     * attribute entities are decoded. `src`/`data-src` only, matching the reader parser.
+     */
+    private fun harvestImages(html: String, pageUrl: String, into: MutableList<PageImage>) {
+        val known = into.mapTo(mutableSetOf()) { it.url }
+        Regex("<img\\b[^>]*>", RegexOption.IGNORE_CASE).findAll(html).forEach { tag ->
+            val src = (attrOf(tag.value, "src") ?: attrOf(tag.value, "data-src"))?.trim() ?: return@forEach
+            val resolved = resolveUrl(src, pageUrl) ?: return@forEach
+            if (!isMeaningfulImage(resolved)) return@forEach
+            if (known.add(resolved) && into.size < MAX_PAGE_IMAGES_PER_RUN) {
+                val alt = attrOf(tag.value, "alt")?.let(::htmlUnescape)?.trim()?.takeIf { it.isNotBlank() }
+                into.add(PageImage(url = resolved, pageUrl = normalize(pageUrl), alt = alt))
+            }
+        }
+    }
+
+    private fun attrOf(tag: String, name: String): String? =
+        Regex("""\b$name\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE).find(tag)?.groupValues?.get(1)?.let(::htmlUnescape)
+
+    private fun resolveUrl(src: String, pageUrl: String): String? = try {
+        java.net.URI(pageUrl).resolve(src).toString().takeIf { it.startsWith("http") }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun isMeaningfulImage(url: String): Boolean {
+        val u = url.lowercase()
+        if (u.startsWith("data:")) return false
+        if (JUNK_IMAGE_PATTERN.containsMatchIn(u)) return false
+        if (u.substringBefore('?').endsWith(".svg")) return false // overwhelmingly logos/icons
+        return true
+    }
+
+    /** Attribute values arrive HTML-escaped; `&amp;` in an image URL breaks the HTTP call. */
+    private fun htmlUnescape(s: String): String = s
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
 
     /**
      * Read a section of a page by character [offset] from the per-run cache (no network).
@@ -395,11 +483,13 @@ class AgentLoopService(
     private fun String.decodeFromJsonString(): AgentSynthesisResult =
         json.decodeFromString(AgentSynthesisResult.serializer(), this)
 
+
     private suspend fun forceFinalize(
         systemPrompt: String,
         conversation: List<ToolMessage>,
         tools: List<ToolDefinition>,
         seenUrls: Set<String>,
+        pageImages: List<PageImage>,
         maxItems: Int,
     ): LlmOutcome<AgentSynthesisResult> {
         val forced = conversation + ToolMessage.User(
@@ -414,7 +504,7 @@ class AgentLoopService(
         val finalizeCall = toolTurn.toolCalls.firstOrNull { it.name == "finalize" }
         if (finalizeCall != null) {
             return when (val parsed = parseFinalize(finalizeCall)) {
-                is FinalizeParse.Ok -> LlmOutcome.Ok(accept(parsed.result.items, seenUrls, maxItems))
+                is FinalizeParse.Ok -> LlmOutcome.Ok(accept(parsed.result.items, seenUrls, maxItems, pageImages))
                 is FinalizeParse.Malformed -> bestEffortResult(forced, seenUrls, finalizeCall.arguments)
             }
         }
@@ -632,10 +722,29 @@ If nothing notable was found, call finalize with an empty items list."""
         private const val MAX_FINALIZE_REPAIRS = 1
         private const val MAX_FETCHES = 5
         private const val MIN_PAGE_CAP = 20_000
+
+        /** Per-item inline image cap (cover + extras appended as figures). */
+        private const val MAX_IMAGES_PER_ITEM = 4
+
+        /** Per-run harvest cap — memory bound only, never enters LLM context. */
+        private const val MAX_PAGE_IMAGES_PER_RUN = 24
+
+        /** URL shapes that are chrome/telemetry, not content. */
+        private val JUNK_IMAGE_PATTERN = Regex(
+ "logo|icon|sprite|avatar|badge|favicon|pixel|spacer|blank\\.gif|tracking|analytics|doubleclick|gravatar|emoji|1x1",
+            RegexOption.IGNORE_CASE,
+        )
     }
+
 }
 
-/** Hard caps that guarantee loop termination. Tuned for a 128K-token context window. */
+/** A content image harvested from a fetched page, with its provenance page. */
+private data class PageImage(
+    val url: String,
+    val pageUrl: String,
+    val alt: String?,
+)
+
 data class LoopBudget(
     val maxRounds: Int = 8,
     val maxFetches: Int = MAX_FETCHES,

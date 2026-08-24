@@ -23,6 +23,12 @@ data class AgentSynthesisItem(
     val body: String? = null,
     val url: String? = null,
     val sources: List<AgentSourceRef> = emptyList(),
+    /**
+     * Cover image for the timeline card (`FeedItemEntity.mediaUrl`). Set by the loop at
+     * acceptance from images actually present on the item's cited pages — never by the
+     * model, so a cover can't be fabricated.
+     */
+    val coverUrl: String? = null,
 )
 
 /**

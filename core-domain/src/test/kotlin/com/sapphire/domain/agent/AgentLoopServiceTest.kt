@@ -557,6 +557,89 @@ class AgentLoopServiceTest {
         assertTrue(items[0].title!!.contains("Seiko 7018"))
     }
 
+    // ---- image harvesting: cover selection + figure injection ----
+
+    @Test
+    fun `fetched page images become cover and figures`() = runTest {
+        val html = """
+            <article>
+              <h1>Deep dive</h1>
+              <p>${"Long readable body paragraph. ".repeat(12)}</p>
+              <img src="https://cdn.example/logo.svg" alt="site logo">
+              <img src="https://cdn.example/photos/hero.jpg" alt="The main chart">
+              <img src="/img/inline-2.png" alt="Second figure">
+              <img src="https://tracker.example/pixel.gif">
+            </article>
+        """.trimIndent()
+        val extractor = RecordingExtractor(ExtractionOutcome.Ok(title = "T", html = html, byline = null))
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                ToolCall("c1", "fetch_page", """{"url":"https://page.example/post"}"""),
+            )),
+            ToolTurn(content = null, toolCalls = listOf(
+                finalizeCall(item("R", "s", "<p>body</p>", "https://page.example/post")),
+            )),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractor, browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        val item = (outcome as LlmOutcome.Ok).value.items.single()
+        assertEquals("https://cdn.example/photos/hero.jpg", item.coverUrl)
+        val body = item.body!!
+        assertTrue(body.contains("""<figure><img src="https://cdn.example/photos/hero.jpg""""))
+        assertTrue(body.contains("""src="https://page.example/img/inline-2.png"""")) // relative resolved
+        assertTrue(body.contains("<figcaption>The main chart</figcaption>"))
+        assertFalse(body.contains("logo.svg"))    // junk filtered
+        assertFalse(body.contains("pixel.gif"))   // tracker filtered
+        assertFalse(body.contains("data:"))
+    }
+
+    @Test
+    fun `images only attach to items citing that page`() = runTest {
+        val html = "<article><p>${"Body text. ".repeat(20)}</p><img src=\"https://cdn.example/a.jpg\"></article>"
+        val extractor = RecordingExtractor(ExtractionOutcome.Ok(title = "T", html = html, byline = null))
+        val finalize = ToolCall("f1", "finalize", """
+            {"items":[
+              {"title":"Cited","summary":"s","body":"b","url":"https://fetched.example/x"},
+              {"title":"Other","summary":"s","body":"b","url":"https://elsewhere.example/y"}
+            ]}
+        """.trimIndent())
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                ToolCall("c1", "fetch_page", """{"url":"https://fetched.example/x"}"""),
+            )),
+            ToolTurn(content = null, toolCalls = listOf(finalize)),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractor, browserNotConfigured())
+        val outcome = loop.run(job(maxItems = 2))
+
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        val items = (outcome as LlmOutcome.Ok).value.items
+        assertEquals("https://cdn.example/a.jpg", items[0].coverUrl) // citing item gets it
+        assertNull(items[1].coverUrl)                                // non-citing item doesn't
+        assertFalse(items[1].body!!.contains("cdn.example"))
+    }
+
+    @Test
+    fun `knowledge-only run attaches no images`() = runTest {
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                finalizeCall(item("K", "s", "b", "https://parametric.example/k")),
+            )),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        val item = (outcome as LlmOutcome.Ok).value.items.single()
+        assertNull(item.coverUrl)
+        assertFalse(item.body!!.contains("<figure>"))
+    }
+
     // ---- fixture workload shapes: each of the 8 example directives ----
 
     @Test
@@ -756,10 +839,11 @@ class AgentLoopServiceTest {
     private fun job(
         name: String = "TestAgent",
         goal: String = "summarize the top news about AI",
+        maxItems: Int = 1,
     ) = AgentJob(
         id = "j1", name = name, goal = goal,
         task = "", format = "", rules = "",
-        maxItems = 1, frequency = AgentFrequency.DAILY, triggerTime = "07:00",
+        maxItems = maxItems, frequency = AgentFrequency.DAILY, triggerTime = "07:00",
         enabled = true, nextRunIntentEpochMs = null, createdAt = 0L,
     )
 }

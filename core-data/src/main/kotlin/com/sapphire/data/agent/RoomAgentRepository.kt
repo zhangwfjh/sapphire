@@ -129,6 +129,7 @@ class RoomAgentRepository @Inject constructor(
                 publishedAt = now,
                 fetchedAt = now,
                 agentTag = agentName,
+                mediaUrl = item.coverUrl,
                 url = itemUrl,
             )
         }
