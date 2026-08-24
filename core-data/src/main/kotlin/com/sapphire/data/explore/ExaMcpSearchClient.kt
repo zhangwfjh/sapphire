@@ -2,14 +2,11 @@ package com.sapphire.data.explore
 
 import com.sapphire.domain.explore.WebSearchClient
 import com.sapphire.domain.explore.WebSearchHit
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.io.IOException
 import javax.inject.Inject
 
 /**
@@ -29,7 +26,7 @@ class ExaMcpSearchClient @Inject constructor(
 
     private val jsonMediaType = "application/json".toMediaType()
 
-    override suspend fun search(query: String): List<WebSearchHit> = withContext(Dispatchers.IO) {
+    override suspend fun search(query: String): List<WebSearchHit> {
         val rpcBody = JSONObject()
             .put("jsonrpc", "2.0")
             .put("id", 1)
@@ -50,41 +47,35 @@ class ExaMcpSearchClient @Inject constructor(
             .post(rpcBody.toRequestBody(jsonMediaType))
             .build()
 
-        try {
-            client.newCall(request).execute().use { res ->
-                if (!res.isSuccessful) return@use emptyList<WebSearchHit>()
-                val raw = res.body?.string().orEmpty()
-                if (raw.isBlank()) return@use emptyList()
-                // SSE: the data: line contains JSON. JSONObject handles embedded newlines in strings.
-                val dataLine = raw.lineSequence().find { it.startsWith("data:") }
-                    ?: return@use emptyList()
-                val payload = try { JSONObject(dataLine.removePrefix("data:").trim()) } catch (_: Exception) { return@use emptyList() }
-                val content = payload.optJSONObject("result")?.optJSONArray("content")
-                    ?: return@use emptyList()
-                val hits = mutableListOf<WebSearchHit>()
-                for (i in 0 until content.length()) {
-                    val block = content.optJSONObject(i) ?: continue
-                    if (block.optString("type") != "text") continue
-                    val text = block.optString("text")
-                    val title = Regex("^Title:\\s*(.+)$", RegexOption.MULTILINE).find(text)?.groupValues?.get(1)?.trim()
-                    val url = Regex("^URL:\\s*(.+)$", RegexOption.MULTILINE).find(text)?.groupValues?.get(1)?.trim()
-                    val snippet = text.substringAfter("Highlights:", "").trim().take(300)
-                    if (url != null && url.isNotBlank()) {
-                        hits.add(WebSearchHit(
-                            title = title?.ifBlank { url } ?: url,
-                            url = url,
-                            content = snippet,
-                        ))
-                    }
-                }
-                android.util.Log.i("ExaMcp", "parsed ${hits.size} hits from Exa")
-                hits
+        val raw = SearchHttp.bodyOrNull(client, request) ?: return emptyList()
+        return runCatching { parse(raw) }.getOrDefault(emptyList())
+    }
+
+    /**
+     * SSE payload: the `data:` line carries JSON-RPC result content — text blocks with
+     * `Title:` / `URL:` / `Highlights:` sections. JSONObject handles embedded newlines.
+     */
+    private fun parse(raw: String): List<WebSearchHit> {
+        val dataLine = raw.lineSequence().find { it.startsWith("data:") } ?: return emptyList()
+        val payload = try { JSONObject(dataLine.removePrefix("data:").trim()) } catch (_: Exception) { return emptyList() }
+        val content = payload.optJSONObject("result")?.optJSONArray("content") ?: return emptyList()
+        val hits = mutableListOf<WebSearchHit>()
+        for (i in 0 until content.length()) {
+            val block = content.optJSONObject(i) ?: continue
+            if (block.optString("type") != "text") continue
+            val text = block.optString("text")
+            val title = Regex("^Title:\\s*(.+)$", RegexOption.MULTILINE).find(text)?.groupValues?.get(1)?.trim()
+            val url = Regex("^URL:\\s*(.+)$", RegexOption.MULTILINE).find(text)?.groupValues?.get(1)?.trim()
+            val snippet = text.substringAfter("Highlights:", "").trim().take(300)
+            if (url != null && url.isNotBlank()) {
+                hits.add(WebSearchHit(
+                    title = title?.ifBlank { url } ?: url,
+                    url = url,
+                    content = snippet,
+                ))
             }
-        } catch (_: IOException) {
-            emptyList()
-        } catch (_: Throwable) {
-            emptyList()
         }
+        return hits
     }
 
     private companion object {

@@ -2,8 +2,6 @@ package com.sapphire.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sapphire.domain.explore.SearchConfig
-import com.sapphire.domain.explore.SearchRegion
 import com.sapphire.domain.explore.WebSearchClient
 import com.sapphire.domain.llm.LlmClient
 import com.sapphire.domain.llm.LlmOutcome
@@ -33,7 +31,6 @@ class SettingsViewModel @Inject constructor(
     private val themeStore: ThemeConfigStore,
     private val dataClear: DataClearUseCase,
     private val llmClient: LlmClient,
-    private val searchConfig: SearchConfig,
     private val webSearchClient: WebSearchClient,
 ) : ViewModel() {
 
@@ -52,11 +49,7 @@ class SettingsViewModel @Inject constructor(
     private val _breakdown = MutableStateFlow(com.sapphire.domain.settings.DataBreakdown(0, 0, 0, 0L, 0L, 0L, 0L))
     val breakdown: StateFlow<com.sapphire.domain.settings.DataBreakdown> = _breakdown.asStateFlow()
 
-    private val _searchRegion = MutableStateFlow(SearchRegion.AUTO)
-    val searchRegion: StateFlow<SearchRegion> = _searchRegion.asStateFlow()
 
-    private val _tavilyKey = MutableStateFlow("")
-    val tavilyKey: StateFlow<String> = _tavilyKey.asStateFlow()
 
     private val _searchTest = MutableStateFlow<SearchTestState>(SearchTestState.Idle)
     val searchTest: StateFlow<SearchTestState> = _searchTest.asStateFlow()
@@ -67,8 +60,6 @@ class SettingsViewModel @Inject constructor(
             val key = llmStore.observeApiKey().first()
             val retention = retentionStore.observe().first()
             val theme = themeStore.observe().first()
-            _searchRegion.value = searchConfig.region()
-            _tavilyKey.value = searchConfig.observeTavilyKey().first()
             _state.value = SettingsUiState(
                 apiKey = key,
                 baseUrl = llm.baseUrl,
@@ -120,15 +111,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { themeStore.set(p) }
     }
 
-    fun setSearchRegion(r: SearchRegion) {
-        _searchRegion.value = r
-        viewModelScope.launch { searchConfig.setRegion(r) }
-    }
-
-    fun setTavilyKey(v: String) {
-        _tavilyKey.value = v
-        viewModelScope.launch { searchConfig.setTavilyKey(v) }
-    }
 
     /** Fires a minimal query via the composite to validate the active backend chain. */
     fun testSearch() {
@@ -139,7 +121,7 @@ class SettingsViewModel @Inject constructor(
             _searchTest.value = if (hits.isNotEmpty()) {
                 SearchTestState.Ok(hits.size)
             } else {
-                SearchTestState.Err("No results — check region or network.")
+                SearchTestState.Err("No results — check network.")
             }
         }
     }

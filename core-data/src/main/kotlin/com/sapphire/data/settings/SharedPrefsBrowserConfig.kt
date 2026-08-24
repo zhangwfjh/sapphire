@@ -19,7 +19,7 @@ import javax.inject.Inject
  * Hot [MutableStateFlow] so Settings reacts to runtime edits and [com.sapphire.data.browser.HttpBrowserClient]
  * reads a consistent snapshot.
  *
- * Mirrors [PrefsSearchConfig].
+ * Follows the SharedPrefs store house pattern.
  */
 class SharedPrefsBrowserConfig private constructor(
     private val prefs: SharedPreferences,

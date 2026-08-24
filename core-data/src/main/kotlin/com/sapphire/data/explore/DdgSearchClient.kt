@@ -2,14 +2,11 @@ package com.sapphire.data.explore
 
 import com.sapphire.domain.explore.WebSearchClient
 import com.sapphire.domain.explore.WebSearchHit
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import java.io.IOException
 import java.net.URLDecoder
 import javax.inject.Inject
 
@@ -33,28 +30,18 @@ class DdgSearchClient @Inject constructor(
         .followRedirects(true)
         .build()
 
-    override suspend fun search(query: String): List<WebSearchHit> = withContext(Dispatchers.IO) {
+    override suspend fun search(query: String): List<WebSearchHit> {
         val url = endpoint.toHttpUrl().newBuilder()
             .addQueryParameter("q", query)
             .build()
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", SearchHttp.USER_AGENT)
             .get()
             .build()
 
-        try {
-            client.newCall(request).execute().use { res ->
-                if (!res.isSuccessful) return@use emptyList<WebSearchHit>()
-                val body = res.body?.string().orEmpty()
-                if (body.isBlank()) return@use emptyList()
-                runCatching { parse(Jsoup.parse(body)) }.getOrDefault(emptyList())
-            }
-        } catch (_: IOException) {
-            emptyList()
-        } catch (_: Throwable) {
-            emptyList()
-        }
+        val body = SearchHttp.bodyOrNull(client, request) ?: return emptyList()
+        return runCatching { parse(Jsoup.parse(body)) }.getOrDefault(emptyList())
     }
 
     private fun parse(doc: Document): List<WebSearchHit> =
@@ -79,7 +66,5 @@ class DdgSearchClient @Inject constructor(
 
     private companion object {
         const val DEFAULT_ENDPOINT = "https://html.duckduckgo.com/html/"
-        const val USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 }

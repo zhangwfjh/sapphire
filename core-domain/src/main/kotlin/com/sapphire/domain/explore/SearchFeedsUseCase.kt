@@ -13,7 +13,7 @@ import com.sapphire.domain.llm.LlmTier
  * URL shortcut: if the query looks like a URL (has a scheme + host, or a bare host
  * with a path), skip the LLM and return it as a single result.
  *
- * Topic path uses **retrieve-then-generate**: [WebSearchClient] (Tavily) first pulls live
+ * Topic path uses **retrieve-then-generate**: [WebSearchClient] first pulls live
  * web pages for the topic, then those real results are injected into the Tier-1 prompt as
  * grounding context. The model extracts subscribable feed URLs from current pages instead
  * of answering from parametric memory (which goes stale and hallucinates URLs). If web
@@ -43,7 +43,7 @@ class SearchFeedsUseCase(
             )
         }
 
-        // Enrich only the retrieval query — biasing Tavily toward feed endpoints and
+        // Enrich only the retrieval query — biasing the search engines toward feed endpoints and
         // directories (Feedspot, /feed, .rss) so the LLM has real subscribable URLs to
         // extract. The topic label passed to the LLM (and shown to the user) stays the
         // original wording. Empirically this turns generic-noun queries (e.g. "china")

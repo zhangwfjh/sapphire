@@ -49,7 +49,7 @@ class BaiduSearchClient @Inject constructor(
             .build()
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", SearchHttp.USER_AGENT)
             .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
             .get()
             .build()
@@ -110,7 +110,7 @@ class BaiduSearchClient @Inject constructor(
         return try {
             val req = Request.Builder()
                 .url(rawUrl)
-                .header("User-Agent", USER_AGENT)
+                .header("User-Agent", SearchHttp.USER_AGENT)
                 .head() // we only need the redirect target, no body
                 .build()
             resolverClient.newCall(req).execute().use { res ->
@@ -132,7 +132,5 @@ class BaiduSearchClient @Inject constructor(
 
     private companion object {
         const val DEFAULT_ENDPOINT = "https://www.baidu.com/s"
-        const val USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 }

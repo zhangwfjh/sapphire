@@ -55,7 +55,6 @@ import com.sapphire.app.BuildConfig
 import com.sapphire.app.ui.design.SectionEyebrow
 import com.sapphire.app.ui.theme.LocalSapphirePalette
 import com.sapphire.app.ui.theme.SapphireMono
-import com.sapphire.domain.explore.SearchRegion
 import com.sapphire.domain.settings.ThemePreference
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,8 +66,6 @@ fun SettingsScreen(
     val palette = LocalSapphirePalette.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val connTest by viewModel.connectionTest.collectAsStateWithLifecycle()
-    val searchRegion by viewModel.searchRegion.collectAsStateWithLifecycle()
-    val tavilyKey by viewModel.tavilyKey.collectAsStateWithLifecycle()
     val searchTest by viewModel.searchTest.collectAsStateWithLifecycle()
     val snackbar by viewModel.snackbar.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -81,7 +78,6 @@ fun SettingsScreen(
     }
 
     var showKey by remember { mutableStateOf(false) }
-    var showTavilyKey by remember { mutableStateOf(false) }
     var confirmDialog by remember { mutableStateOf<ClearAction?>(null) }
 
     Scaffold(
@@ -174,53 +170,9 @@ fun SettingsScreen(
             Spacer(Modifier.height(12.dp))
 
             Text(
-                "Region",
-                style = MaterialTheme.typography.labelLarge,
-                color = palette.OnInk,
-            )
-            Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SearchRegion.entries.forEach { r ->
-                    FilterChip(
-                        selected = searchRegion == r,
-                        onClick = { viewModel.setSearchRegion(r) },
-                        label = {
-                            Text(
-                                when (r) {
-                                    SearchRegion.AUTO -> "Auto"
-                                    SearchRegion.WEST -> "West"
-                                    SearchRegion.CHINA -> "China"
-                                }
-                            )
-                        },
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Provider: " + if (tavilyKey.isNotBlank()) "Tavily (key set)" else "No-key default (DDG/Baidu)",
+                "Free keyless engines (Exa → Bing → DuckDuckGo → Baidu), first match wins.",
                 style = MaterialTheme.typography.bodySmall,
                 color = palette.OnInkMuted,
-            )
-
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = tavilyKey,
-                onValueChange = viewModel::setTavilyKey,
-                label = { Text("Tavily API key (optional)") },
-                singleLine = true,
-                visualTransformation = if (showTavilyKey) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    IconButton(onClick = { showTavilyKey = !showTavilyKey }) {
-                        Icon(
-                            if (showTavilyKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = if (showTavilyKey) "Hide key" else "Show key",
-                            tint = palette.OnInkMuted,
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
             )
 
             Spacer(Modifier.height(12.dp))
