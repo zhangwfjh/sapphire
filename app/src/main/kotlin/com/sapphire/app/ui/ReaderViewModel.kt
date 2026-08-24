@@ -2,26 +2,22 @@ package com.sapphire.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sapphire.domain.reader.ReaderItemStore
 import com.sapphire.domain.feed.FeedRepository
-import com.sapphire.domain.llm.LlmOutcome
-import com.sapphire.domain.llm.TranslateRegions
 import com.sapphire.domain.llm.TranslateStreamFrame
-import com.sapphire.domain.model.FeedItem
 import com.sapphire.domain.model.ReadMechanism
 import com.sapphire.domain.model.ReadState
-import com.sapphire.domain.reader.RichBlock
-import com.sapphire.domain.reader.RichContentParser
-import com.sapphire.domain.reader.toPlainParagraphs
 import com.sapphire.domain.reader.ReaderMacro
-import com.sapphire.domain.reader.ReaderOpsUseCase
+import com.sapphire.domain.reader.ReaderSession
+import com.sapphire.domain.reader.ReaderSession.Content
+import com.sapphire.domain.reader.ReaderSession.ReaderEvent
+import com.sapphire.domain.settings.ThemePreference
+import com.sapphire.domain.settings.ThemeConfigStore
+import com.sapphire.domain.settings.UiPrefsStore
+import com.sapphire.domain.settings.TranslateViewMode
 import com.sapphire.domain.save.SavedItemRepository
-import com.sapphire.domain.reader.ArticleBodyStore
-import com.sapphire.domain.reader.ArticleExtractor
-import com.sapphire.domain.reader.ExtractionOutcome
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,249 +26,72 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Reader-sheet state.
+ * Reader-sheet state. A thin reducer over [ReaderSession] events — the session owns the
+ * open ladder, auto-op gating, and region assembly; this class only maps events to
+ * [ReaderUiState] and forwards taps. The one piece of reducer policy: when a summary
+ * settles after translate became visible, translate re-fires so its regions include the
+ * new bullets.
  *
- * Lazy-compute lifecycle:
- * - [open] resolves the article body first: a cached extraction is reused; otherwise the
- *   full article is fetched + extracted on demand (and cached); on any failure the feed
- *   body is used. Only then does it kick Tier-1 classification. While classification runs
- *   the macro slot shows shimmer; the chat input is interactive immediately.
- * - [summarize] / [translate] fire Tier-2 on tap. Results are cached by the use case, so
- *   a re-open or re-tap is a free cache hit (idempotent).
- * - When translate-view mode is BILINGUAL or TRANSLATION, translate auto-fires on open.
- *
- * The macros set is derived from the classification via [ReaderMacro.forClassification].
+ * Prefs (translate-view, theme) surface here for the right drawer, as in FeedViewModel.
  */
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
-    private val items: ReaderItemStore,
-    private val readerOps: ReaderOpsUseCase,
+    private val session: ReaderSession,
     private val savedItems: SavedItemRepository,
     private val feedRepository: FeedRepository,
-    private val richContentParser: RichContentParser,
-    private val articleExtractor: ArticleExtractor,
-    private val articleBodyStore: ArticleBodyStore,
-    private val uiPrefsStore: com.sapphire.domain.settings.UiPrefsStore,
-    private val themeConfigStore: com.sapphire.domain.settings.ThemeConfigStore,
+    private val uiPrefsStore: UiPrefsStore,
+    private val themeConfigStore: ThemeConfigStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Idle)
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
 
-    /** How translated content renders in the reader: bilingual, origin-only, or translation-only. */
-    val translateViewMode: StateFlow<com.sapphire.domain.settings.TranslateViewMode> =
-        uiPrefsStore.observeTranslateView()
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.sapphire.domain.settings.TranslateViewMode.BILINGUAL)
+    private var openJob: Job? = null
+    private var targetLanguage: String = "zh"
 
-    fun setTranslateView(mode: com.sapphire.domain.settings.TranslateViewMode) {
+    /** Summary bullets of the open session — fed back into translate regions. */
+    private var summaryBullets: List<String> = emptyList()
+
+    val translateViewMode: StateFlow<TranslateViewMode> =
+        uiPrefsStore.observeTranslateView()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TranslateViewMode.BILINGUAL)
+
+    fun setTranslateView(mode: TranslateViewMode) {
         viewModelScope.launch { uiPrefsStore.setTranslateView(mode) }
     }
 
-    val themePreference: StateFlow<com.sapphire.domain.settings.ThemePreference> =
+    val themePreference: StateFlow<ThemePreference> =
         themeConfigStore.observe()
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.sapphire.domain.settings.ThemePreference.DARK)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ThemePreference.DARK)
 
-    fun setTheme(pref: com.sapphire.domain.settings.ThemePreference) {
+    fun setTheme(pref: ThemePreference) {
         viewModelScope.launch { themeConfigStore.set(pref) }
     }
 
-    /** Default translate target — resolved from the device locale by the caller. */
-    private var targetLanguage: String = "zh"
-
     fun open(itemId: String, targetLanguage: String = this.targetLanguage) {
         this.targetLanguage = targetLanguage
+        summaryBullets = emptyList()
         _state.value = ReaderUiState.Loading
-        viewModelScope.launch {
-            val item = items.item(itemId)
-            if (item == null) {
-                _state.value = ReaderUiState.Error("Item not found.")
-                return@launch
-            }
-
-            val feedBlocks = richContentParser.parse(item.bodyRaw ?: item.summary ?: item.title)
-
-            val cachedHtml = articleBodyStore.get(itemId)
-            if (cachedHtml != null) {
-                val cachedArticle = mergeFeedImages(richContentParser.parse(cachedHtml), feedBlocks)
-                publish(item, feedBlocks, cachedArticle, ExtractionState.Done)
-                classify(itemId)
-                autoSummarizeIfLongEnough(cachedArticle)
-                autoTranslateIfWarranted()
-                return@launch
-            }
-            // Agent items: the synthesized body IS the full article. Skip extraction
-            // (the item URL is often agent://... or a source link, not the article itself).
-            // Treat the feed blocks as the article blocks so "Show full article" shows them.
-            if (item.agentTag != null) {
-                publish(item, feedBlocks, feedBlocks, ExtractionState.Done)
-                classify(itemId)
-                autoSummarizeIfLongEnough(feedBlocks)
-                autoTranslateIfWarranted()
-                return@launch
-            }
-
-            val url = item.url
-            if (url.isNullOrBlank()) {
-                publish(item, feedBlocks, null, ExtractionState.Idle)
-                classify(itemId)
-                autoTranslateIfWarranted()
-                return@launch
-            }
-
-            publish(item, feedBlocks, null, ExtractionState.Extracting)
-            val (article, extraction) = when (val outcome = articleExtractor.extract(url)) {
-                is ExtractionOutcome.Ok -> {
-                    articleBodyStore.put(itemId, outcome.html)
-                    mergeFeedImages(richContentParser.parse(outcome.html), feedBlocks) to ExtractionState.Done
-                }
-                is ExtractionOutcome.Err -> null to ExtractionState.Failed
-            }
-            if ((_state.value as? ReaderUiState.Open)?.item?.hashUuid == itemId) {
-                publish(item, feedBlocks, article, extraction)
-                classify(itemId)
-                autoSummarizeIfLongEnough(article)
-                autoTranslateIfWarranted()
-            }
-        }
-    }
-
-    private fun publish(
-        item: com.sapphire.domain.model.FeedItem,
-        blocks: List<RichBlock>,
-        articleBlocks: List<RichBlock>?,
-        extraction: ExtractionState,
-    ) {
-        val sameItem = (_state.value as? ReaderUiState.Open)?.takeIf { it.item.hashUuid == item.hashUuid }
-        _state.value = ReaderUiState.Open(
-            item = item,
-            blocks = blocks,
-            articleBlocks = articleBlocks,
-            classification = sameItem?.classification ?: ClassificationState.Loading,
-            macros = sameItem?.macros ?: emptyList(),
-            summary = sameItem?.summary,
-            translate = null,
-            translateVisible = false,
-            savedLater = item.savedLater,
-            extraction = extraction,
-        )
-    }
-
-    private fun mergeFeedImages(extracted: List<RichBlock>, feedBlocks: List<RichBlock>): List<RichBlock> {
-        val present = extracted.mapNotNull { (it as? RichBlock.Image)?.url?.takeIf(String::isNotBlank) }.toHashSet()
-        val missing = feedBlocks.filterIsInstance<RichBlock.Image>()
-            .filter { it.url.isNotBlank() && it.url !in present }
-        return if (missing.isEmpty()) extracted else missing + extracted
-    }
-
-    private fun classify(itemId: String) {
-        viewModelScope.launch {
-            when (val outcome = readerOps.classify(itemId, currentParagraphs())) {
-                is LlmOutcome.Err -> updateClassification(ClassificationState.Error(outcome.error.userMessage()))
-                is LlmOutcome.Ok -> {
-                    val macros = ReaderMacro.forClassification(outcome.value.classification)
-                    updateClassification(ClassificationState.Done(outcome.value.classification), macros)
-                }
-            }
+        openJob?.cancel()
+        openJob = viewModelScope.launch {
+            session.open(itemId, targetLanguage, translateViewMode.value).collect(::reduce)
         }
     }
 
     fun summarize() {
-        val current = _state.value as? ReaderUiState.Open ?: return
+        val content = currentContent() ?: return
         updateSummary(SummaryState.Loading)
         viewModelScope.launch {
-            var errored = false
-            var lastBullets = emptyList<String>()
-            readerOps
-                .summarizeStreaming(current.item.hashUuid, (current.articleBlocks ?: current.blocks).toPlainParagraphs())
-                .collect { outcome ->
-                    when (outcome) {
-                        is LlmOutcome.Err -> {
-                            errored = true
-                            updateSummary(SummaryState.Error(outcome.error.userMessage()))
-                        }
-                        is LlmOutcome.Ok -> {
-                            lastBullets = outcome.value.bullets
-                            updateSummary(SummaryState.Streaming(outcome.value.bullets, outcome.value.partial))
-                        }
-                    }
-                }
-            if (!errored) updateSummary(SummaryState.Done(lastBullets))
-        }
-    }
-
-    private fun autoSummarizeIfLongEnough(articleBlocks: List<RichBlock>?) {
-        if (articleBlocks == null) return
-        val wordCount = articleBlocks.toPlainParagraphs().sumOf { it.split(WS_REGEX).count { w -> w.isNotBlank() } }
-        if (wordCount > SUMMARY_MIN_WORDS) summarize()
-    }
-
-    /** Auto-translate when the translate-view mode is BILINGUAL or TRANSLATION (not ORIGIN).
-     *  Waits for auto-summarize to fully resolve (Done/Error/null) so translate captures all
-     *  summary bullets — not just the partial Streaming ones. */
-    private fun autoTranslateIfWarranted() {
-        if (translateViewMode.value == com.sapphire.domain.settings.TranslateViewMode.ORIGIN) return
-        viewModelScope.launch {
-            _state.first { s ->
-                val open = s as? ReaderUiState.Open ?: return@first true
-                val sum = open.summary
-                sum == null || sum is SummaryState.Done || sum is SummaryState.Error
-            }
-            translate()
+            session.summarize(content).collect(::reduce)
         }
     }
 
     fun translate() {
         val current = _state.value as? ReaderUiState.Open ?: return
-        val regions = TranslateRegions(
-            title = listOfNotNull(current.item.title.takeIf { it.isNotBlank() }),
-            summary = when (val s = current.summary) {
-                is SummaryState.Done -> s.bullets
-                is SummaryState.Streaming -> s.bullets
-                else -> emptyList()
-            },
-            brief = current.blocks.toPlainParagraphs(),
-            article = current.articleBlocks?.toPlainParagraphs() ?: emptyList(),
-        )
-        // Skip the Tier-2 call when the article is already in the target language.
-        // Today only Simplified Chinese is detected (Traditional/Japanese/Korean still
-        // translate). On skip we surface the originals as-is: no translate block, no
-        // loading state. Translate is opt-in per article.
-        val sourceText = buildString {
-            regions.title.forEach { append(it); append(' ') }
-            regions.brief.forEach { append(it); append(' ') }
-            regions.article.forEach { append(it); append(' ') }
-        }
-        if (com.sapphire.domain.reader.SimplifiedChineseDetector
-                .shouldSkipTranslate(sourceText, targetLanguage)
-        ) {
-            _state.value = current.copy(translate = null, translateVisible = false)
-            return
-        }
-        updateTranslate(TranslateState.Loading, visible = true)
+        val content = Content(current.item, current.blocks, current.articleBlocks)
         viewModelScope.launch {
-            var errored = false
-            var lastFrame = TranslateStreamFrame()
-            readerOps
-                .translateStreaming(current.item.hashUuid, targetLanguage, regions)
-                .collect { outcome ->
-                    when (outcome) {
-                        is LlmOutcome.Err -> {
-                            errored = true
-                            updateTranslate(TranslateState.Error(outcome.error.userMessage()), visible = true)
-                        }
-                        is LlmOutcome.Ok -> {
-                            lastFrame = outcome.value
-                            updateTranslate(TranslateState.Streaming(outcome.value), visible = true)
-                        }
-                    }
-                }
-            if (!errored) updateTranslate(TranslateState.Done(lastFrame), visible = true)
+            session.translate(content, summaryBullets, targetLanguage).collect(::reduce)
         }
-    }
-
-    private fun currentParagraphs(): List<String> {
-        val open = _state.value as? ReaderUiState.Open ?: return emptyList()
-        return (open.articleBlocks ?: open.blocks).toPlainParagraphs()
     }
 
     fun toggleSave() {
@@ -287,7 +106,6 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /** Toggle read/unread for the current item. */
     fun toggleRead() {
         val current = _state.value as? ReaderUiState.Open ?: return
         val isRead = current.item.readState == ReadState.READ
@@ -303,22 +121,79 @@ class ReaderViewModel @Inject constructor(
 
     fun dismissError() { _state.value = ReaderUiState.Idle }
 
+    // ---- reducer ----
+
+    private fun reduce(event: ReaderEvent) {
+        when (event) {
+            is ReaderEvent.NotFound -> _state.value = ReaderUiState.Error(event.message)
+            is ReaderEvent.Opened -> {
+                // A late Opened (e.g. extraction finished after dismiss) must not
+                // resurrect the sheet — original behavior gated on still being open.
+                if (_state.value is ReaderUiState.Idle || _state.value is ReaderUiState.Error) return
+                val sameItem = (_state.value as? ReaderUiState.Open)
+                    ?.takeIf { it.item.hashUuid == event.item.hashUuid }
+                _state.value = ReaderUiState.Open(
+                    item = event.item,
+                    blocks = event.blocks,
+                    articleBlocks = event.articleBlocks,
+                    classification = sameItem?.classification ?: ClassificationState.Loading,
+                    macros = sameItem?.macros ?: emptyList(),
+                    summary = sameItem?.summary,
+                    translate = null,
+                    translateVisible = false,
+                    savedLater = event.item.savedLater,
+                    extraction = event.extraction.toUi(),
+                )
+            }
+            is ReaderEvent.ClassificationDone ->
+                updateClassification(ClassificationState.Done(event.label), ReaderMacro.forClassification(event.label))
+            is ReaderEvent.ClassificationError ->
+                updateClassification(ClassificationState.Error(event.message))
+            is ReaderEvent.SummaryLoading -> updateSummary(SummaryState.Loading)
+            is ReaderEvent.SummaryStreaming -> {
+                summaryBullets = event.frame.bullets
+                updateSummary(SummaryState.Streaming(event.frame.bullets, event.frame.partial))
+            }
+            is ReaderEvent.SummaryDone -> {
+                summaryBullets = event.frame.bullets
+                // Re-fire policy: a settled summary after translate became visible means
+                // translate should pick up the new bullets.
+                val visible = (_state.value as? ReaderUiState.Open)?.translateVisible == true
+                updateSummary(SummaryState.Done(event.frame.bullets))
+                if (visible) translate()
+            }
+            is ReaderEvent.SummaryError -> updateSummary(SummaryState.Error(event.message))
+            is ReaderEvent.TranslateLoading -> updateTranslate(TranslateState.Loading, visible = true)
+            is ReaderEvent.TranslateStreaming -> updateTranslate(TranslateState.Streaming(event.frame), visible = true)
+            is ReaderEvent.TranslateDone -> updateTranslate(TranslateState.Done(event.frame), visible = true)
+            is ReaderEvent.TranslateError -> updateTranslate(TranslateState.Error(event.message), visible = true)
+            is ReaderEvent.TranslateSkipped -> {
+                val current = _state.value as? ReaderUiState.Open ?: return
+                _state.value = current.copy(translate = null, translateVisible = false)
+            }
+        }
+    }
+
+    private fun currentContent(): Content? {
+        val open = _state.value as? ReaderUiState.Open ?: return null
+        return Content(open.item, open.blocks, open.articleBlocks)
+    }
+
+    private fun ReaderSession.ExtractionState.toUi(): ExtractionState = when (this) {
+        ReaderSession.ExtractionState.IDLE -> ExtractionState.Idle
+        ReaderSession.ExtractionState.EXTRACTING -> ExtractionState.Extracting
+        ReaderSession.ExtractionState.DONE -> ExtractionState.Done
+        ReaderSession.ExtractionState.FAILED -> ExtractionState.Failed
+    }
+
     private fun updateClassification(c: ClassificationState, macros: List<ReaderMacro>? = null) {
         val current = _state.value as? ReaderUiState.Open ?: return
-        _state.value = current.copy(
-            classification = c,
-            macros = macros ?: current.macros,
-        )
+        _state.value = current.copy(classification = c, macros = macros ?: current.macros)
     }
 
     private fun updateSummary(s: SummaryState?) {
         val current = _state.value as? ReaderUiState.Open ?: return
         _state.value = current.copy(summary = s)
-        // When summary completes and translate is visible, re-fire translate to include
-        // the new summary bullets in the translate regions.
-        if (s is SummaryState.Done && current.translateVisible) {
-            translate()
-        }
     }
 
     private fun updateTranslate(t: TranslateState, visible: Boolean) {
@@ -328,8 +203,6 @@ class ReaderViewModel @Inject constructor(
 
     private companion object {
         const val DEFAULT_SAVE_FOLDER = "Inbox"
-        const val SUMMARY_MIN_WORDS = 300
-        val WS_REGEX = Regex("\\s+")
     }
 }
 
@@ -338,9 +211,9 @@ sealed interface ReaderUiState {
     data object Idle : ReaderUiState
     data object Loading : ReaderUiState
     data class Open(
-        val item: FeedItem,
-        val blocks: List<RichBlock>,
-        val articleBlocks: List<RichBlock>? = null,
+        val item: com.sapphire.domain.model.FeedItem,
+        val blocks: List<com.sapphire.domain.reader.RichBlock>,
+        val articleBlocks: List<com.sapphire.domain.reader.RichBlock>? = null,
         val classification: ClassificationState,
         val macros: List<ReaderMacro>,
         val summary: SummaryState?,
