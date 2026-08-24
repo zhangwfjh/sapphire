@@ -2,13 +2,14 @@ package com.sapphire.app.ui
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import com.sapphire.domain.agent.AgentSynthesisResult
-import com.sapphire.domain.llm.LlmOutcome
-import androidx.lifecycle.viewModelScope
 import com.sapphire.domain.agent.AgentRepository
+import com.sapphire.domain.agent.AgentRunService
+import com.sapphire.domain.agent.AgentSynthesisItem
+import com.sapphire.domain.agent.AgentRunService.RunMode
 import com.sapphire.domain.agent.cadenceLabel
 import com.sapphire.domain.model.AgentJob
 import com.sapphire.domain.model.AgentRun
+import com.sapphire.domain.model.AgentRunStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import androidx.lifecycle.viewModelScope
 
 /** Run-history row rendered for the timeline (the design's `.run`). */
 data class RunRow(
@@ -38,19 +40,17 @@ data class AgentDetailUi(
     val tokensUsed: String,
 )
 
-/** Synchronous test-run result — shown inline on the detail screen. */
-
 /**
  * Agent detail. Combines the job + its run history into [AgentDetailUi]. Toggle/delete
- * fire-and-forget; [deleted] flips true on delete so the screen pops. Run-now is a stub
- * in Slice A (no worker yet) — it seeds an EMPTY "Run-now queued" history row.
+ * fire-and-forget; [deleted] flips true on delete so the screen pops. Test Run and
+ * Run now both execute through [AgentRunService] — they differ only in
+ * [RunMode.TEST] (records history, files nothing) vs [RunMode.FILE] (files to the feed).
  */
 @HiltViewModel
 class AgentDetailViewModel @Inject constructor(
     private val repository: AgentRepository,
     private val scheduler: com.sapphire.data.agent.AgentScheduler,
-    private val loop: com.sapphire.domain.agent.AgentLoopService,
-    private val seeder: com.sapphire.data.agent.AgentSourceSeeder,
+    private val runService: AgentRunService,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -96,53 +96,24 @@ class AgentDetailViewModel @Inject constructor(
     }
 
     /**
-     * Test Run — executes search→synth synchronously and shows the result inline
-     * (items, timing, sources) WITHOUT filing anything to the feed. Lets the user
-     * verify their agent settings are correct before committing to scheduled runs.
-     * Records a history row so the timeline reflects the test.
+     * Test Run — executes the agent and shows the result inline (items, timing, sources)
+     * WITHOUT filing anything to the feed. Records a history row so the timeline reflects
+     * the test. Lets the user verify their agent settings before committing to runs.
      */
     fun testRun() {
         val job = state.value.job ?: return
         _testResult.value = null
         _isRunning.value = true
         viewModelScope.launch {
-            val start = System.currentTimeMillis()
             try {
-                android.util.Log.i("AgentDetail", "testRun: starting synthesis for ${job.name}")
-                val outcome = loop.run(job)
-                val elapsed = System.currentTimeMillis() - start
-                when (outcome) {
-                    is LlmOutcome.Ok -> {
-                        val items = outcome.value.items
-                        android.util.Log.i("AgentDetail", "testRun: ${items.size} items in ${elapsed}ms")
-                        repository.recordRun(
-                            jobId,
-                            if (items.isNotEmpty()) com.sapphire.domain.model.AgentRunStatus.OK else com.sapphire.domain.model.AgentRunStatus.EMPTY,
-                            items.size,
-                            items.size * 1200,
-                            "Test run: ${items.size} items in ${elapsed}ms",
-                        )
-                        _testResult.value = TestRunResult(
-                            success = true,
-                            durationMs = elapsed,
-                            itemCount = items.size,
-                            items = items.map { item ->
-                                val sources = item.sources.takeIf { it.isNotEmpty() }?.joinToString(" | ") { "[${it.title}](${it.url})" } ?: ""
-                                "${item.title}${item.summary?.let { s -> " — $s" } ?: ""}${if (sources.isNotBlank()) "\n  ↳ $sources" else ""}"
-                            },
-                            error = if (items.isEmpty()) "No items worth filing" else null,
-                        )
-                    }
-                    is LlmOutcome.Err -> {
-                        repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.FAILED, 0, 0, outcome.error.userMessage())
-                        _testResult.value = TestRunResult(false, elapsed, 0, emptyList(), outcome.error.userMessage())
-                    }
-                }
-            } catch (e: Exception) {
-                val elapsed3 = System.currentTimeMillis() - start
-                android.util.Log.e("AgentDetail", "testRun: exception", e)
-                repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.FAILED, 0, 0, e.message)
-                _testResult.value = TestRunResult(false, elapsed3, 0, emptyList(), e.message)
+                val outcome = runService.run(job, RunMode.TEST)
+                _testResult.value = TestRunResult(
+                    success = outcome.status != AgentRunStatus.FAILED,
+                    durationMs = outcome.durationMs,
+                    itemCount = outcome.items.size,
+                    items = outcome.items.map { it.formatForDisplay() },
+                    error = if (outcome.status != AgentRunStatus.OK) outcome.message else null,
+                )
             } finally {
                 _isRunning.value = false
             }
@@ -150,57 +121,24 @@ class AgentDetailViewModel @Inject constructor(
     }
 
     /**
-     * Run now — executes search→synth AND files items to the feed (unlike testRun
-     * which only shows results). Used from the Agents list context menu.
+     * Run now — executes the agent AND files items to the feed (unlike testRun which
+     * only shows results). Used from the Agents list context menu.
      */
     fun runNow() {
         val job = state.value.job ?: return
         _testResult.value = null
         _isRunning.value = true
         viewModelScope.launch {
-            val start = System.currentTimeMillis()
             try {
-                seeder.ensureAgentSource(job.id, job.name)
-                android.util.Log.i("AgentDetail", "runNow: starting synthesis for ${job.name}")
-                val outcome = loop.run(job)
-                val elapsed = System.currentTimeMillis() - start
-                when (outcome) {
-                    is LlmOutcome.Ok -> {
-                        val items = outcome.value.items
-                        if (items.isEmpty()) {
-                            repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.EMPTY, 0, 0, "No items worth filing")
-                            _testResult.value = TestRunResult(true, elapsed, 0, emptyList(), "No items worth filing")
-                        } else {
-                            val filed = repository.fileAgentItems(jobId, items, job.name)
-                            repository.recordRun(
-                                jobId,
-                                if (filed > 0) com.sapphire.domain.model.AgentRunStatus.OK else com.sapphire.domain.model.AgentRunStatus.EMPTY,
-                                filed,
-                                items.size * 1200,
-                                if (filed < items.size) "$filed/${items.size} filed (some deduped)" else "$filed items filed",
-                            )
-                            _testResult.value = TestRunResult(
-                                success = true,
-                                durationMs = elapsed,
-                                itemCount = filed,
-                                items = items.map { item ->
-                                    val sources = item.sources.takeIf { it.isNotEmpty() }?.joinToString(" | ") { "[${it.title}](${it.url})" } ?: ""
-                                    "${item.title}${item.summary?.let { s -> " — $s" } ?: ""}${if (sources.isNotBlank()) "\n  ↳ $sources" else ""}"
-                                },
-                                error = null,
-                            )
-                            _runQueued.value = true
-                        }
-                    }
-                    is LlmOutcome.Err -> {
-                        repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.FAILED, 0, 0, outcome.error.userMessage())
-                        _testResult.value = TestRunResult(false, elapsed, 0, emptyList(), outcome.error.userMessage())
-                    }
-                }
-            } catch (e: Exception) {
-                val elapsed3 = System.currentTimeMillis() - start
-                repository.recordRun(jobId, com.sapphire.domain.model.AgentRunStatus.FAILED, 0, 0, e.message)
-                _testResult.value = TestRunResult(false, elapsed3, 0, emptyList(), e.message)
+                val outcome = runService.run(job, RunMode.FILE)
+                _testResult.value = TestRunResult(
+                    success = outcome.status != AgentRunStatus.FAILED,
+                    durationMs = outcome.durationMs,
+                    itemCount = outcome.itemsFiled,
+                    items = outcome.items.map { it.formatForDisplay() },
+                    error = if (outcome.status != AgentRunStatus.OK) outcome.message else null,
+                )
+                if (outcome.items.isNotEmpty()) _runQueued.value = true
             } finally {
                 _isRunning.value = false
             }
@@ -235,6 +173,12 @@ class AgentDetailViewModel @Inject constructor(
                 else -> "—"
             },
         )
+    }
+
+    private fun AgentSynthesisItem.formatForDisplay(): String {
+        val sources = sources.takeIf { it.isNotEmpty() }
+            ?.joinToString(" | ") { "[${it.title}](${it.url})" } ?: ""
+        return "$title${summary?.let { s -> " — $s" } ?: ""}${if (sources.isNotBlank()) "\n  ↳ $sources" else ""}"
     }
 
     private fun relativeWhen(epochMs: Long): String {

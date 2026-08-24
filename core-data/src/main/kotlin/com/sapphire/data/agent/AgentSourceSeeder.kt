@@ -11,10 +11,12 @@ import javax.inject.Singleton
 /**
  * Idempotently creates the FK chain an agent's filed items need: a shared "Agents"
  * topic + category, and one [SourceEntity] per job (kind=AGENT_PROMPT). The sourceId
- * is deterministic (`agent:<jobId>`) so the worker reconstructs it without a DB lookup.
+ * is deterministic (`agent:<jobId>`) so callers reconstruct it without a DB lookup.
  *
- * Called on job create. On job delete, the source is removed by [SourceDao.deleteSource]
- * — CASCADE sweeps its feed items. The shared topic/category outlive individual jobs.
+ * Called on job create and absorbed into [RoomAgentRepository.fileAgentItems] so filing
+ * is safe even when the source row is missing. On job delete, the source is removed by
+ * [SourceDao.deleteSource] — CASCADE sweeps its feed items. The shared topic/category
+ * outlive individual jobs.
  */
 @Singleton
 class AgentSourceSeeder @Inject constructor(

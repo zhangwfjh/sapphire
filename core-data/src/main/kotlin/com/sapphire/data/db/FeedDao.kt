@@ -145,6 +145,10 @@ interface FeedDao {
     @Query("SELECT hash_uuid FROM feed_item WHERE hash_uuid IN (:ids)")
     suspend fun existingIds(ids: List<String>): List<String>
 
+    /** Newest item URLs for one source — the agent re-run exclusion list. */
+    @Query("SELECT url FROM feed_item WHERE source_id = :sourceId ORDER BY published_at DESC LIMIT :limit")
+    suspend fun recentUrlsForSource(sourceId: String, limit: Int): List<String>
+
     @Query("UPDATE feed_item SET read_state = :state WHERE hash_uuid = :itemId")
     suspend fun setReadState(itemId: String, state: ReadState)
 

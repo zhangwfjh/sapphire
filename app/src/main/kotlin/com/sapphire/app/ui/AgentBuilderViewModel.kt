@@ -4,7 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sapphire.domain.agent.AgentJobInput
-import com.sapphire.domain.agent.AgentLoopService
+import com.sapphire.domain.agent.AgentRunService
 import com.sapphire.domain.agent.AgentRepository
 import com.sapphire.domain.agent.AgentTemplate
 import com.sapphire.domain.agent.EnhanceDirectiveService
@@ -35,7 +35,7 @@ data class BuilderForm(
 class AgentBuilderViewModel @Inject constructor(
     private val repository: AgentRepository,
     private val scheduler: com.sapphire.data.agent.AgentScheduler,
-    private val loop: AgentLoopService,
+    private val runService: AgentRunService,
     private val enhanceService: EnhanceDirectiveService,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -123,7 +123,6 @@ class AgentBuilderViewModel @Inject constructor(
         _testResult.value = null
         _isRunning.value = true
         viewModelScope.launch {
-            val start = System.currentTimeMillis()
             try {
                 val tempJob = com.sapphire.domain.model.AgentJob(
                     id = "preview", name = f.name.ifBlank { "Preview" },
@@ -131,19 +130,17 @@ class AgentBuilderViewModel @Inject constructor(
                     maxItems = f.maxItems, frequency = f.frequency, triggerTime = f.triggerTime,
                     enabled = true, nextRunIntentEpochMs = null, createdAt = 0L,
                 )
-                val outcome = loop.run(tempJob)
-                val elapsed = System.currentTimeMillis() - start
-                when (outcome) {
-                    is LlmOutcome.Ok -> {
-                        val items = outcome.value.items
-                        _testResult.value = TestRunResult(true, elapsed, items.size,
-                            items.map { it.title + (it.summary?.let { s -> " - $s" } ?: "") },
-                            if (items.isEmpty()) "No items worth filing" else null)
-                    }
-                    is LlmOutcome.Err -> _testResult.value = TestRunResult(false, elapsed, 0, emptyList(), outcome.error.userMessage())
-                }
-            } catch (e: Exception) { _testResult.value = TestRunResult(false, System.currentTimeMillis() - start, 0, emptyList(), e.message) }
-            finally { _isRunning.value = false }
+                val outcome = runService.run(tempJob, AgentRunService.RunMode.DRY)
+                _testResult.value = TestRunResult(
+                    success = outcome.status != com.sapphire.domain.model.AgentRunStatus.FAILED,
+                    durationMs = outcome.durationMs,
+                    itemCount = outcome.items.size,
+                    items = outcome.items.map { it.title + (it.summary?.let { s -> " - $s" } ?: "") },
+                    error = if (outcome.status != com.sapphire.domain.model.AgentRunStatus.OK) outcome.message else null,
+                )
+            } finally {
+                _isRunning.value = false
+            }
         }
     }
 

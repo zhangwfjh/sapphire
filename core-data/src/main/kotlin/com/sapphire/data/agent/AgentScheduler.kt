@@ -4,9 +4,7 @@ import android.content.Context
 import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.sapphire.domain.model.AgentFrequency
@@ -63,29 +61,6 @@ class AgentScheduler @Inject constructor(
     /** Cancel a job's periodic work (on pause/delete). */
     fun cancel(jobId: String) {
         WorkManager.getInstance(context).cancelUniqueWork(workName(jobId))
-    }
-
-    /** Enqueue an immediate one-time run (the detail "Run now" button). */
-    fun runNow(jobId: String) {
-        android.util.Log.i("AgentScheduler", "runNow: enqueuing for jobId=$jobId")
-        try {
-            val request = OneTimeWorkRequestBuilder<AgentRunnerWorker>()
-                .setInputData(Data.Builder().putString(AgentRunnerWorker.INPUT_JOB_ID, jobId).build())
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build(),
-                )
-                .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                workName(jobId) + "-now",
-                ExistingWorkPolicy.REPLACE,
-                request,
-            )
-            android.util.Log.i("AgentScheduler", "runNow: enqueued OK for jobId=$jobId")
-        } catch (e: Exception) {
-            android.util.Log.e("AgentScheduler", "runNow: FAILED to enqueue", e)
-        }
     }
 
     /** WorkManager periodic minimum is 15 minutes; hourly = N hours; scheduled = 24h. */

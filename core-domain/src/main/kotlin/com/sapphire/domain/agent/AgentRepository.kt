@@ -23,12 +23,11 @@ data class AgentJobInput(
 )
 
 /**
- * CRUD + observe for prompt-agent jobs and their run history. Reads are cold
+ * CRUD + observe for agent jobs and their run history. Reads are cold
  * [Flow]s so Compose recomposes only on real change; writes are suspend and
  * dispatch IO at the implementation boundary. Mirrors the [com.sapphire.domain.source.SourceRepository] shape.
  *
- * Slice A persists + observes only; [recordRun] is called by the builder on
- * create (seeds an "Agent created" history row) and by Slice B's worker on each run.
+ * Run execution itself lives in [AgentRunService]; this port is persistence only.
  */
 interface AgentRepository {
     fun observeJobs(): Flow<List<AgentJob>>
@@ -46,4 +45,10 @@ interface AgentRepository {
         message: String?,
     )
     suspend fun fileAgentItems(jobId: String, items: List<AgentSynthesisItem>, agentName: String): Int
+
+    /**
+     * URLs this agent's source has already filed, newest first (the exclusion list the
+     * loop gets so re-runs pick different content).
+     */
+    suspend fun recentlyFiledUrls(jobId: String, limit: Int = 20): List<String>
 }

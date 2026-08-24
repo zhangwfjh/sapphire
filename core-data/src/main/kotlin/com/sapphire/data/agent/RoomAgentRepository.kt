@@ -100,7 +100,12 @@ class RoomAgentRepository @Inject constructor(
         )
     }
 
+    /**
+     * Files items under the agent's source. Absorbs [AgentSourceSeeder.ensureAgentSource]
+     * (idempotent IGNORE inserts) so filing is safe even when the source row is missing.
+     */
     override suspend fun fileAgentItems(jobId: String, items: List<AgentSynthesisItem>, agentName: String): Int = withContext(Dispatchers.IO) {
+        sourceSeeder.ensureAgentSource(jobId, agentName)
         val now = System.currentTimeMillis()
         val sourceId = sourceSeeder.sourceIdFor(jobId)
         val entities = items.mapIndexed { i, item ->
@@ -129,6 +134,10 @@ class RoomAgentRepository @Inject constructor(
         }
         val rowIds = feedDao.insertItems(entities)
         rowIds.count { it > 0 }
+    }
+
+    override suspend fun recentlyFiledUrls(jobId: String, limit: Int): List<String> = withContext(Dispatchers.IO) {
+        feedDao.recentUrlsForSource(sourceSeeder.sourceIdFor(jobId), limit)
     }
 
     private fun AgentJobEntity.toDomain() = AgentJob(

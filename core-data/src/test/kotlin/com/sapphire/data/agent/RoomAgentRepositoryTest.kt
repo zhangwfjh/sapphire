@@ -4,6 +4,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.sapphire.data.db.SapphireDatabase
 import com.sapphire.domain.agent.AgentJobInput
+import com.sapphire.domain.agent.AgentSourceRef
+import com.sapphire.domain.agent.AgentSynthesisItem
 import com.sapphire.domain.model.AgentFrequency
 import com.sapphire.domain.model.AgentRunStatus
 import com.sapphire.domain.util.IdGenerator
@@ -18,7 +20,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-
 /**
  * RoomAgentRepository (design: 2026-07-27-agents-foundation-ui.md, Task 4).
  * Covers: create→observe, update preserves created_at/enabled, setEnabled, delete,
@@ -107,6 +108,66 @@ class RoomAgentRepositoryTest {
         assertEquals("boom", runs[0].message) // newest first
         assertEquals("first", runs[1].message)
         assertTrue(runs[2].message?.contains("created") == true) // seeded
+    }
+
+    // ---- filing (the single filing path; the worker no longer maps entities itself) ----
+
+    @Test
+    fun `fileAgentItems seeds the agent source and files items`() = runTest {
+        // Ghost job id — the source row does NOT exist yet; filing must create the FK chain.
+        val items = listOf(
+            AgentSynthesisItem(
+                title = "T", summary = "s", body = "B", url = "https://u/1",
+                sources = listOf(AgentSourceRef("Src", "https://src")),
+            ),
+        )
+
+        val filed = repo.fileAgentItems("ghost", items, "Ghost")
+
+        assertEquals(1, filed)
+        val source = db.sourceDao().sourcesByIds(listOf("agent:ghost")).single()
+        assertEquals("Ghost", source.title)
+        val row = db.feedDao().observeBySource("agent:ghost").first().single()
+        assertEquals("T", row.title)
+        assertEquals("Ghost", row.agentTag)
+        assertTrue(row.bodyRaw!!.contains("Sources:"))
+        assertTrue(row.bodyRaw!!.contains("• Src: https://src"))
+    }
+
+    @Test
+    fun `fileAgentItems dedups re-filed items`() = runTest {
+        val items = listOf(AgentSynthesisItem(title = "T", url = "https://u/dedup"))
+
+        assertEquals(1, repo.fileAgentItems("ghost", items, "Ghost"))
+        assertEquals(0, repo.fileAgentItems("ghost", items, "Ghost"))
+        assertEquals(1, db.feedDao().observeBySource("agent:ghost").first().size)
+    }
+
+    @Test
+    fun `fileAgentItems synthesizes fallback url when item has none`() = runTest {
+        val items = listOf(AgentSynthesisItem(title = "NoUrl")) // url=null, no sources
+
+        assertEquals(1, repo.fileAgentItems("ghost", items, "Ghost"))
+
+        val row = db.feedDao().observeBySource("agent:ghost").first().single()
+        assertTrue("expected agent:// fallback, got ${row.url}", row.url!!.startsWith("agent://ghost#"))
+    }
+
+    @Test
+    fun `recentlyFiledUrls returns filed urls for the agent source`() = runTest {
+        repo.fileAgentItems(
+            "ghost",
+            listOf(
+                AgentSynthesisItem(title = "A", url = "https://u/a"),
+                AgentSynthesisItem(title = "B", url = "https://u/b"),
+            ),
+            "Ghost",
+        )
+
+        val urls = repo.recentlyFiledUrls("ghost")
+
+        assertEquals(setOf("https://u/a", "https://u/b"), urls.toSet())
+        assertTrue(repo.recentlyFiledUrls("never-filed").isEmpty())
     }
 
     private fun input(

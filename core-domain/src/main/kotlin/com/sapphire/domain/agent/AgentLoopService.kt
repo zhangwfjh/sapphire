@@ -25,15 +25,14 @@ import kotlinx.serialization.json.putJsonObject
 /**
  * The bounded tool-calling agent loop (PRD §3.7 autonomous / AGENTIC mode). Pure domain —
  * takes injectable [LlmClient] + [WebSearchClient] + [ArticleExtractor] + [BrowserClient],
- * returns the same [LlmOutcome]<[AgentSynthesisResult]> as [AgentSynthesisService] so the
- * worker and builder test-run branch on [AgentJob.agentMode] with no call-shape change.
+ * returns [LlmOutcome]<[AgentSynthesisResult]>. Called by [AgentRunService], which owns
+ * filing and history recording around it.
  *
- * Pipeline: a multi-round LLM tool-calling loop with a fixed 3-tool palette
- * (`web_search`, `fetch_page`, `finalize`). The LLM decides which tools to call and in what
- * order; [LoopBudget] enforces hard caps so every path terminates. Tool errors are fed back
- * as tool *results* (never crash the loop); only LLM-call errors propagate.
- *
- * Mirrors the [AgentSynthesisService] retrieve→generate shape but with runtime-decided steps.
+ * Pipeline: a multi-round LLM tool-calling loop with a fixed tool palette
+ * (`web_search`, `fetch_page`, `fetch_page_section`, `finalize`). The LLM decides which
+ * tools to call and in what order; [LoopBudget] enforces hard caps so every path
+ * terminates. Tool errors are fed back as tool *results* (never crash the loop); only
+ * LLM-call errors propagate.
  */
 class AgentLoopService(
     private val llm: LlmClient,
