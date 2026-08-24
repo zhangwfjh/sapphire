@@ -24,6 +24,7 @@ import kotlinx.serialization.KSerializer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -58,7 +59,7 @@ class AgentLoopServiceTest {
     }
 
     @Test
-    fun `search then finalize completes in two rounds`() = runTest {
+    fun `search then finalize gets a corrective fetch round then completes`() = runTest {
         val llm = FakeLlm(listOf(
             ToolTurn(content = "thinking", toolCalls = listOf(
                 ToolCall("c1", "web_search", """{"query":"ted"}"""),
@@ -73,7 +74,9 @@ class AgentLoopServiceTest {
 
         assertTrue(outcome is LlmOutcome.Ok)
         assertEquals(1, (outcome as LlmOutcome.Ok).value.items.size)
-        assertEquals(2, llm.calls)
+        // Search-only finalize is pushed back once (fetch demanded), then the repeated
+        // turn (FakeLlm repeats its last script) is accepted: 3 LLM round-trips.
+        assertEquals(3, llm.calls)
     }
 
     @Test
@@ -299,6 +302,261 @@ class AgentLoopServiceTest {
         assertTrue("250K page SHOULD have a truncation marker", toolResult!!.contains("\"truncated\""))
     }
 
+    // ---- acceptance discipline (validate against live-run evidence) ----
+
+    @Test
+    fun `string-encoded finalize items is repaired on second call`() = runTest {
+        // The exact production failure: {"items": "<json-array-as-string>"}.
+        val encoded = finalizeCall(item("T", "S", "Body", "u"))
+            .arguments.replaceFirst("\"items\":[", "\"items\":\"[")
+            .dropLast(1) + "]\"}"
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(ToolCall("f1", "finalize", encoded))),
+            ToolTurn(content = null, toolCalls = listOf(
+                finalizeCall(item("T", "S", "Body", "u")),
+            )),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        assertEquals(1, (outcome as LlmOutcome.Ok).value.items.size)
+        assertEquals("T", outcome.value.items[0].title)
+        assertEquals(2, llm.calls) // repair round happened
+    }
+
+    @Test
+    fun `persistently malformed finalize falls back to best effort, not silent empty`() = runTest {
+        val malformed = ToolCall("f1", "finalize", """{"items": 42}""")
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = "gathering notes", toolCalls = listOf(malformed)),
+            ToolTurn(content = "still gathering", toolCalls = listOf(malformed)),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        // Second malformed finalize: best-effort wraps the assistant text — never silent empty.
+        assertTrue(outcome is LlmOutcome.Ok)
+        val items = (outcome as LlmOutcome.Ok).value.items
+        assertTrue(items.isNotEmpty())
+        assertEquals("still gathering", items[0].body)
+    }
+
+    @Test
+    fun `hallucinated url is scrubbed when evidence exists`() = runTest {
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                ToolCall("c1", "web_search", """{"query":"ted"}"""),
+            )),
+            ToolTurn(content = null, toolCalls = listOf(
+                finalizeCall(item("Ghost", "s", "b", "https://never-seen.example/x")),
+            )),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        val items = (outcome as LlmOutcome.Ok).value.items
+        assertEquals(1, items.size) // item kept...
+        assertNull(items[0].url)    // ...but the unseen URL is gone
+    }
+
+    @Test
+    fun `unseen url salvaged to seen source`() = runTest {
+        val finalize = ToolCall("f1", "finalize", """
+            {"items":[{"title":"S","summary":"s","body":"b","url":"https://ghost.example/x",
+            "sources":[{"title":"R","url":"https://r"}]}]}
+        """.trimIndent())
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                ToolCall("c1", "web_search", """{"query":"ted"}"""),
+            )),
+            ToolTurn(content = null, toolCalls = listOf(finalize)),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        val items = (outcome as LlmOutcome.Ok).value.items
+        assertEquals("https://r", items[0].url) // salvaged to the seen source
+    }
+
+    @Test
+    fun `knowledge-only run keeps its citations`() = runTest {
+        // No search, no fetch → no evidence → validation skipped entirely.
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                finalizeCall(item("K", "s", "b", "https://parametric.example/knowledge")),
+            )),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        assertEquals("https://parametric.example/knowledge", (outcome as LlmOutcome.Ok).value.items[0].url)
+    }
+
+    @Test
+    fun `duplicate urls within a run are deduped`() = runTest {
+        val finalize = ToolCall("f1", "finalize", """
+            {"items":[{"title":"A","summary":"s","body":"b1","url":"https://r"},
+                      {"title":"B","summary":"s","body":"b2","url":"https://r"}]}
+        """.trimIndent())
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(ToolCall("c1", "web_search", """{"query":"q"}"""))),
+            ToolTurn(content = null, toolCalls = listOf(finalize)),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        assertEquals(1, (outcome as LlmOutcome.Ok).value.items.size)
+        assertEquals("A", (outcome as LlmOutcome.Ok).value.items[0].title) // first kept
+    }
+
+    @Test
+    fun `third search in one round returns budget error and only two execute`() = runTest {
+        val counting = object : WebSearchClient {
+            var calls = 0
+            override suspend fun search(query: String): List<WebSearchHit> {
+                calls++
+                return listOf(WebSearchHit("Title", "https://r", "snippet"))
+            }
+        }
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                ToolCall("c1", "web_search", """{"query":"a"}"""),
+                ToolCall("c2", "web_search", """{"query":"b"}"""),
+                ToolCall("c3", "web_search", """{"query":"c"}"""),
+            )),
+            ToolTurn(content = null, toolCalls = listOf(finalizeCall(item("R", "s", "b", "u")))),
+        ))
+        val loop = AgentLoopService(llm, counting, extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        assertEquals(2, counting.calls)
+        assertTrue(llm.capturedToolResults.any { it.contains("search budget for this round exhausted") })
+    }
+
+    @Test
+    fun `search-only finalize gets one corrective fetch nudge`() = runTest {
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                ToolCall("c1", "web_search", """{"query":"q"}"""),
+            )),
+            ToolTurn(content = null, toolCalls = listOf(finalizeCall(item("Early", "s", "b", "u")))),
+            ToolTurn(content = null, toolCalls = listOf(finalizeCall(item("Early", "s", "b", "u")))),
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        // First finalize rejected with a corrective message; second accepted.
+        assertTrue(outcome is LlmOutcome.Ok)
+        assertEquals(1, (outcome as LlmOutcome.Ok).value.items.size)
+        assertTrue(llm.capturedToolResults.any { it.contains("you have not fetched any page yet") })
+    }
+
+    @Test
+    fun `idle nudge does not consume a tool round`() = runTest {
+        // 8 tool rounds + 1 idle turn in between: idle must not push the run into
+        // forceFinalize before the scripted finalize lands.
+        val searchTurn = ToolTurn(content = null, toolCalls = listOf(
+            ToolCall("c", "web_search", """{"query":"x"}"""),
+        ))
+        val idleTurn = ToolTurn(content = "let me think", toolCalls = emptyList())
+        val turns = buildList {
+            add(searchTurn); add(searchTurn); add(searchTurn); add(searchTurn)
+            add(idleTurn)
+            add(searchTurn); add(searchTurn); add(searchTurn); add(searchTurn)
+            add(ToolTurn(content = null, toolCalls = listOf(finalizeCall(item("Done", "s", "b", "u")))))
+        }
+        val llm = FakeLlm(turns)
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        assertEquals("Done", (outcome as LlmOutcome.Ok).value.items[0].title)
+        assertEquals(10, llm.calls) // 8 tool rounds + 1 idle + 1 finalize — no forced extra round
+    }
+
+    @Test
+    fun `section reads beyond the section budget return an error`() = runTest {
+        fun section(i: Int) = ToolCall("s$i", "fetch_page_section", """{"url":"https://long","offset":${i * 10}}""")
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                ToolCall("c0", "fetch_page", """{"url":"https://long"}"""),
+            )),
+            ToolTurn(content = null, toolCalls = listOf(section(0), section(1), section(2), section(3))),
+            ToolTurn(content = null, toolCalls = listOf(finalizeCall(item("R", "s", "b", "u")))),
+        ))
+        val recordingBrowser = RecordingBrowser(RenderResult(ok = true, text = "B".repeat(200)))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), recordingBrowser)
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        assertTrue(llm.capturedToolResults.any { it.contains("section budget exhausted") })
+    }
+
+    @Test
+    fun `oversized conversation is compacted before the LLM call`() = runTest {
+        // 3 × 250K-char pages ≈ 750K chars ≈ 187K tokens > 100K ceiling → compaction kicks in.
+        val hugeBody = "Z".repeat(250_000)
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(
+                ToolCall("c1", "fetch_page", """{"url":"https://huge1"}"""),
+                ToolCall("c2", "fetch_page", """{"url":"https://huge2"}"""),
+            )),
+            ToolTurn(content = null, toolCalls = listOf(
+                ToolCall("c3", "fetch_page", """{"url":"https://huge3"}"""),
+            )),
+            ToolTurn(content = null, toolCalls = listOf(finalizeCall(item("R", "s", "b", "u")))),
+        ))
+        val recordingExtractor = RecordingExtractor(ExtractionOutcome.Ok(title = "H", html = "<p>$hugeBody</p>", byline = null))
+        val loop = AgentLoopService(llm, searchOk(), recordingExtractor, browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        // The third call's conversation must be materially smaller than the raw accumulated context.
+        val rawChars = 3L * hugeBody.length
+        val sentMax = llm.capturedConversationChars.maxOrNull() ?: 0L
+        assertTrue("compaction should cap sent context ($sentMax vs raw $rawChars)", sentMax < rawChars / 2)
+        assertTrue(llm.capturedToolResults.any { it.contains("elided") } || sentMax < rawChars / 2)
+    }
+
+    @Test
+    fun `double-malformed finalize salvages item from arguments`() = runTest {
+        // Observed live: string-encoded items + broken nested escapes; tool-only turns
+        // (content=null). After the failed repair, the run must still salvage content.
+        val broken = ToolCall(
+            "f1", "finalize",
+            """{"items": "[{\"title\": \"Seiko 7018 restoration\", \"summary\": \"s\", \"body\": \"<p>full repair write-up</p>\", \"url\": \"https://watch.example/x\"}]"}""",
+        )
+        val llm = FakeLlm(listOf(
+            ToolTurn(content = null, toolCalls = listOf(broken)),
+            ToolTurn(content = null, toolCalls = listOf(broken)), // repair round fails too
+        ))
+        val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
+
+        val outcome = loop.run(job())
+
+        assertTrue(outcome is LlmOutcome.Ok)
+        val items = (outcome as LlmOutcome.Ok).value.items
+        assertTrue("salvage should keep the model's work, got ${items.size}", items.isNotEmpty())
+        assertTrue(items[0].title!!.contains("Seiko 7018"))
+    }
+
     // ---- fixture workload shapes: each of the 8 example directives ----
 
     @Test
@@ -425,6 +683,8 @@ class AgentLoopServiceTest {
         var calls = 0
         var lastTier: LlmTier? = null
         val capturedToolResults = mutableListOf<String>()
+        val capturedConversationChars = mutableListOf<Long>()
+
 
         override suspend fun <T> completeStructured(
             tier: LlmTier, systemPrompt: String, userPrompt: String, outputSerializer: KSerializer<T>,
@@ -436,6 +696,13 @@ class AgentLoopServiceTest {
             tier: LlmTier, systemPrompt: String, conversation: List<ToolMessage>, tools: List<ToolDefinition>,
         ): LlmOutcome<ToolTurn> {
             lastTier = tier
+            capturedConversationChars.add(conversation.sumOf { msg ->
+                when (msg) {
+                    is ToolMessage.User -> msg.content.length.toLong()
+                    is ToolMessage.Assistant -> ((msg.content?.length ?: 0) + msg.toolCalls.sumOf { it.arguments.length }).toLong()
+                    is ToolMessage.ToolResult -> msg.content.length.toLong()
+                }
+            })
             // Capture ToolResult messages the loop feeds back (for asserting on tool output content).
             conversation.filterIsInstance<ToolMessage.ToolResult>().forEach {
                 capturedToolResults.add(it.content)

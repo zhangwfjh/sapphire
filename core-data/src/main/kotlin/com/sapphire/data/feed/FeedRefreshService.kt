@@ -52,9 +52,9 @@ class FetcherRegistry private constructor(
  *   Source ──► Fetcher(kind) ──► [FeedItemCandidate] ──► hash + categoryId + fetchedAt
  *                  ──► FeedItemEntity ──► INSERT OR IGNORE (PK = hash_uuid)
  *
- * Dedup is the cheap hash layer only (global id). Semantic embedding dedup (τ≈0.88)
- * runs *only* on the AGENT_SEARCH path — RSS/social items are already curated by their
- * source, reranking them would be noise.
+ * Dedup is the cheap hash layer only (global id). RSS/social items are already curated
+ * by their source, so no semantic rerank runs on this path; agent items go through
+ * AgentRerankService before filing instead.
  *
  * Source health is stamped on every fetch: OK on success, FAILED on persistent parse/4xx.
  * Transient (network/5xx) leaves health untouched — the route may have just blipped.

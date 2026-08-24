@@ -2,14 +2,13 @@ package com.sapphire.domain.model
 
 /**
  * Dispatch key for ingestion. New kinds extend the [Fetcher] interface in core-data.
- * RSS/ATOM/JSON rows are persisted today; AGENT_* kinds are defined now so the schema
- * is stable when agent ingestion lands.
+ * RSS/ATOM/JSON rows are persisted today; AGENT_PROMPT is the agent-channel kind
+ * (agent items are filed by RoomAgentRepository, not the fetch pipeline).
  */
 enum class SourceKind {
     RSS,
     ATOM,
     JSON,
-    AGENT_SEARCH,
     AGENT_PROMPT,
 }
 

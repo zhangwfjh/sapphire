@@ -14,7 +14,8 @@ import javax.inject.Inject
  * are adapters over [run] and differ only in mode and display mapping.
  *
  * Exclusion wiring: each run passes the agent's recently filed URLs into the loop so the
- * model picks different content than previous runs.
+ * model picks different content than previous runs, and into [AgentRerankService] for the
+ * hard cross-run dedup + Tier-2 verdict before filing.
  *
  * Cancellation propagates (structured concurrency); any other failure collapses into a
  * FAILED outcome (and a FAILED history row, except [RunMode.DRY]).
@@ -22,6 +23,7 @@ import javax.inject.Inject
 class AgentRunService @Inject constructor(
     private val loop: AgentLoopService,
     private val repository: AgentRepository,
+    private val rerank: AgentRerankService,
 ) {
 
     /** How a run's results land: filed to the feed, recorded-but-not-filed, or neither. */
@@ -50,7 +52,10 @@ class AgentRunService @Inject constructor(
         return try {
             val previouslyFiled = repository.recentlyFiledUrls(job.id)
             when (val outcome = loop.run(job, previouslyFiled)) {
-                is LlmOutcome.Ok -> complete(job, mode, outcome.value.items, start)
+                is LlmOutcome.Ok -> {
+                    val kept = rerank.rerank(outcome.value.items, previouslyFiled)
+                    complete(job, mode, kept, start)
+                }
                 is LlmOutcome.Err -> {
                     val message = outcome.error.userMessage()
                     if (mode != RunMode.DRY) {

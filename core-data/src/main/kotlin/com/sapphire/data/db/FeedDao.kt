@@ -133,8 +133,8 @@ interface FeedDao {
 
     /**
      * Ingest insert. IGNORE on PK conflict: the same item re-fetched from any source is a
-     * no-op — this is the global hash-id dedup (the cheap layer; semantic embedding dedup
-     * runs on top for the AGENT_SEARCH path only).
+     * no-op — this is the global hash-id dedup layer (per-run near-dup and rerank happen
+     * upstream in the agent path, before items ever reach here).
      *
      * @return rowids inserted (-1 rowids are conflicts that were ignored); caller uses the
      *   count to surface "N new" in the refresh UI.

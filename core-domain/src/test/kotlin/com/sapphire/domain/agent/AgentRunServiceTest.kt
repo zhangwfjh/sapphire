@@ -40,7 +40,7 @@ class AgentRunServiceTest {
 
     private fun service(llm: FakeLlm, repo: FakeAgentRepository): AgentRunService {
         val loop = AgentLoopService(llm, searchOk(), extractorFail(), browserNotConfigured())
-        return AgentRunService(loop, repo)
+        return AgentRunService(loop, repo, AgentRerankService(llm))
     }
 
     // ---- FILE ----
@@ -74,7 +74,7 @@ class AgentRunServiceTest {
         val repo = FakeAgentRepository(filedResult = 2)
         val svc = service(llmWith(finalize(threeItems())), repo)
 
-        val outcome = svc.run(job(), AgentRunService.RunMode.FILE)
+        val outcome = svc.run(job(maxItems = 3), AgentRunService.RunMode.FILE)
 
         assertEquals(AgentRunStatus.OK, outcome.status)
         assertEquals("2/3 filed (some deduped)", outcome.message)
@@ -205,10 +205,10 @@ class AgentRunServiceTest {
 
     private val jobId = "j1"
 
-    private fun job() = AgentJob(
+    private fun job(maxItems: Int = 2) = AgentJob(
         id = jobId, name = "TestAgent", goal = "summarize the top news about AI",
         task = "", format = "", rules = "",
-        maxItems = 2, frequency = AgentFrequency.DAILY, triggerTime = "07:00",
+        maxItems = maxItems, frequency = AgentFrequency.DAILY, triggerTime = "07:00",
         enabled = true, nextRunIntentEpochMs = null, createdAt = 0L,
     )
 
