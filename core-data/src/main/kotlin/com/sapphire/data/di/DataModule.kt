@@ -43,6 +43,16 @@ import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+
+/** Marks the process-wide [CoroutineScope] for work that must outlive a screen. */
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ApplicationScope
+
+
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
@@ -65,6 +75,10 @@ object DatabaseModule {
     @Provides fun provideArticleBodyDao(db: SapphireDatabase): com.sapphire.data.db.ArticleBodyDao = db.articleBodyDao()
     @Provides fun provideAgentJobDao(db: SapphireDatabase): AgentJobDao = db.agentJobDao()
     @Provides fun provideAgentRunDao(db: SapphireDatabase): AgentRunDao = db.agentRunDao()
+
+    @Provides @Singleton @ApplicationScope
+    fun provideApplicationScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default)
 }
 
 @Module

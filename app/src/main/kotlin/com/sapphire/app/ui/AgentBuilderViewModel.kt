@@ -159,6 +159,8 @@ class AgentBuilderViewModel @Inject constructor(
     /** Live loop actions while a dry run is in flight — the Preview's waiting feed. */
     private val _runEvents = MutableStateFlow<List<RunEvent>>(emptyList())
     val runEvents: StateFlow<List<RunEvent>> = _runEvents.asStateFlow()
+    private val _isSaving = MutableStateFlow(false)
+    val isSaving: StateFlow<Boolean> = _isSaving.asStateFlow()
     private val _nameError = MutableStateFlow<String?>(null)
     val nameError: StateFlow<String?> = _nameError.asStateFlow()
 
@@ -393,28 +395,39 @@ class AgentBuilderViewModel @Inject constructor(
 
     fun submit() {
         val f = _form.value
+        if (_isSaving.value) return
         if (f.name.isBlank() || f.goal.isBlank()) return
         _nameError.value = null
+        _isSaving.value = true
         viewModelScope.launch {
-            val existing = repository.observeJobs().first()
-            val clash = existing.any { it.name.equals(f.name, ignoreCase = true) && it.id != editJobId }
-            if (clash) { _nameError.value = "An agent with this name already exists"; return@launch }
-            val input = AgentJobInput(
-                name = f.name.trim(), goal = f.goal.trim(),
-                task = f.task, format = f.format, rules = mergedRules(f),
-                maxItems = f.maxItems, frequency = f.frequency, triggerTime = f.triggerTime,
-                categoryId = f.categoryId,
-            )
-            val id = if (isEdit) {
-                repository.update(editJobId, input)
-                scheduler.schedule(editJobId, input.frequency, input.triggerTime)
-                editJobId
-            } else {
-                val newId = repository.create(input)
-                scheduler.schedule(newId, input.frequency, input.triggerTime)
-                newId
+            try {
+                val existing = repository.observeJobs().first()
+                val clash = existing.any { it.name.equals(f.name.trim(), ignoreCase = true) && it.id != editJobId }
+                if (clash) {
+                    // Shown under the Name field (step 1) and as a banner on Schedule (step 4)
+                    // so the rejection is never silent.
+                    _nameError.value = "An agent with this name already exists"
+                    return@launch
+                }
+                val input = AgentJobInput(
+                    name = f.name.trim(), goal = f.goal.trim(),
+                    task = f.task, format = f.format, rules = mergedRules(f),
+                    maxItems = f.maxItems, frequency = f.frequency, triggerTime = f.triggerTime,
+                    categoryId = f.categoryId,
+                )
+                val id = if (isEdit) {
+                    repository.update(editJobId, input)
+                    scheduler.schedule(editJobId, input.frequency, input.triggerTime)
+                    editJobId
+                } else {
+                    val newId = repository.create(input)
+                    scheduler.schedule(newId, input.frequency, input.triggerTime)
+                    newId
+                }
+                _savedJobId.value = id
+            } finally {
+                _isSaving.value = false
             }
-            _savedJobId.value = id
         }
     }
 

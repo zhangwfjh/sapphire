@@ -109,6 +109,7 @@ fun AgentBuilderScreen(
     val generateNote by viewModel.generateNote.collectAsStateWithLifecycle()
     val testResult by viewModel.testResult.collectAsStateWithLifecycle()
     val isRunning by viewModel.isRunning.collectAsStateWithLifecycle()
+    val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
     val nameError by viewModel.nameError.collectAsStateWithLifecycle()
     val runEvents by viewModel.runEvents.collectAsStateWithLifecycle()
     val isEdit = viewModel.isEdit
@@ -144,6 +145,7 @@ fun AgentBuilderScreen(
                 isEdit = isEdit,
                 canAdvance = form.step != 1 || form.goal.isNotBlank(),
                 canSubmit = form.name.isNotBlank() && form.goal.isNotBlank(),
+                isSaving = isSaving,
                 onBack = viewModel::back,
                 onNext = viewModel::next,
                 onSubmit = viewModel::submit,
@@ -182,6 +184,7 @@ fun AgentBuilderScreen(
                     else -> PlaceStep(
                         form = form,
                         folders = folders,
+                        nameError = nameError,
                         setCategoryId = viewModel::setCategoryId,
                         createFolder = viewModel::createFolder,
                         setFrequency = viewModel::setFrequency,
@@ -312,6 +315,7 @@ private fun WizardFooter(
     isEdit: Boolean,
     canAdvance: Boolean,
     canSubmit: Boolean,
+    isSaving: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit,
     onSubmit: () -> Unit,
@@ -332,7 +336,7 @@ private fun WizardFooter(
         }
         Button(
             onClick = if (step == 4) onSubmit else onNext,
-            enabled = if (step == 4) canSubmit else canAdvance,
+            enabled = if (step == 4) canSubmit && !isSaving else canAdvance,
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
@@ -344,6 +348,7 @@ private fun WizardFooter(
         ) {
             Text(
                 when {
+                    step == 4 && isSaving -> if (isEdit) "Saving…" else "Creating…"
                     step == 4 -> if (isEdit) "Save & schedule" else "Create & schedule"
                     else -> "Next · ${STEP_NAMES[step]}"
                 },
@@ -856,6 +861,7 @@ private fun DryRunWaiting(runEvents: List<RunEvent>) {
 private fun PlaceStep(
     form: BuilderForm,
     folders: List<FolderOption>,
+    nameError: String?,
     setCategoryId: (String?) -> Unit,
     createFolder: (String) -> Unit,
     setFrequency: (AgentFrequency) -> Unit,
@@ -866,6 +872,22 @@ private fun PlaceStep(
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
         QuestionTitle("Schedule ", "it")
         StepHint("Agents live beside your feeds — pick or create the folder it files into.")
+
+        nameError?.let { err ->
+            Text(
+                "⚠ $err",
+                style = SapphireMono.Body,
+                color = palette.Danger,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(palette.Danger.copy(alpha = 0.08f))
+                    .border(1.dp, palette.Danger.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 13.dp, vertical = 11.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+
 
         FieldLabel("Folder")
         FolderDropdown(form = form, folders = folders, onPick = setCategoryId, onCreateFolder = createFolder)

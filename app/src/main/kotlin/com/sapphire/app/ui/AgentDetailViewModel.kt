@@ -3,12 +3,11 @@ package com.sapphire.app.ui
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sapphire.data.agent.AgentRunManager
 import com.sapphire.data.agent.AgentScheduler
 import com.sapphire.domain.agent.AgentJobInput
-import com.sapphire.domain.agent.AgentRepository
-import com.sapphire.domain.agent.AgentRunService
-import com.sapphire.domain.agent.AgentRunService.RunMode
 import com.sapphire.domain.agent.AgentSynthesisItem
+import com.sapphire.domain.agent.AgentRepository
 import com.sapphire.domain.agent.cadenceLabel
 import com.sapphire.domain.agent.nextRunText
 import com.sapphire.domain.model.AgentJob
@@ -70,7 +69,7 @@ private val EMPTY_DETAIL = AgentDetailUi(
 /**
  * Agent detail. Combines the job + its run history + per-job aggregates (the stats strip:
  * items filed, runs, tokens, success rate) + the source tree (folder label). Run-now
- * executes through [AgentRunService] with [RunMode.FILE]; the transient RUNNING pill comes
+ * delegates to the app-scoped [AgentRunManager] (survives back nav); the RUNNING pill comes
  * from [isRunning]. [moveToFolder] re-files the agent's source by re-issuing the full
  * [AgentJobInput] with the new categoryId.
  */
@@ -78,7 +77,7 @@ private val EMPTY_DETAIL = AgentDetailUi(
 class AgentDetailViewModel @Inject constructor(
     private val repository: AgentRepository,
     private val scheduler: AgentScheduler,
-    private val runService: AgentRunService,
+    private val runManager: AgentRunManager,
     private val sourceRepository: SourceRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -94,8 +93,11 @@ class AgentDetailViewModel @Inject constructor(
     private val _runResult = MutableStateFlow<AgentRunResult?>(null)
     val runResult: StateFlow<AgentRunResult?> = _runResult.asStateFlow()
 
-    private val _isRunning = MutableStateFlow(false)
-    val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+    /** True while this job's manual run is in flight — from the shared run manager, so
+     *  it also reflects runs started on the hub and keeps running after back nav. */
+    val isRunning: StateFlow<Boolean> = runManager.runningIds
+        .map { jobId in it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val state: StateFlow<AgentDetailUi> = combine(
         repository.observeJob(jobId),
@@ -137,27 +139,22 @@ class AgentDetailViewModel @Inject constructor(
     }
 
     /**
-     * Run now — executes the agent AND files items to the feed. The RUNNING pill shows
-     * while [isRunning] is set; the result panel summarizes the outcome.
+     * Run now — executes the agent AND files items to the feed, on the app scope so it
+     * survives leaving this screen. The RUNNING pill comes from [isRunning]; the result
+     * panel summarizes the outcome when it lands.
      */
     fun runNow() {
         val job = state.value.job ?: return
         _runResult.value = null
-        _isRunning.value = true
-        viewModelScope.launch {
-            try {
-                val outcome = runService.run(job, RunMode.FILE)
-                _runResult.value = AgentRunResult(
-                    success = outcome.status != AgentRunStatus.FAILED,
-                    durationMs = outcome.durationMs,
-                    itemCount = outcome.itemsFiled,
-                    items = outcome.items.map { it.formatForDisplay() },
-                    error = if (outcome.status != AgentRunStatus.OK) outcome.message else null,
-                )
-                if (outcome.items.isNotEmpty()) _runQueued.value = true
-            } finally {
-                _isRunning.value = false
-            }
+        runManager.runNow(job) { outcome ->
+            _runResult.value = AgentRunResult(
+                success = outcome.status != AgentRunStatus.FAILED,
+                durationMs = outcome.durationMs,
+                itemCount = outcome.itemsFiled,
+                items = outcome.items.map { it.formatForDisplay() },
+                error = if (outcome.status != AgentRunStatus.OK) outcome.message else null,
+            )
+            if (outcome.items.isNotEmpty()) _runQueued.value = true
         }
     }
 

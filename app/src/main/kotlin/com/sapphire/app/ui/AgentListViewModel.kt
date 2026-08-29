@@ -2,11 +2,10 @@ package com.sapphire.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sapphire.data.agent.AgentRunManager
 import com.sapphire.data.agent.AgentScheduler
 import com.sapphire.domain.agent.AgentJobStats
 import com.sapphire.domain.agent.AgentRepository
-import com.sapphire.domain.agent.AgentRunService
-import com.sapphire.domain.agent.AgentRunService.RunMode
 import com.sapphire.domain.agent.cadenceLabel
 import com.sapphire.domain.agent.nextRunText
 import com.sapphire.domain.model.AgentFrequency
@@ -18,10 +17,8 @@ import com.sapphire.domain.source.SourceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -113,22 +110,21 @@ data class AgentListStats(
 /**
  * Agents hub. Combines jobs + per-job stats + last runs + the source tree (folder names)
  * + full run histories (sparklines) into [agents]; [stats] merges totals for the hero
- * strip. Run-now / Run-all execute [AgentRunService] with [RunMode.FILE] sequentially in
- * [viewModelScope]; the transient [AgentStatusUi.RUNNING] state lives in [runningIds]
- * and clears as each run completes.
+ * strip. Run-now / Run-all go through the app-scoped [AgentRunManager] — runs keep going
+ * when the user backs out of the hub; the transient [AgentStatusUi.RUNNING] state is the
+ * manager's [AgentListViewModel.runningIds] and clears as each run completes.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class AgentListViewModel @Inject constructor(
     private val repository: AgentRepository,
     private val scheduler: AgentScheduler,
-    private val runService: AgentRunService,
+    private val runManager: AgentRunManager,
     private val sourceRepository: SourceRepository,
 ) : ViewModel() {
 
-    private val _runningIds = MutableStateFlow<Set<String>>(emptySet())
-    val runningIds: StateFlow<Set<String>> = _runningIds.asStateFlow()
-
+    /** Jobs with a manual run in flight — shared app-wide, so runs survive back nav. */
+    val runningIds: StateFlow<Set<String>> = runManager.runningIds
     /** Full run history per jobId (keyed, so a jobs/history emission race can't misalign). */
     private val runHistories = repository.observeJobs()
         .distinctUntilChanged()
@@ -188,28 +184,14 @@ class AgentListViewModel @Inject constructor(
 
     /** Run one agent now — files items to the feed; RUNNING pill shows until it lands. */
     fun runNow(job: AgentJob) {
-        if (job.id in _runningIds.value) return
-        _runningIds.value = _runningIds.value + job.id
-        viewModelScope.launch {
-            try {
-                runService.run(job, RunMode.FILE)
-            } finally {
-                _runningIds.value = _runningIds.value - job.id
-            }
-        }
+        runManager.runNow(job)
     }
 
-    /** Run every enabled agent, sequentially, in one coroutine. */
+    /** Run every enabled agent, sequentially — one app-scoped coroutine in the manager. */
     fun runAllNow() {
         viewModelScope.launch {
-            repository.observeJobs().first().filter { it.enabled }.forEach { job ->
-                _runningIds.value = _runningIds.value + job.id
-                try {
-                    runService.run(job, RunMode.FILE)
-                } finally {
-                    _runningIds.value = _runningIds.value - job.id
-                }
-            }
+            val enabled = repository.observeJobs().first().filter { it.enabled }
+            runManager.runAll(enabled)
         }
     }
 
