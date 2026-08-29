@@ -26,6 +26,7 @@ import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -93,11 +94,10 @@ private fun RichBlockView(block: RichBlock, translated: String? = null, hideOrig
     // primary text; otherwise show the original (with translation appended in bilingual mode).
     val showTranslationAsPrimary = hideOriginals && !translated.isNullOrEmpty()
     when (block) {
-        // Standalone display math → KaTeX block; mixed prose+inline math → KaTeX rich text.
-        is RichBlock.Paragraph -> when {
-            isDisplayMath(block.plainText()) -> KatexBlock(displayMathLatex(block.plainText()))
-            hasInlineMath(block.plainText()) -> KatexRichText(block.plainText())
-            else -> Column {
+        // Any math-bearing text block renders through the offline KaTeX views; math-free
+        // text keeps its styled Compose spans.
+        is RichBlock.Paragraph -> Column {
+            if (!MathText(block.plainText())) {
                 if (showTranslationAsPrimary) {
                     RichSpanText(listOf(RichSpan.Text(translated!!)), color = palette.ReaderInk)
                 } else {
@@ -107,19 +107,21 @@ private fun RichBlockView(block: RichBlock, translated: String? = null, hideOrig
             }
         }
         is RichBlock.Heading -> Column {
-            if (showTranslationAsPrimary) {
-                RichSpanText(
-                    spans = listOf(RichSpan.Text(translated!!)),
-                    color = palette.OnInk,
-                    base = headingStyle(block.level),
-                )
-            } else {
-                RichSpanText(
-                    spans = block.spans,
-                    color = palette.OnInk,
-                    base = headingStyle(block.level),
-                )
-                TranslatedText(translated)
+            if (!MathText(block.plainText())) {
+                if (showTranslationAsPrimary) {
+                    RichSpanText(
+                        spans = listOf(RichSpan.Text(translated!!)),
+                        color = palette.OnInk,
+                        base = headingStyle(block.level),
+                    )
+                } else {
+                    RichSpanText(
+                        spans = block.spans,
+                        color = palette.OnInk,
+                        base = headingStyle(block.level),
+                    )
+                    TranslatedText(translated)
+                }
             }
         }
         is RichBlock.ListItem -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -130,11 +132,13 @@ private fun RichBlockView(block: RichBlock, translated: String? = null, hideOrig
                 modifier = Modifier.width(18.dp),
             )
             Column(Modifier.weight(1f)) {
-                if (showTranslationAsPrimary) {
-                    RichSpanText(listOf(RichSpan.Text(translated!!)), color = palette.ReaderInk)
-                } else {
-                    RichSpanText(block.spans, color = palette.ReaderInk)
-                    TranslatedText(translated)
+                if (!MathText(block.plainText())) {
+                    if (showTranslationAsPrimary) {
+                        RichSpanText(listOf(RichSpan.Text(translated!!)), color = palette.ReaderInk)
+                    } else {
+                        RichSpanText(block.spans, color = palette.ReaderInk)
+                        TranslatedText(translated)
+                    }
                 }
             }
         }
@@ -165,33 +169,35 @@ private fun RichBlockView(block: RichBlock, translated: String? = null, hideOrig
                     lineHeight = 28.sp,
                 ),
             )
-            if (showTranslationAsPrimary) {
-                // TRANSLATION mode: show only the translated text in the quote.
-                Text(
-                    translated!!,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = palette.AccentBright,
-                )
-            } else {
-                RichSpanText(
-                    block.spans,
-                    color = palette.OnInkMuted,
-                    base = TextStyle(
-                        fontFamily = SapphireFonts.display,
-                        fontStyle = FontStyle.Italic,
-                        fontSize = 16.sp,
-                        lineHeight = 24.sp,
-                    ),
-                )
-                // Translation renders INSIDE the quote box, after the original — no quote
-                // mark, no italic, so it reads as a plain gloss rather than a second quote.
-                if (!translated.isNullOrEmpty()) {
-                    Spacer(Modifier.height(6.dp))
+            if (!MathText(block.plainText())) {
+                if (showTranslationAsPrimary) {
+                    // TRANSLATION mode: show only the translated text in the quote.
                     Text(
-                        translated,
+                        translated!!,
                         style = MaterialTheme.typography.bodyMedium,
                         color = palette.AccentBright,
                     )
+                } else {
+                    RichSpanText(
+                        block.spans,
+                        color = palette.OnInkMuted,
+                        base = TextStyle(
+                            fontFamily = SapphireFonts.display,
+                            fontStyle = FontStyle.Italic,
+                            fontSize = 16.sp,
+                            lineHeight = 24.sp,
+                        ),
+                    )
+                    // Translation renders INSIDE the quote box, after the original — no quote
+                    // mark, no italic, so it reads as a plain gloss rather than a second quote.
+                    if (!translated.isNullOrEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            translated,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = palette.AccentBright,
+                        )
+                    }
                 }
             }
         }
@@ -246,7 +252,30 @@ private fun RichBlockView(block: RichBlock, translated: String? = null, hideOrig
     }
 }
 
-/** The translation of a text block — rendered after the original as a plain accent line. */
+/**
+ * Renders a text block's math when it has any: a standalone display-math block goes to
+ * [KatexBlock]; prose mixed with inline math goes to [KatexRichText]. Returns false for
+ * math-free text so the caller renders its normal styled spans. Translations never carry
+ * LaTeX delimiters, so math-bearing blocks always show the original text. The math
+ * WebViews paint in [SapphirePalette.ReaderInk] — the same color as the surrounding text.
+ */
+@Composable
+private fun MathText(plainText: String): Boolean {
+    val palette = LocalSapphirePalette.current
+    val colorHex = "#%06X".format(palette.ReaderInk.toArgb() and 0xFFFFFF)
+    return when {
+        isDisplayMath(plainText) -> {
+            KatexBlock(displayMathLatex(plainText), colorHex)
+            true
+        }
+        hasInlineMath(plainText) -> {
+            KatexRichText(plainText, colorHex)
+            true
+        }
+        else -> false
+    }
+}
+
 @Composable
 private fun TranslatedText(translated: String?) {
     if (translated.isNullOrEmpty()) return

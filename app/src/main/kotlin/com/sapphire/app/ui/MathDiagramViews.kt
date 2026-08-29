@@ -15,7 +15,6 @@ import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlin.math.ceil
 
 /**
  * Offline KaTeX + Mermaid rendering for reader bodies. The bundles live in
@@ -76,24 +75,25 @@ private object KatexAssets {
 /**
  * A prose paragraph containing inline (or stray display) math, rendered by KaTeX with the
  * text around it as styled spans — one WebView for the whole paragraph. Plain paragraphs
- * never route here, so only math-bearing text pays the WebView cost.
+ * never route here, so only math-bearing text pays the WebView cost. [colorHex] must
+ * match the surrounding Compose text color (the WebView background stays transparent).
  */
 @Composable
-fun KatexRichText(text: String) {
+fun KatexRichText(text: String, colorHex: String = "#D8DEE6") {
     val context = LocalContext.current
     KatexAssets.load(context)
     val html = """
         <!DOCTYPE html><html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>${'$'}{KatexAssets.css}</style>
+        <style>${KatexAssets.css}</style>
         <style>
-          html,body{margin:0;padding:2px 0;background:transparent;color:#D8DEE6;}
+          html,body{margin:0;padding:2px 0;background:transparent;color:${colorHex};}
           #root{font-size:15.5px;line-height:1.7;}
           .katex{font-size:1.05em;}
           .katex-display{margin:0.4em 0;}
         </style></head>
         <body><div id="root"></div>
-        <script>${'$'}{KatexAssets.js}</script>
+        <script>${KatexAssets.js}</script>
         <script>
           (function(){
             var text = ${jsStringLiteral(text)};
@@ -110,6 +110,25 @@ fun KatexRichText(text: String) {
             }
             out += esc(text.slice(last));
             document.getElementById('root').innerHTML = out;
+            window.__fit = function(){
+              var w = window.visualViewport ? window.visualViewport.width : document.documentElement.clientWidth;
+              var els = document.querySelectorAll('.katex-display');
+              for (var i = 0; i < els.length; i++) {
+                var el = els[i];
+                el.style.zoom = 1;
+                // scrollWidth can under-report centered nowrap content; cross-check the
+                // widest .base's right edge (both are viewport-relative from x=0).
+                var cw = el.scrollWidth;
+                var nodes = el.querySelectorAll('.base');
+                for (var j = 0; j < nodes.length; j++) {
+                  var rr = nodes[j].getBoundingClientRect().right;
+                  if (rr > cw) cw = rr;
+                }
+                var k = Math.min(1, w / cw);
+                if (k < 1) el.style.zoom = k;
+              }
+            };
+            __fit();
           })();
         </script></body></html>
     """.trimIndent()
@@ -134,21 +153,26 @@ private fun MeasuringWebView(
     viewId: String,
     minHeightDp: Int = 60,
 ) {
-    val context = LocalContext.current
     var heightPx by remember(viewId) { mutableIntStateOf(0) }
-    val density = context.resources.displayMetrics.density
     AndroidView(
         modifier = Modifier
             .fillMaxWidth()
             .layoutId(viewId)
             .then(
-                if (heightPx > 0) Modifier.height(((ceil(heightPx / density)).toInt().coerceAtLeast(1)).dp)
-                else Modifier.height(minHeightDp.dp),
+                // JS reports content height in CSS px, and a WebView renders 1 CSS px = 1 dp
+                // (its devicePixelRatio equals display density) — adopt as dp directly.
+                // Dividing by density here shrinks the box by ~2.6x and clips the formula's
+                // lower half.
+                if (heightPx > 0) Modifier.height(heightPx.dp) else Modifier.height(minHeightDp.dp),
             ),
         factory = { ctx ->
             WebView(ctx).apply {
                 settings.javaScriptEnabled = true
                 settings.allowFileAccess = true
+                // Pin the layout viewport to the view's real width. In wide-viewport mode
+                // (the default) the page can lay out at its first-measured width (before
+                // reader padding settles) and keep it — clipping ~6% off the right edge.
+                settings.useWideViewPort = false
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 addJavascriptInterface(
                     object {
@@ -192,6 +216,7 @@ private fun MeasuringWebView(
                         // content rect bottom) + slack. Never documentElement.scrollHeight —
                         // it tracks the WebView's viewport and would loop grow->measure->grow.
                         val measure = "function __m(){" +
+                            "if(window.__fit)window.__fit();" +
                             "var b=document.body;" +
                             "var el=document.getElementById('math')||document.getElementById('root')||document.querySelector('.mermaid');" +
                             "var r=el?el.getBoundingClientRect():{bottom:0};" +
@@ -213,24 +238,25 @@ private fun MeasuringWebView(
     )
 }
 
-/** Renders one LaTeX display-math block with KaTeX (offline). */
+/** Renders one LaTeX display-math block with KaTeX (offline); [colorHex] matches the
+ *  surrounding Compose text color (WebView background stays transparent). */
 @Composable
-fun KatexBlock(latex: String) {
+fun KatexBlock(latex: String, colorHex: String = "#D8DEE6") {
     val context = LocalContext.current
     KatexAssets.load(context)
     val html = """
         <!DOCTYPE html><html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>${'$'}{KatexAssets.css}</style>
+        <style>${KatexAssets.css}</style>
         <style>
           html,body{margin:0;padding:8px 2px;background:transparent;}
           #math{display:block;}
-          .katex{font-size:1.12em;color:#D8DEE6;}
+          .katex{font-size:1.12em;color:${colorHex};}
           .katex-display{margin:0.2em 0;}
           .katex-error{color:#F87171;font-family:monospace;font-size:13px;}
         </style></head>
         <body><div id="math"></div>
-        <script>${'$'}{KatexAssets.js}</script>
+        <script>${KatexAssets.js}</script>
         <script>
           try {
             katex.render(${jsStringLiteral(latex)}, document.getElementById("math"), {
@@ -239,6 +265,27 @@ fun KatexBlock(latex: String) {
           } catch(e) {
             document.getElementById("math").textContent = ${jsStringLiteral(latex)};
           }
+          // Display math is nowrap — a formula wider than the viewport would lose its right
+          // side to clipping. zoom (layout-affecting, unlike transform) scales it to fit.
+          window.__fit = function(){
+            var w = window.visualViewport ? window.visualViewport.width : document.documentElement.clientWidth;
+            var els = document.querySelectorAll('.katex-display');
+            for (var i = 0; i < els.length; i++) {
+              var el = els[i];
+              el.style.zoom = 1;
+              // scrollWidth can under-report centered nowrap content; cross-check the
+              // widest .base's right edge (both are viewport-relative from x=0).
+              var cw = el.scrollWidth;
+              var nodes = el.querySelectorAll('.base');
+              for (var j = 0; j < nodes.length; j++) {
+                var rr = nodes[j].getBoundingClientRect().right;
+                if (rr > cw) cw = rr;
+              }
+              var k = Math.min(1, w / cw);
+              if (k < 1) el.style.zoom = k;
+            }
+          };
+          __fit();
         </script></body></html>
     """.trimIndent()
     MeasuringWebView(html = html, viewId = "katex-${latex.hashCode()}")
