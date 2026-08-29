@@ -2,10 +2,13 @@ package com.sapphire.domain.agent
 
 import com.sapphire.domain.model.AgentFrequency
 
-data class AgentTemplateCategory(val id: String, val title: String, val desc: String)
-
+/**
+ * One preset in the wizard's Describe gallery — a concrete, ready-to-tune agent:
+ * emoji icon + editorial name + goal preset + sensible cadence defaults, mirroring
+ * the redesign demo's template grid. Tapping one preloads the form; nothing is locked.
+ */
 data class AgentTemplate(
-    val category: String,
+    val icon: String,
     val name: String,
     val tagline: String,
     val goal: String,
@@ -15,26 +18,66 @@ data class AgentTemplate(
 )
 
 object AgentTemplates {
-    val categories = listOf(
-        AgentTemplateCategory("track", "Track a topic", "Follow an evolving space."),
-        AgentTemplateCategory("digest", "Condense the news", "Rank a flow and format the best of it."),
-        AgentTemplateCategory("learn", "Learn daily", "Recurring micro-content."),
-        AgentTemplateCategory("signal", "Signal extract", "Pull structured fields from a flow."),
-    )
     val all: List<AgentTemplate> = listOf(
-        AgentTemplate("track", "Research tracker", "Papers and breakthroughs, weekly", "Summarize this week notable papers and breakthroughs on [TOPIC].", AgentFrequency.WEEKLY, "07:00", 3),
-        AgentTemplate("track", "Track a technology", "Monitor a framework or tool", "New releases, benchmarks, and notable issues for [TECHNOLOGY].", AgentFrequency.HOURLY_4, "07:00", 3),
-        AgentTemplate("track", "Policy tracker", "Follow rules as they land", "Surface new drafts and enforcement actions on [POLICY AREA].", AgentFrequency.WEEKLY, "07:00", 3),
-        AgentTemplate("digest", "Daily news brief", "Top stories, every morning", "Compile the top 5 stories on [TOPIC] with one-line summaries.", AgentFrequency.DAILY, "07:30", 5),
-        AgentTemplate("digest", "Competitor watch", "What rivals shipped", "Surface product launches and pricing changes from [COMPANIES].", AgentFrequency.WEEKDAY, "08:00", 3),
-        AgentTemplate("digest", "Contrarian read", "Strongest dissent, weekly", "Find the most persuasive dissenting view on [TOPIC].", AgentFrequency.WEEKLY, "07:00", 1),
-        AgentTemplate("learn", "Concept of the day", "One idea, explained", "Teach one [FIELD] concept daily.", AgentFrequency.DAILY, "07:00", 1),
-        AgentTemplate("learn", "Today in history", "Depth on one anniversary", "One notable event from this day in history.", AgentFrequency.DAILY, "07:00", 1),
-        AgentTemplate("learn", "Phrase of the day", "Learn a language", "One useful [LANGUAGE] idiom daily.", AgentFrequency.DAILY, "07:00", 1),
-        AgentTemplate("signal", "Funding rounds", "Log every deal", "Every [SECTOR] funding round over threshold.", AgentFrequency.WEEKLY, "07:00", 5),
-        AgentTemplate("signal", "Job market signal", "Where a role is heading", "Weekly hiring trends for [ROLE].", AgentFrequency.WEEKLY, "07:00", 5),
-        AgentTemplate("signal", "Release tracker", "New media releases", "New [MEDIA] releases this week.", AgentFrequency.WEEKLY, "07:00", 3),
+        AgentTemplate(
+            icon = "🔖", name = "Release Watcher", tagline = "changelogs for Rust, Kubernetes, VS Code",
+            goal = "Watch releases of Rust, Kubernetes, and VS Code; file changelog digests with breaking-change callouts",
+            frequency = AgentFrequency.HOURLY_6, triggerTime = "07:00", maxItems = 3,
+        ),
+        AgentTemplate(
+            icon = "📡", name = "Paper Trail", tagline = "new arXiv cs.CL papers, digested",
+            goal = "Surface new arXiv cs.CL papers about efficient LLM inference; digest the abstract, method, and why it matters",
+            frequency = AgentFrequency.DAILY, triggerTime = "07:00", maxItems = 3,
+        ),
+        AgentTemplate(
+            icon = "🗞", name = "Industry Brief", tagline = "the last 24h of AI industry news",
+            goal = "Synthesize the last 24 hours of AI industry news into a single annotated brief",
+            frequency = AgentFrequency.DAILY, triggerTime = "07:30", maxItems = 5,
+        ),
+        AgentTemplate(
+            icon = "🥊", name = "Competitor Intel", tagline = "OpenAI, Anthropic, Google product moves",
+            goal = "Track product launches, pricing changes, and hiring posts from OpenAI, Anthropic, and Google DeepMind; summarize each move and its signal",
+            frequency = AgentFrequency.WEEKDAY, triggerTime = "08:00", maxItems = 3,
+        ),
+        AgentTemplate(
+            icon = "💰", name = "Funding Radar", tagline = "AI-infrastructure rounds & exits",
+            goal = "Track venture rounds and acquisitions in AI infrastructure; note amount, investors, and the strategic angle",
+            frequency = AgentFrequency.WEEKLY, triggerTime = "07:00", maxItems = 5,
+        ),
+        AgentTemplate(
+            icon = "🚨", name = "Incident Feed", tagline = "CVEs, cloud outages, big breaches",
+            goal = "Monitor security advisories, cloud outages, and breach disclosures affecting AWS, GCP, and widely-deployed open-source projects",
+            frequency = AgentFrequency.HOURLY_2, triggerTime = "07:00", maxItems = 4,
+        ),
+        AgentTemplate(
+            icon = "🔥", name = "Discourse Digest", tagline = "HN & Reddit debates on AI tooling",
+            goal = "Summarize Hacker News and Reddit debates about AI tooling: positions, evidence, and where experts split",
+            frequency = AgentFrequency.WEEKLY, triggerTime = "07:00", maxItems = 3,
+        ),
+        AgentTemplate(
+            icon = "💼", name = "Job Signals", tagline = "ML-platform roles, comp, layoffs",
+            goal = "Track ML-platform job postings, compensation shifts, and layoffs; note location, level, and team",
+            frequency = AgentFrequency.WEEKLY, triggerTime = "07:00", maxItems = 5,
+        ),
+        AgentTemplate(
+            icon = "📉", name = "Price Watch", tagline = "SaaS & cloud pricing changes",
+            goal = "Watch pricing and plan changes for SaaS and cloud services; flag increases, new tiers, and hidden caps",
+            frequency = AgentFrequency.HOURLY_12, triggerTime = "07:00", maxItems = 3,
+        ),
+        AgentTemplate(
+            icon = "⚖️", name = "Policy Radar", tagline = "US & EU AI regulation moves",
+            goal = "Track AI regulation, standards, and court rulings across the US and EU; summarize obligations and timelines",
+            frequency = AgentFrequency.WEEKLY, triggerTime = "07:00", maxItems = 3,
+        ),
+        AgentTemplate(
+            icon = "🗓", name = "Event Scout", tagline = "ML conferences & CFP deadlines",
+            goal = "Surface machine-learning conferences, workshops, and CFP deadlines; note dates, location, and submission cutoffs",
+            frequency = AgentFrequency.WEEKLY, triggerTime = "07:00", maxItems = 3,
+        ),
+        AgentTemplate(
+            icon = "🧠", name = "Concept Lesson", tagline = "one core ML idea, explained",
+            goal = "Teach one core machine-learning concept: intuition first, then mechanics, then where it bites in production",
+            frequency = AgentFrequency.DAILY, triggerTime = "07:00", maxItems = 1,
+        ),
     )
-    val quickStartIndices = listOf(0, 4, 7)
-    fun byCategory(catId: String): List<AgentTemplate> = all.filter { it.category == catId }
 }

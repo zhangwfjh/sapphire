@@ -274,6 +274,9 @@ class AgentRunServiceTest {
         override fun observeJobs(): Flow<List<AgentJob>> = emptyFlow()
         override fun observeJob(id: String): Flow<AgentJob?> = emptyFlow()
         override fun observeRuns(jobId: String): Flow<List<AgentRun>> = emptyFlow()
+        override fun observeJobStats(): Flow<Map<String, AgentJobStats>> = emptyFlow()
+        override fun observeTotals(): Flow<AgentTotals> = emptyFlow()
+        override fun observeLastRuns(): Flow<Map<String, AgentRun>> = emptyFlow()
         override suspend fun create(input: AgentJobInput): String = "new"
         override suspend fun update(id: String, input: AgentJobInput) {}
         override suspend fun setEnabled(id: String, enabled: Boolean) {}

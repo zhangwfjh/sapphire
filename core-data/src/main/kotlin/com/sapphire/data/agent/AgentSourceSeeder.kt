@@ -1,8 +1,10 @@
 package com.sapphire.data.agent
 
+import com.sapphire.data.db.CategoryEntity
 import com.sapphire.data.db.SeedDao
 import com.sapphire.data.db.SourceDao
 import com.sapphire.data.db.SourceEntity
+import com.sapphire.data.db.TopicEntity
 import com.sapphire.domain.model.HealthState
 import com.sapphire.domain.model.SourceKind
 import javax.inject.Inject
@@ -10,13 +12,14 @@ import javax.inject.Singleton
 
 /**
  * Idempotently creates the FK chain an agent's filed items need: a shared "Agents"
- * topic + category, and one [SourceEntity] per job (kind=AGENT_PROMPT). The sourceId
+ * topic, and one [SourceEntity] per job (kind=AGENT_PROMPT) placed in the user-chosen
+ * drawer folder ([categoryId]) — or the shared "Agents" category when null. The sourceId
  * is deterministic (`agent:<jobId>`) so callers reconstruct it without a DB lookup.
  *
- * Called on job create and absorbed into [RoomAgentRepository.fileAgentItems] so filing
- * is safe even when the source row is missing. On job delete, the source is removed by
- * [SourceDao.deleteSource] — CASCADE sweeps its feed items. The shared topic/category
- * outlive individual jobs.
+ * All inserts use IGNORE; calling twice for the same job is a no-op. [moveAgentSource]
+ * re-parents the source when the user changes folders; filed items follow via the
+ * source join. On job delete, the source is removed by [SourceDao.deleteSource] —
+ * CASCADE sweeps its feed items.
  */
 @Singleton
 class AgentSourceSeeder @Inject constructor(
@@ -25,36 +28,33 @@ class AgentSourceSeeder @Inject constructor(
 ) {
 
     /**
-     * Ensure the agent topic, agent category, and this job's source all exist.
-     * All inserts use IGNORE — calling this twice for the same job is a no-op.
+     * Ensure the agent topic, the destination category, and this job's source all exist.
+     * `categoryId = null` seeds/uses the shared "Agents" category.
      */
-    suspend fun ensureAgentSource(jobId: String, jobName: String) {
-        // Shared topic + category — created once, reused by all agents.
+    suspend fun ensureAgentSource(jobId: String, jobName: String, categoryId: String? = null) {
         seedDao.insertTopicIgnore(
-            com.sapphire.data.db.TopicEntity(
-                id = AGENT_TOPIC_ID,
-                phrase = AGENT_TOPIC_PHRASE,
-                createdAt = 0L,
-            ),
+            TopicEntity(id = AGENT_TOPIC_ID, phrase = AGENT_TOPIC_PHRASE, createdAt = 0L),
         )
-        seedDao.insertCategoriesIgnore(
-            listOf(
-                com.sapphire.data.db.CategoryEntity(
-                    id = AGENT_CATEGORY_ID,
-                    topicId = AGENT_TOPIC_ID,
-                    level = 1,
-                    parentId = null,
-                    name = AGENT_CATEGORY_NAME,
-                    sortOrder = 999, // agents sort last in the drawer
+        val resolvedCategoryId = categoryId ?: AGENT_CATEGORY_ID
+        if (categoryId == null) {
+            seedDao.insertCategoriesIgnore(
+                listOf(
+                    CategoryEntity(
+                        id = AGENT_CATEGORY_ID,
+                        topicId = AGENT_TOPIC_ID,
+                        level = 1,
+                        parentId = null,
+                        name = AGENT_CATEGORY_NAME,
+                        sortOrder = 999, // agents sort last in the drawer
+                    ),
                 ),
-            ),
-        )
-        // Per-job source — the FK parent for this agent's filed items.
+            )
+        }
         seedDao.insertSources(
             listOf(
                 SourceEntity(
                     id = sourceIdFor(jobId),
-                    categoryId = AGENT_CATEGORY_ID,
+                    categoryId = resolvedCategoryId,
                     topicId = AGENT_TOPIC_ID,
                     kind = SourceKind.AGENT_PROMPT,
                     url = "agent://$jobId",
@@ -66,6 +66,13 @@ class AgentSourceSeeder @Inject constructor(
                 ),
             ),
         )
+    }
+
+    /** Re-parent this job's source to a different drawer folder (null = shared "Agents"). */
+    suspend fun moveAgentSource(jobId: String, categoryId: String?) {
+        val title = sourceDao.sourcesByIds(listOf(sourceIdFor(jobId))).firstOrNull()?.title ?: "Agent"
+        ensureAgentSource(jobId, title, categoryId)
+        sourceDao.moveSource(sourceIdFor(jobId), categoryId ?: AGENT_CATEGORY_ID)
     }
 
     /** Remove this job's source; CASCADE sweeps its feed items. */

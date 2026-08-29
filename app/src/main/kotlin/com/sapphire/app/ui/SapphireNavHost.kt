@@ -32,6 +32,9 @@ fun SapphireNavHost() {
                 onOpenSaved = { navController.navigate(Routes.SAVED) },
                 onOpenExplore = { navController.navigate(Routes.EXPLORE) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenAgents = { navController.navigate(Routes.AGENTS) },
+                onOpenAgentDetail = { jobId -> navController.navigate(Routes.agentDetail(jobId)) },
+                onEditAgent = { jobId -> navController.navigate(Routes.agentBuilder(jobId)) },
             )
         }
         composable(
@@ -70,7 +73,17 @@ fun SapphireNavHost() {
             route = Routes.AGENT_BUILDER,
             arguments = listOf(navArgument("jobId") { type = NavType.StringType }),
         ) {
-            AgentBuilderScreen(onBack = { navController.popBackStack() })
+            AgentBuilderScreen(
+                onBack = { navController.popBackStack() },
+                onCreated = { id ->
+                    // Drop the builder entry so back from detail lands on the page below
+                    // (hub/feed) instead of returning to the finished wizard.
+                    val builderDestId = navController.currentBackStackEntry?.destination?.id
+                    navController.navigate(Routes.agentDetail(id)) {
+                        builderDestId?.let { dest -> popUpTo(dest) { inclusive = true } }
+                    }
+                },
+            )
         }
         composable(
             route = Routes.AGENT_DETAIL,

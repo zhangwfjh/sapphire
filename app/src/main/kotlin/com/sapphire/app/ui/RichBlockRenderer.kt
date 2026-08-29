@@ -93,12 +93,17 @@ private fun RichBlockView(block: RichBlock, translated: String? = null, hideOrig
     // primary text; otherwise show the original (with translation appended in bilingual mode).
     val showTranslationAsPrimary = hideOriginals && !translated.isNullOrEmpty()
     when (block) {
-        is RichBlock.Paragraph -> Column {
-            if (showTranslationAsPrimary) {
-                RichSpanText(listOf(RichSpan.Text(translated!!)), color = palette.ReaderInk)
-            } else {
-                RichSpanText(block.spans, color = palette.ReaderInk)
-                TranslatedText(translated)
+        // Standalone display math → KaTeX block; mixed prose+inline math → KaTeX rich text.
+        is RichBlock.Paragraph -> when {
+            isDisplayMath(block.plainText()) -> KatexBlock(displayMathLatex(block.plainText()))
+            hasInlineMath(block.plainText()) -> KatexRichText(block.plainText())
+            else -> Column {
+                if (showTranslationAsPrimary) {
+                    RichSpanText(listOf(RichSpan.Text(translated!!)), color = palette.ReaderInk)
+                } else {
+                    RichSpanText(block.spans, color = palette.ReaderInk)
+                    TranslatedText(translated)
+                }
             }
         }
         is RichBlock.Heading -> Column {
@@ -190,7 +195,9 @@ private fun RichBlockView(block: RichBlock, translated: String? = null, hideOrig
                 }
             }
         }
-        is RichBlock.Code -> Column(
+        is RichBlock.Code -> if (isMermaidDefinition(block.text)) {
+            MermaidDiagram(mermaidDefinition(block.text))
+        } else Column(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))

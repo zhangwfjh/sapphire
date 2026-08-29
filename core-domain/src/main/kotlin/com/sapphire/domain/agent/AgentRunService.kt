@@ -47,11 +47,15 @@ class AgentRunService @Inject constructor(
         val error: LlmError?,
     )
 
-    suspend fun run(job: AgentJob, mode: RunMode): AgentRunOutcome {
+    suspend fun run(
+        job: AgentJob,
+        mode: RunMode,
+        onEvent: ((phase: String, detail: String) -> Unit)? = null,
+    ): AgentRunOutcome {
         val start = System.currentTimeMillis()
         return try {
             val previouslyFiled = repository.recentlyFiledUrls(job.id)
-            when (val outcome = loop.run(job, previouslyFiled)) {
+            when (val outcome = loop.run(job, previouslyFiled, onEvent)) {
                 is LlmOutcome.Ok -> {
                     val kept = rerank.rerank(outcome.value.items, previouslyFiled)
                     complete(job, mode, kept, start)

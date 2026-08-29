@@ -19,6 +19,8 @@ data class AgentJob(
     val maxItems: Int,
     val frequency: AgentFrequency,
     val triggerTime: String,
+    /** Drawer folder this agent's source + filed items live in; null = shared "Agents" folder. */
+    val categoryId: String? = null,
     val enabled: Boolean,
     val nextRunIntentEpochMs: Long?,
     val createdAt: Long,

@@ -23,6 +23,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
@@ -105,6 +110,10 @@ private sealed interface DrawerDialog {
  * menu button. Renders the single-level folder list (folders → sources). Tapping a folder
  * or source filters the timeline; "All Feeds" clears it. Read Later is a drawer destination.
  *
+ * Agent tier (redesign): agent source rows carry a ✦ badge, a live status dot, a cadence
+ * label, and a chevron that opens [AgentQuickPanel] — a bottom sheet with status, stats,
+ * and Run/Pause. An "Agents" hub row routes to the agents hub via [onOpenAgents].
+ *
  * Source row gestures: long-press or swipe-left opens a context menu (Edit / Move / Select
  * / Remove); swipe-right marks all of the source's items as read, surfaced with an Undo
  * snackbar. Folders keep their inline Add/Rename/Delete buttons and show an unread badge.
@@ -123,10 +132,19 @@ fun SourcesDrawer(
     onClearFilter: () -> Unit = {},
     onOpenSaved: () -> Unit = {},
     onOpenExplore: () -> Unit = {},
+    onOpenAgents: () -> Unit = {},
+    onOpenAgentDetail: (jobId: String) -> Unit = {},
+    onEditAgent: (jobId: String) -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val tree by viewModel.tree.collectAsStateWithLifecycle()
     val conflict by viewModel.conflict.collectAsStateWithLifecycle()
+    val agentRows by viewModel.agentRows.collectAsStateWithLifecycle()
+    val panels by viewModel.panels.collectAsStateWithLifecycle()
+    val hubBadge by viewModel.hubBadge.collectAsStateWithLifecycle()
+
+    // Quick-panel target: jobId of the agent whose sheet is open (null = closed).
+    var panelJobId by remember { mutableStateOf<String?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(conflict) {
@@ -162,6 +180,8 @@ fun SourcesDrawer(
                     tree = tree,
                     selectedSources = selectedSources,
                     inSelection = inSourceSelection,
+                    agentRows = agentRows,
+                    hubBadge = hubBadge,
                     onToggleSelectSource = { id -> selectedSources[id] = selectedSources[id] != true },
                     onClearSelection = { selectedSources.clear() },
                     onBatchMove = { dialog = DrawerDialog.BatchMoveSources(selectedSources.filter { it.value }.keys.toSet()) },
@@ -179,10 +199,12 @@ fun SourcesDrawer(
                     onMarkAllReadInSourceGroup = { sourceIds, label -> viewModel.markAllReadInSourceGroup(sourceIds, label) },
                     onCategoryClick = onCategoryClick,
                     onSourceGroupClick = onSourceGroupClick,
-    onSourceClick = onSourceClick,
-    onClearFilter = onClearFilter,
-    onOpenSaved = onOpenSaved,
+                    onSourceClick = onSourceClick,
+                    onClearFilter = onClearFilter,
+                    onOpenSaved = onOpenSaved,
                     onOpenExplore = onOpenExplore,
+                    onOpenAgents = onOpenAgents,
+                    onOpenAgentPanel = { jobId -> panelJobId = jobId },
                 )
             },
         ) {
@@ -195,6 +217,20 @@ fun SourcesDrawer(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
         )
+    }
+
+    panelJobId?.let { jobId ->
+        panels[jobId]?.let { panel ->
+            AgentQuickPanel(
+                panel = panel,
+                onDismiss = { panelJobId = null },
+                onRunNow = { viewModel.runAgentNow(jobId) },
+                onPause = { viewModel.setAgentPaused(jobId, paused = true) },
+                onResume = { viewModel.setAgentPaused(jobId, paused = false) },
+                onEdit = { onEditAgent(jobId) },
+                onOpenDetail = { onOpenAgentDetail(jobId) },
+            )
+        }
     }
 
     when (val d = dialog) {
@@ -300,6 +336,8 @@ private fun DrawerSheetContent(
     tree: List<SourceFolderNode>,
     selectedSources: androidx.compose.runtime.snapshots.SnapshotStateMap<String, Boolean>,
     inSelection: Boolean,
+    agentRows: Map<String, AgentDrawerRowUi>,
+    hubBadge: AgentHubBadge,
     onToggleSelectSource: (String) -> Unit,
     onClearSelection: () -> Unit,
     onBatchMove: () -> Unit,
@@ -320,6 +358,8 @@ private fun DrawerSheetContent(
     onSourceClick: (sourceId: String, label: String) -> Unit,
     onClearFilter: () -> Unit,
     onOpenSaved: () -> Unit,
+    onOpenAgents: () -> Unit,
+    onOpenAgentPanel: (jobId: String) -> Unit,
     onOpenExplore: () -> Unit,
 ) {
     val palette = LocalSapphirePalette.current
@@ -365,6 +405,9 @@ private fun DrawerSheetContent(
             }
             item(key = "read-later") {
                 ReadLaterRow(onClick = onOpenSaved)
+            }
+            item(key = "agents-hub") {
+                AgentsHubRow(badge = hubBadge, onClick = onOpenAgents)
             }
             if (tree.isEmpty()) {
                 item(key = "empty-state") {
@@ -414,8 +457,8 @@ private fun DrawerSheetContent(
                                     SourceRow(
                                         source = node.source,
                                         counts = node.counts,
-                                        selected = selectedSources[node.source.id] == true,
-                                        inSelection = inSelection,
+                                        agentRow = agentRows[node.source.id],
+                                        onOpenAgentPanel = onOpenAgentPanel,
                                         onEdit = { onEditSource(node.source) },
                                         onMove = { onMoveSource(node.source) },
                                         onDelete = { onDeleteSource(node.source.id, node.source.title ?: node.source.url) },
@@ -479,8 +522,8 @@ private fun DrawerSheetContent(
                                             SourceRow(
                                                 source = node.source,
                                                 counts = node.counts,
-                                                selected = selectedSources[node.source.id] == true,
-                                                inSelection = inSelection,
+                                                agentRow = agentRows[node.source.id],
+                                                onOpenAgentPanel = onOpenAgentPanel,
                                                 onEdit = { onEditSource(node.source) },
                                                 onMove = { onMoveSource(node.source) },
                                                 onDelete = { onDeleteSource(node.source.id, node.source.title ?: node.source.url) },
@@ -751,8 +794,6 @@ private fun DomainGroupHeader(
         )
         // Unread count + mark-all-read — only when there are unread items.
         if (unreadCount > 0) {
-            Spacer(Modifier.width(6.dp))
-            Text(unreadCount.toString(), style = SapphireMono.Label, color = palette.AccentBright)
             Spacer(Modifier.width(2.dp))
             IconButton(onClick = onMarkAllRead, modifier = Modifier.size(24.dp)) {
                 Icon(Icons.Filled.DoneAll, contentDescription = "Mark all as read", tint = palette.AccentBright, modifier = Modifier.size(16.dp))
@@ -784,6 +825,8 @@ private fun SourceRow(
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     counts: com.sapphire.domain.source.SourceCounts? = null,
+    agentRow: AgentDrawerRowUi? = null,
+    onOpenAgentPanel: (jobId: String) -> Unit = {},
     selected: Boolean = false,
     inSelection: Boolean = false,
     indent: Int = 0,
@@ -873,6 +916,10 @@ private fun SourceRow(
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(6.dp))
+            } else if (agentRow != null) {
+                // Agent row: ✦ badge instead of the RSS glyph.
+                Text("✦", style = SapphireMono.Label, color = palette.AccentBright, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(6.dp))
             } else {
                 Icon(
                     Icons.Outlined.RssFeed,
@@ -890,13 +937,37 @@ private fun SourceRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (source.healthState == com.sapphire.domain.model.HealthState.FAILED) {
-                Box(Modifier.size(5.dp).clip(androidx.compose.foundation.shape.CircleShape).background(palette.Danger))
-                Spacer(Modifier.width(4.dp))
-            }
-            if (!inSelection && counts != null && counts.unread > 0) {
-                Text(formatCounts(counts), style = SapphireMono.Label, color = palette.Accent)
-                Spacer(Modifier.width(4.dp))
+            if (agentRow != null) {
+                // Cadence label + live status dot + quick-panel chevron.
+                Text(agentRow.cadenceShort, style = SapphireMono.Label, color = palette.OnInkFaint)
+                Spacer(Modifier.width(6.dp))
+                AgentStatusDot(agentRow.status)
+                Spacer(Modifier.width(2.dp))
+                if (!inSelection) {
+                    Box(
+                        Modifier
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .clickable { onOpenAgentPanel(agentRow.jobId) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.ExpandMore,
+                            contentDescription = "Agent quick panel",
+                            tint = palette.OnInkFaint,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            } else {
+                if (source.healthState == com.sapphire.domain.model.HealthState.FAILED) {
+                    Box(Modifier.size(5.dp).clip(androidx.compose.foundation.shape.CircleShape).background(palette.Danger))
+                    Spacer(Modifier.width(4.dp))
+                }
+                if (!inSelection && counts != null && counts.unread > 0) {
+                    Text(formatCounts(counts), style = SapphireMono.Label, color = palette.Accent)
+                    Spacer(Modifier.width(4.dp))
+                }
             }
         }
 
@@ -1266,3 +1337,284 @@ private fun KindPicker(selected: SourceKind, onSelect: (SourceKind) -> Unit) {
 /** Unread count compact label per source, e.g. "3". Callers hide it when zero. */
 private fun formatCounts(counts: com.sapphire.domain.source.SourceCounts): String =
     counts.unread.toString()
+
+// ---- Agent tier (redesign): shared status visuals, hub row, quick panel ----
+
+/** Status → color. Shared by the pill, the dot, and the quick-panel run line. */
+@Composable
+internal fun agentStatusColor(status: AgentStatusUi): androidx.compose.ui.graphics.Color {
+    val palette = LocalSapphirePalette.current
+    return when (status) {
+        AgentStatusUi.RUNNING -> palette.AccentBright
+        AgentStatusUi.OK -> palette.AccentBright
+        AgentStatusUi.EMPTY -> palette.OnInkFaint
+        AgentStatusUi.FAILED -> palette.Danger
+        AgentStatusUi.PAUSED -> palette.OnInkFaint
+        AgentStatusUi.IDLE -> palette.OnInkFaint
+    }
+}
+
+/** Shared agent status pill (hub cards, detail header, quick panel). */
+@Composable
+internal fun AgentStatusPill(status: AgentStatusUi) {
+    val palette = LocalSapphirePalette.current
+    val color = agentStatusColor(status)
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(5.dp))
+            .background(color.copy(alpha = 0.12f))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Box(Modifier.size(5.dp).clip(RoundedCornerShape(1.dp)).background(color))
+        Text(
+            when (status) {
+                AgentStatusUi.RUNNING -> "RUNNING"
+                AgentStatusUi.OK -> "OK"
+                AgentStatusUi.EMPTY -> "EMPTY"
+                AgentStatusUi.FAILED -> "FAILED"
+                AgentStatusUi.PAUSED -> "PAUSED"
+                AgentStatusUi.IDLE -> "IDLE"
+            },
+            style = SapphireMono.Label,
+            color = color,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+/** Live status dot for drawer agent rows. */
+@Composable
+internal fun AgentStatusDot(status: AgentStatusUi) {
+    Box(Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape).background(agentStatusColor(status)))
+}
+
+/**
+ * The drawer's "Agents" hub entry — accent-tinted card between the nav rows and the
+ * Folders section, with a live "n active · m need attention" sublabel.
+ */
+@Composable
+private fun AgentsHubRow(badge: AgentHubBadge, onClick: () -> Unit) {
+    val palette = LocalSapphirePalette.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(palette.Accent.copy(alpha = 0.08f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+    ) {
+        Box(
+            Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(palette.AccentDeep),
+            contentAlignment = Alignment.Center,
+        ) { Text("✦", color = palette.OnInk, style = SapphireMono.Label) }
+        Column(Modifier.weight(1f)) {
+            Text("Agents", style = MaterialTheme.typography.titleSmall, color = palette.OnInk, fontWeight = FontWeight.SemiBold)
+            Text(
+                buildString {
+                    append("${badge.active} active")
+                    if (badge.attention > 0) append(" · ${badge.attention} need${if (badge.attention == 1) "s" else ""} attention")
+                },
+                style = SapphireMono.Label,
+                color = palette.OnInkMuted,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = "Open agents hub",
+            tint = palette.AccentBright,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/**
+ * Agent quick panel (Tier 2) — a [ModalBottomSheet] opened by the chevron on an agent
+ * source row. Status pill, last/next run, items filed, tokens, the two most-recent
+ * filed items (or last run message), and Run/Pause/Resume + Edit + Open-detail.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AgentQuickPanel(
+    panel: AgentPanelUi,
+    onDismiss: () -> Unit,
+    onRunNow: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onEdit: () -> Unit,
+    onOpenDetail: () -> Unit,
+) {
+    val palette = LocalSapphirePalette.current
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = palette.InkElevated,
+        contentColor = palette.OnInk,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp).padding(bottom = 22.dp)) {
+            // Identity row: orb + name/folder/cadence meta + status pill.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                Box(
+                    Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(palette.AccentDeep),
+                    contentAlignment = Alignment.Center,
+                ) { Text("✦", color = palette.AccentBright, style = MaterialTheme.typography.titleMedium) }
+                Column(Modifier.weight(1f)) {
+                    Text(panel.job.name, style = MaterialTheme.typography.titleMedium, color = palette.OnInk, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "✦ agent · ${panel.folderLabel} · ${panel.cadenceShort}",
+                        style = SapphireMono.Label,
+                        color = palette.OnInkFaint,
+                        modifier = Modifier.padding(top = 3.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                AgentStatusPill(panel.status)
+            }
+            if (panel.status == AgentStatusUi.RUNNING) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(palette.Accent.copy(alpha = 0.07f))
+                        .padding(horizontal = 13.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    AgentStatusDot(AgentStatusUi.RUNNING)
+                    Text("RUNNING", style = SapphireMono.Label, color = palette.AccentBright, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    Text("searching & synthesizing…", style = SapphireMono.Label, color = palette.OnInkMuted)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            // 2×2 stat cells.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                PanelCell(Modifier.weight(1f), "LAST RUN", panel.lastRunLabel)
+                PanelCell(Modifier.weight(1f), "NEXT RUN", panel.nextRun)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                PanelCell(Modifier.weight(1f), "ITEMS FILED", panel.itemsFiled.toString())
+                PanelCell(Modifier.weight(1f), "TOKENS", panel.tokensLabel)
+            }
+            // Recent filings — 2 most-recent titles, or the last run's message.
+            if (panel.recentFiled.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(palette.Ink).padding(horizontal = 12.dp),
+                ) {
+                    panel.recentFiled.forEach { filed ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                filed.title,
+                                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                                color = palette.OnInkMuted,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(filed.whenLabel, style = SapphireMono.Label, color = palette.OnInkFaint)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            // Primary actions: Run now (or Resume when paused), Pause.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.material3.Button(
+                    onClick = if (panel.status == AgentStatusUi.PAUSED) onResume else onRunNow,
+                    enabled = panel.status != AgentStatusUi.RUNNING,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = palette.Accent),
+                ) {
+                    Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        when {
+                            panel.status == AgentStatusUi.RUNNING -> "Running…"
+                            panel.status == AgentStatusUi.PAUSED -> "Resume"
+                            else -> "Run now"
+                        },
+                        color = palette.OnInk,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                if (panel.status != AgentStatusUi.PAUSED && panel.status != AgentStatusUi.RUNNING) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = onPause,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = palette.OnInk),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.InkStroke),
+                    ) {
+                        Icon(Icons.Filled.Pause, null, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text("Pause")
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            // Secondary: Edit (wizard) + Open detail.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.material3.OutlinedButton(
+                    onClick = onEdit,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = palette.OnInkMuted),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, palette.InkStroke),
+                ) {
+                    Icon(Icons.Filled.Edit, null, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text("Edit")
+                }
+                androidx.compose.material3.OutlinedButton(
+                    onClick = onOpenDetail,
+                    modifier = Modifier.weight(2f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = palette.OnInk),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, palette.InkStroke),
+                ) {
+                    Text("Open detail")
+                    Spacer(Modifier.width(7.dp))
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, modifier = Modifier.size(15.dp))
+                }
+            }
+        }
+    }
+}
+
+/** One stat cell in the quick panel's 2×2 grid. */
+@Composable
+private fun PanelCell(modifier: Modifier, label: String, value: String) {
+    val palette = LocalSapphirePalette.current
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.Ink)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(label, style = SapphireMono.Label, color = palette.OnInkFaint)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = palette.OnInk,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}

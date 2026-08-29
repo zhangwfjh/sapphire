@@ -118,6 +118,9 @@ fun TimelineScreen(
     onOpenSaved: () -> Unit = {},
     onOpenExplore: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    onOpenAgents: () -> Unit = {},
+    onOpenAgentDetail: (jobId: String) -> Unit = {},
+    onEditAgent: (jobId: String) -> Unit = {},
 ) {
     val timeline by viewModel.visibleTimeline.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -202,6 +205,18 @@ fun TimelineScreen(
         onOpenExplore = {
             sourcesDrawerScope.launch { sourcesDrawerState.close() }
             onOpenExplore()
+        },
+        onOpenAgents = {
+            sourcesDrawerScope.launch { sourcesDrawerState.close() }
+            onOpenAgents()
+        },
+        onOpenAgentDetail = { jobId ->
+            sourcesDrawerScope.launch { sourcesDrawerState.close() }
+            onOpenAgentDetail(jobId)
+        },
+        onEditAgent = { jobId ->
+            sourcesDrawerScope.launch { sourcesDrawerState.close() }
+            onEditAgent(jobId)
         },
     ) {
 

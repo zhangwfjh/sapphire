@@ -19,7 +19,9 @@ data class AgentJobEntity(
     @ColumnInfo(name = "max_items") val maxItems: Int,
     @ColumnInfo(name = "frequency") val frequency: AgentFrequency,
     @ColumnInfo(name = "trigger_time") val triggerTime: String,
-    @ColumnInfo(name = "enabled") val enabled: Boolean,
+    /** Drawer folder for this agent's source; null = shared "Agents" folder. */
+    @ColumnInfo(name = "category_id") val categoryId: String? = null,
+    @ColumnInfo(name = "enabled") val enabled: Boolean = true,
     @ColumnInfo(name = "next_run_intent_epoch_ms") val nextRunIntentEpochMs: Long? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
 )

@@ -6,8 +6,10 @@ import com.sapphire.data.db.AgentRunDao
 import com.sapphire.data.db.AgentRunEntity
 import com.sapphire.data.db.FeedDao
 import com.sapphire.domain.agent.AgentJobInput
+import com.sapphire.domain.agent.AgentJobStats
 import com.sapphire.domain.agent.AgentRepository
 import com.sapphire.domain.agent.AgentSynthesisItem
+import com.sapphire.domain.agent.AgentTotals
 import com.sapphire.domain.model.AgentJob
 import com.sapphire.domain.model.AgentRun
 import com.sapphire.domain.model.AgentRunStatus
@@ -37,6 +39,22 @@ class RoomAgentRepository @Inject constructor(
     override fun observeRuns(jobId: String): Flow<List<AgentRun>> =
         runDao.observeForJob(jobId).map { list -> list.map { it.toDomain() } }
 
+    override fun observeJobStats(): Flow<Map<String, AgentJobStats>> =
+        jobDao.observeJobStats().map { rows ->
+            rows.associate { it.jobId to AgentJobStats(it.itemsFiled, it.totalRuns, it.tokensUsed) }
+        }
+
+    override fun observeTotals(): Flow<AgentTotals> =
+        jobDao.observeJobStats().map { rows ->
+            AgentTotals(
+                itemsFiled = rows.sumOf { it.itemsFiled },
+                totalRuns = rows.sumOf { it.totalRuns },
+            )
+        }
+
+    override fun observeLastRuns(): Flow<Map<String, AgentRun>> =
+        jobDao.observeLastRuns().map { list -> list.map { it.toDomain() }.associateBy { it.jobId } }
+
     override suspend fun create(input: AgentJobInput): String = withContext(Dispatchers.IO) {
         val id = ids.uuid()
         val now = System.currentTimeMillis()
@@ -53,7 +71,7 @@ class RoomAgentRepository @Inject constructor(
             ),
         )
         // Ensure the FK source exists so the worker can file items.
-        sourceSeeder.ensureAgentSource(id, input.name)
+        sourceSeeder.ensureAgentSource(id, input.name, input.categoryId)
         id
     }
 
@@ -68,7 +86,9 @@ class RoomAgentRepository @Inject constructor(
             maxItems = input.maxItems,
             frequency = input.frequency,
             triggerTime = input.triggerTime,
+            categoryId = input.categoryId,
         )
+        sourceSeeder.moveAgentSource(id, input.categoryId)
     }
 
     override suspend fun setEnabled(id: String, enabled: Boolean) = withContext(Dispatchers.IO) {
@@ -105,7 +125,10 @@ class RoomAgentRepository @Inject constructor(
      * (idempotent IGNORE inserts) so filing is safe even when the source row is missing.
      */
     override suspend fun fileAgentItems(jobId: String, items: List<AgentSynthesisItem>, agentName: String): Int = withContext(Dispatchers.IO) {
-        sourceSeeder.ensureAgentSource(jobId, agentName)
+        // Placement follows the job row (null → shared Agents folder); the source row is
+        // ensured with the same resolution so source and items always agree.
+        val categoryId = jobDao.getById(jobId)?.categoryId
+        sourceSeeder.ensureAgentSource(jobId, agentName, categoryId)
         val now = System.currentTimeMillis()
         val sourceId = sourceSeeder.sourceIdFor(jobId)
         val entities = items.mapIndexed { i, item ->
@@ -122,7 +145,7 @@ class RoomAgentRepository @Inject constructor(
             com.sapphire.data.db.FeedItemEntity(
                 hashUuid = hashUuid,
                 sourceId = sourceId,
-                categoryId = AgentSourceSeeder.AGENT_CATEGORY_ID,
+                categoryId = categoryId ?: AgentSourceSeeder.AGENT_CATEGORY_ID,
                 title = item.title,
                 summary = item.summary,
                 bodyRaw = bodyWithSources,
@@ -151,6 +174,7 @@ class RoomAgentRepository @Inject constructor(
         frequency = frequency,
         triggerTime = triggerTime,
         maxItems = maxItems,
+        categoryId = categoryId,
         enabled = enabled,
         nextRunIntentEpochMs = nextRunIntentEpochMs,
         createdAt = createdAt,
@@ -176,6 +200,7 @@ class RoomAgentRepository @Inject constructor(
         frequency = frequency,
         triggerTime = triggerTime,
         maxItems = maxItems,
+        categoryId = categoryId,
         enabled = true,
         nextRunIntentEpochMs = null,
         createdAt = createdAt,

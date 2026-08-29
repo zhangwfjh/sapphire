@@ -27,6 +27,8 @@ object DirectiveAssembler {
         "OUTPUT REQUIREMENTS (always apply):\n" +
         "- Each item MUST have: a title (under 80 chars, plain text), a one-line summary (plain text), a body (HTML), and a source URL.\n" +
         "- The body must be valid HTML: use <h2> for headings, <p> for paragraphs, <ul><li>/<ol><li> for lists, <blockquote> for quotes, <strong>/<em> for emphasis. No wrapper tags (<html>/<body>) — just content tags.\n" +
+        "- Math: when the content is mathematical, write LaTeX source — $$...$$ for display math, \\(...\\) or single-dollar $...$ for inline math. Use LaTeX commands for every symbol: \\sum, \\alpha, \\times, \\leq, \\sqrt, \\frac{a}{b}. NEVER use unicode math characters (∑ α × ≤ √ ∞) or plain-text approximations (x^2, sqrt(n), a/b) — always the LaTeX command form.\n" +
+        "- Images: covers and inline figures are attached automatically from images on the pages you fetched — write the body so those visuals fit where they appear; never reference or invent image URLs yourself.\n" +
         "- Write rich, substantive content: full paragraphs explaining key ideas in depth. Aim for at least 300-500 words for single-item digests.\n" +
         "- Default to prose paragraphs. Use bullet lists only when the FORMAT field explicitly requests them.\n" +
         "- Produce at most " + maxItems + " item(s) per run."

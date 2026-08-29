@@ -63,7 +63,7 @@ class AgentDaoTest {
             id = "id1", name = "Renamed", goal = "new goal",
             task = "new task", format = "new format", rules = "new rules",
             maxItems = 5, frequency = com.sapphire.domain.model.AgentFrequency.DAILY,
-            triggerTime = "09:30",
+            triggerTime = "09:30", categoryId = null,
         )
         val row = jobs.getById("id1")!!
         assertEquals("Renamed", row.name)

@@ -60,7 +60,7 @@ class JsoupRichContentParser @Inject constructor() : RichContentParser {
             "h1", "h2", "h3", "h4", "h5", "h6" ->
                 out.add(RichBlock.Heading(level = el.tagName().last().digitToInt(), spans = spansOf(el)))
             "blockquote" -> out.add(RichBlock.Quote(spans = flattenInline(el)))
-            "pre" -> out.add(RichBlock.Code(text = el.text()))
+            "pre" -> out.add(RichBlock.Code(text = codeTextOf(el)))
             "ul", "ol" -> {
                 val ordered = el.tagName() == "ol"
                 el.select("> li").forEachIndexed { i, li ->
@@ -101,6 +101,18 @@ class JsoupRichContentParser @Inject constructor() : RichContentParser {
         val src = (el.attr("src").ifBlank { el.attr("data-src") }).trim()
         val alt = el.attr("alt").takeIf { it.isNotBlank() }
         return RichBlock.Image(url = src, alt = alt, caption = caption)
+    }
+
+    /**
+     * Code text with the language marker preserved: a `<code class="language-mermaid">`
+     * child (or a first line that already says "mermaid", as markdown-in-HTML often does)
+     * prefixes the definition so the renderer can route it to the diagram view.
+     */
+    private fun codeTextOf(el: Element): String {
+        val code = el.selectFirst("code")
+        val text = code?.text() ?: el.text()
+        val lang = code?.attr("class")?.substringAfter("language-", "")?.trim().orEmpty()
+        return if (lang.equals("mermaid", ignoreCase = true)) "mermaid\n$text" else text
     }
 
     /** Inline span list for an element's children, preserving nesting. */

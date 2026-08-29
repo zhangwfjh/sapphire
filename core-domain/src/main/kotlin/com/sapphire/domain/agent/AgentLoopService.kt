@@ -52,8 +52,9 @@ class AgentLoopService(
     suspend fun run(
         job: AgentJob,
         previouslyFiledUrls: List<String> = emptyList(),
+        /** Live progress (phase, detail) — surfaced by the wizard's Preview while the loop works. */
+        onEvent: ((phase: String, detail: String) -> Unit)? = null,
     ): LlmOutcome<AgentSynthesisResult> {
-        val budget = LoopBudget()
         val systemPrompt = buildSystemPrompt(job.maxItems)
         val tools = TOOL_DEFINITIONS
         val conversation = mutableListOf<ToolMessage>(
@@ -75,7 +76,7 @@ class AgentLoopService(
         var iterations = 0       // absolute guard — the loop can never spin unbounded
         var finalizeRepairs = 0  // malformed-finalize repair rounds used (max 1)
         var fetchNudgeUsed = false
-
+        val budget = LoopBudget()
         while (toolRounds < budget.maxRounds) {
             if (++iterations > budget.maxRounds * 3 + 10) break
             val turn = llm.completeWithTools(
@@ -110,6 +111,7 @@ class AgentLoopService(
 
             // Dispatch each tool call, append results to the conversation.
             for (call in result.toolCalls) {
+                onEvent?.let { emit_ -> eventFor(call, emit_) }
                 val toolResult = when (call.name) {
                     "web_search" -> {
                         if (searchCount >= budget.maxSearches) {
@@ -153,6 +155,7 @@ class AgentLoopService(
                                     """{"error":"you have not fetched any page yet — snippets are not enough to ground a digest. Call fetch_page on the most promising result, then call finalize."}""",
                                 )
                             } else {
+                                onEvent?.invoke(EVENT_WRITE, "composing the article")
                                 return LlmOutcome.Ok(accept(items, seenUrls, job.maxItems, pageImages))
                             }
                         }
@@ -180,6 +183,30 @@ class AgentLoopService(
 
         // Tool rounds exhausted without finalize — force one more turn that must finalize.
         return forceFinalize(systemPrompt, conversation, tools, seenUrls, pageImages, job.maxItems)
+    }
+
+    /** Maps a tool call to a human-readable progress event for live UIs. */
+    private fun eventFor(call: ToolCall, emit: (String, String) -> Unit) {
+        when (call.name) {
+            "web_search" -> {
+                val q = argString(call, "query")
+                emit(EVENT_SEARCH, q?.take(80) ?: "the web")
+            }
+            "fetch_page" -> emit(EVENT_FETCH, hostOf(argString(call, "url")))
+            "fetch_page_section" -> emit(EVENT_FETCH, hostOf(argString(call, "url")) + " · continued")
+            "finalize" -> emit(EVENT_WRITE, "composing the article")
+        }
+    }
+
+    private fun argString(call: ToolCall, key: String): String? = runCatching {
+        val obj = kotlinx.serialization.json.Json.parseToJsonElement(call.arguments)
+            as? kotlinx.serialization.json.JsonObject ?: return@runCatching null
+        (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.content
+    }.getOrNull()
+
+    private fun hostOf(url: String?): String {
+        if (url.isNullOrBlank()) return "a page"
+        return url.substringAfter("://", url).substringBefore('/').ifBlank { url }
     }
 
     // ---- Acceptance: citation scrubbing + dedup + item cap + images ----
@@ -722,6 +749,11 @@ If nothing notable was found, call finalize with an empty items list."""
         private const val MAX_FINALIZE_REPAIRS = 1
         private const val MAX_FETCHES = 5
         private const val MIN_PAGE_CAP = 20_000
+
+        /** Live-progress phases surfaced through [run]'s onEvent. */
+        const val EVENT_SEARCH = "search"
+        const val EVENT_FETCH = "fetch"
+        const val EVENT_WRITE = "write"
 
         /** Per-item inline image cap (cover + extras appended as figures). */
         private const val MAX_IMAGES_PER_ITEM = 4

@@ -2,25 +2,32 @@ package com.sapphire.app.ui
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.sapphire.data.agent.AgentScheduler
+import com.sapphire.domain.agent.AgentJobInput
 import com.sapphire.domain.agent.AgentRepository
 import com.sapphire.domain.agent.AgentRunService
-import com.sapphire.domain.agent.AgentSynthesisItem
 import com.sapphire.domain.agent.AgentRunService.RunMode
+import com.sapphire.domain.agent.AgentSynthesisItem
 import com.sapphire.domain.agent.cadenceLabel
+import com.sapphire.domain.agent.nextRunText
 import com.sapphire.domain.model.AgentJob
 import com.sapphire.domain.model.AgentRun
 import com.sapphire.domain.model.AgentRunStatus
+import com.sapphire.domain.source.SourceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import javax.inject.Inject
-import androidx.lifecycle.viewModelScope
 
-/** Run-history row rendered for the timeline (the design's `.run`). */
+/** Run-history row rendered for the timeline. */
 data class RunRow(
     val status: String,   // OK / FAILED / EMPTY
     val title: String,    // run.message or synthesized
@@ -28,63 +35,97 @@ data class RunRow(
     val meta: String,
 )
 
-/** Detail-screen state — job + its derived display fields + run history. */
+/** One row result shown inline after a Run-now (items, timing, error). */
+data class AgentRunResult(
+    val success: Boolean,
+    val durationMs: Long,
+    val itemCount: Int,
+    val items: List<String>,
+    val error: String?,
+)
+
+/** A folder the agent can be moved into; null categoryId = the shared ✦ Agents folder. */
+data class AgentFolderOption(val categoryId: String?, val label: String)
+
+/** Detail-screen state — job + its derived display fields + real run stats. */
 data class AgentDetailUi(
     val job: AgentJob?,
+    val status: AgentStatusUi,
     val cadenceLabel: String,
     val goalLabel: String,
     val nextRun: String,
+    val folderLabel: String,
     val runs: List<RunRow>,
     val itemsFiled: Int,
     val totalRuns: Int,
     val tokensUsed: String,
+    val successRate: String,
+)
+
+private val EMPTY_DETAIL = AgentDetailUi(
+    job = null, status = AgentStatusUi.IDLE, cadenceLabel = "", goalLabel = "", nextRun = "",
+    folderLabel = "", runs = emptyList(), itemsFiled = 0, totalRuns = 0, tokensUsed = "0", successRate = "—",
 )
 
 /**
- * Agent detail. Combines the job + its run history into [AgentDetailUi]. Toggle/delete
- * fire-and-forget; [deleted] flips true on delete so the screen pops. Test Run and
- * Run now both execute through [AgentRunService] — they differ only in
- * [RunMode.TEST] (records history, files nothing) vs [RunMode.FILE] (files to the feed).
+ * Agent detail. Combines the job + its run history + per-job aggregates (the stats strip:
+ * items filed, runs, tokens, success rate) + the source tree (folder label). Run-now
+ * executes through [AgentRunService] with [RunMode.FILE]; the transient RUNNING pill comes
+ * from [isRunning]. [moveToFolder] re-files the agent's source by re-issuing the full
+ * [AgentJobInput] with the new categoryId.
  */
 @HiltViewModel
 class AgentDetailViewModel @Inject constructor(
     private val repository: AgentRepository,
-    private val scheduler: com.sapphire.data.agent.AgentScheduler,
+    private val scheduler: AgentScheduler,
     private val runService: AgentRunService,
+    private val sourceRepository: SourceRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val jobId: String = savedStateHandle["jobId"] ?: ""
 
     private val _deleted = MutableStateFlow(false)
-    val deleted: StateFlow<Boolean> = _deleted
+    val deleted: StateFlow<Boolean> = _deleted.asStateFlow()
 
     private val _runQueued = MutableStateFlow(false)
-    val runQueued: StateFlow<Boolean> = _runQueued
+    val runQueued: StateFlow<Boolean> = _runQueued.asStateFlow()
 
-    private val _testResult = MutableStateFlow<TestRunResult?>(null)
-    val testResult: StateFlow<TestRunResult?> = _testResult
+    private val _runResult = MutableStateFlow<AgentRunResult?>(null)
+    val runResult: StateFlow<AgentRunResult?> = _runResult.asStateFlow()
 
     private val _isRunning = MutableStateFlow(false)
-    val isRunning: StateFlow<Boolean> = _isRunning
-    val state: StateFlow<AgentDetailUi> = combine(repository.observeJob(jobId), repository.observeRuns(jobId)) { job, runs ->
-        if (job == null) AgentDetailUi(
-            job = null, cadenceLabel = "", goalLabel = "", nextRun = "",
-            runs = emptyList(), itemsFiled = 0, totalRuns = 0, tokensUsed = "0",
-        ) else AgentDetailUi(
+    val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+
+    val state: StateFlow<AgentDetailUi> = combine(
+        repository.observeJob(jobId),
+        repository.observeRuns(jobId),
+        repository.observeJobStats(),
+        sourceRepository.observeTree(),
+        isRunning,
+    ) { job, runs, statsMap, tree, running ->
+        if (job == null) EMPTY_DETAIL else AgentDetailUi(
             job = job,
+            status = agentStatusOf(job, runs.firstOrNull(), running),
             cadenceLabel = cadenceLabel(job.frequency, job.triggerTime),
             goalLabel = job.goal,
-            nextRun = if (job.enabled) com.sapphire.domain.agent.nextRunText(job.frequency, job.triggerTime, System.currentTimeMillis()) else "paused",
+            nextRun = if (job.enabled) nextRunText(job.frequency, job.triggerTime, System.currentTimeMillis()) else "paused",
+            folderLabel = agentFolderLabel(tree, job.categoryId),
             runs = runs.map { it.toRow() },
-            itemsFiled = runs.filter { it.status == com.sapphire.domain.model.AgentRunStatus.OK }.sumOf { it.itemsFiled },
-            totalRuns = runs.size,
-            tokensUsed = formatTokens(runs.sumOf { it.tokensUsed }),
+            itemsFiled = statsMap[jobId]?.itemsFiled ?: runs.filter { it.status == AgentRunStatus.OK }.sumOf { it.itemsFiled },
+            totalRuns = statsMap[jobId]?.totalRuns ?: runs.size,
+            tokensUsed = formatAgentTokens(statsMap[jobId]?.tokensUsed ?: runs.sumOf { it.tokensUsed }),
+            successRate = successRateOf(runs),
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AgentDetailUi(
-        job = null, cadenceLabel = "", goalLabel = "", nextRun = "",
-        runs = emptyList(), itemsFiled = 0, totalRuns = 0, tokensUsed = "0",
-    ))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), EMPTY_DETAIL)
+
+    /** Folder-picker options: the ✦ Agents default first, then every drawer folder. */
+    val folders: StateFlow<List<AgentFolderOption>> = sourceRepository.observeTree()
+        .map { tree ->
+            listOf(AgentFolderOption(null, "✦ Agents")) +
+                tree.map { AgentFolderOption(it.category.id, it.category.name) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun toggle() {
         val job = state.value.job ?: return
@@ -96,42 +137,17 @@ class AgentDetailViewModel @Inject constructor(
     }
 
     /**
-     * Test Run — executes the agent and shows the result inline (items, timing, sources)
-     * WITHOUT filing anything to the feed. Records a history row so the timeline reflects
-     * the test. Lets the user verify their agent settings before committing to runs.
-     */
-    fun testRun() {
-        val job = state.value.job ?: return
-        _testResult.value = null
-        _isRunning.value = true
-        viewModelScope.launch {
-            try {
-                val outcome = runService.run(job, RunMode.TEST)
-                _testResult.value = TestRunResult(
-                    success = outcome.status != AgentRunStatus.FAILED,
-                    durationMs = outcome.durationMs,
-                    itemCount = outcome.items.size,
-                    items = outcome.items.map { it.formatForDisplay() },
-                    error = if (outcome.status != AgentRunStatus.OK) outcome.message else null,
-                )
-            } finally {
-                _isRunning.value = false
-            }
-        }
-    }
-
-    /**
-     * Run now — executes the agent AND files items to the feed (unlike testRun which
-     * only shows results). Used from the Agents list context menu.
+     * Run now — executes the agent AND files items to the feed. The RUNNING pill shows
+     * while [isRunning] is set; the result panel summarizes the outcome.
      */
     fun runNow() {
         val job = state.value.job ?: return
-        _testResult.value = null
+        _runResult.value = null
         _isRunning.value = true
         viewModelScope.launch {
             try {
                 val outcome = runService.run(job, RunMode.FILE)
-                _testResult.value = TestRunResult(
+                _runResult.value = AgentRunResult(
                     success = outcome.status != AgentRunStatus.FAILED,
                     durationMs = outcome.durationMs,
                     itemCount = outcome.itemsFiled,
@@ -145,10 +161,32 @@ class AgentDetailViewModel @Inject constructor(
         }
     }
 
-
-    fun consumeTestResult() { _testResult.value = null }
-
     fun consumeRunQueued() { _runQueued.value = false }
+
+    /**
+     * Move the agent (and its filed items' source) to another folder. Re-issues the full
+     * [AgentJobInput] with the new categoryId — the repository moves the agent source and
+     * the items follow via their category join.
+     */
+    fun moveToFolder(categoryId: String?) {
+        viewModelScope.launch {
+            val job = repository.observeJob(jobId).first() ?: return@launch
+            repository.update(
+                job.id,
+                AgentJobInput(
+                    name = job.name,
+                    goal = job.goal,
+                    task = job.task,
+                    format = job.format,
+                    rules = job.rules,
+                    maxItems = job.maxItems,
+                    frequency = job.frequency,
+                    triggerTime = job.triggerTime,
+                    categoryId = categoryId,
+                ),
+            )
+        }
+    }
 
     fun delete() {
         viewModelScope.launch {
@@ -158,18 +196,24 @@ class AgentDetailViewModel @Inject constructor(
         }
     }
 
+    private fun successRateOf(runs: List<AgentRun>): String {
+        if (runs.isEmpty()) return "—"
+        val ok = runs.count { it.status == AgentRunStatus.OK }
+        return "${Math.round(ok * 100.0 / runs.size)}%"
+    }
+
     private fun AgentRun.toRow(): RunRow {
         val st = when (status) {
-            com.sapphire.domain.model.AgentRunStatus.OK -> "OK"
-            com.sapphire.domain.model.AgentRunStatus.FAILED -> "FAILED"
-            com.sapphire.domain.model.AgentRunStatus.EMPTY -> "EMPTY"
+            AgentRunStatus.OK -> "OK"
+            AgentRunStatus.FAILED -> "FAILED"
+            AgentRunStatus.EMPTY -> "EMPTY"
         }
         return RunRow(
             status = st,
             title = message ?: "Run",
-            whenLabel = relativeWhen(ranAt),
+            whenLabel = agentRelativeTime(ranAt),
             meta = when (status) {
-                com.sapphire.domain.model.AgentRunStatus.OK -> "$itemsFiled items · ${tokensUsed} tok"
+                AgentRunStatus.OK -> "$itemsFiled items · ${formatAgentTokens(tokensUsed)} tok"
                 else -> "—"
             },
         )
@@ -178,25 +222,6 @@ class AgentDetailViewModel @Inject constructor(
     private fun AgentSynthesisItem.formatForDisplay(): String {
         val sources = sources.takeIf { it.isNotEmpty() }
             ?.joinToString(" | ") { "[${it.title}](${it.url})" } ?: ""
-        return "$title${summary?.let { s -> " — $s" } ?: ""}${if (sources.isNotBlank()) "\n  ↳ $sources" else ""}"
+        return "$title${summary?.let { s -> " — $s" } ?: ""}${if (sources.isNotBlank()) "\n  ↳ $sources" else ""}".trimEnd()
     }
-
-    private fun relativeWhen(epochMs: Long): String {
-        val diff = System.currentTimeMillis() - epochMs
-        val min = diff / 60_000
-        return when {
-            min < 1 -> "just now"
-            min < 60 -> "${min}m ago"
-            min < 1440 -> "${min / 60}h ago"
-            else -> "${min / 1440}d ago"
-        }
-    }
-
-    private fun formatTokens(n: Int): String = when {
-        n >= 1_000_000 -> "${"%.1f".format(n / 1_000_000.0)}M"
-        n >= 1_000 -> "${n / 1_000}k"
-        else -> n.toString()
-    }
-
-
 }

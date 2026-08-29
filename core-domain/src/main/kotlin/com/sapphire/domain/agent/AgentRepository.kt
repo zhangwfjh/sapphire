@@ -20,7 +20,15 @@ data class AgentJobInput(
     val maxItems: Int,
     val frequency: AgentFrequency,
     val triggerTime: String,
+    /** Drawer folder for the agent's source; null = shared "Agents" folder. */
+    val categoryId: String? = null,
 )
+
+/** Aggregated run history for one job — the hub card + quick-panel numbers. */
+data class AgentJobStats(val itemsFiled: Int, val totalRuns: Int, val tokensUsed: Int)
+
+/** Totals across all jobs — the hub's hero strip. */
+data class AgentTotals(val itemsFiled: Int, val totalRuns: Int)
 
 /**
  * CRUD + observe for agent jobs and their run history. Reads are cold
@@ -33,6 +41,16 @@ interface AgentRepository {
     fun observeJobs(): Flow<List<AgentJob>>
     fun observeJob(id: String): Flow<AgentJob?>
     fun observeRuns(jobId: String): Flow<List<AgentRun>>
+
+    /** Per-job aggregates keyed by jobId — derived from run history. */
+    fun observeJobStats(): Flow<Map<String, AgentJobStats>>
+
+    /** Cross-agent totals for the hub hero strip. */
+    fun observeTotals(): Flow<AgentTotals>
+
+    /** Most recent run per job, keyed by jobId — status pills and "last run" rows. */
+    fun observeLastRuns(): Flow<Map<String, AgentRun>>
+
     suspend fun create(input: AgentJobInput): String
     suspend fun update(id: String, input: AgentJobInput)
     suspend fun setEnabled(id: String, enabled: Boolean)
