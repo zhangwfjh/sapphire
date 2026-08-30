@@ -11,8 +11,8 @@ data class ParsedUrlFeed(
 
 /**
  * Subscribe-by-URL shortcut: if [raw] looks like a feed URL, recognize it and return a
- * [ParsedUrlFeed] instantly — no LLM. Returning null means "not a URL"; the caller should
- * treat the input as a topic query (handled by [SearchFeedsUseCase]'s Tier-1 path).
+ * [ParsedUrlFeed] instantly — no network. Returning null means "not a URL"; the caller
+ * should treat the input as a topic query (handled by [SearchFeedsUseCase]'s topic path).
  *
  * A value qualifies as a URL when it has a host containing a dot AND either an explicit
  * scheme or a path. This rejects bare topics ("biohacking") while accepting

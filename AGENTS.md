@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Sapphire is a local-first, anonymous, AI-assisted Android RSS reader. Sources are added via **Explore** — browse a bundled catalog, run a Tier-1 LLM topic search, paste a URL, or import OPML — and the app builds an on-device timeline; the reader runs LLM ops (classify/summarize/translate) on tap. (The prior phrase → AI-taxonomy → review onboarding flow has been removed pending redesign.) No accounts; the only secret is an OpenAI-compatible LLM API key. Built with Jetpack Compose + Hilt + Room + Coroutines/Flow.
+Sapphire is a local-first, anonymous, AI-assisted Android RSS reader. Sources are added via **Explore** — browse a bundled catalog, run a keyless live-web topic search, paste a URL, or import OPML — and the app builds an on-device timeline; the reader runs LLM ops (classify/summarize/translate) on tap. (The prior phrase → AI-taxonomy → review onboarding flow has been removed pending redesign.) No accounts; the only secret is an OpenAI-compatible LLM API key. Built with Jetpack Compose + Hilt + Room + Coroutines/Flow.
 
 Authoritative context docs (read these for product/architecture depth):
 - `docs/prd.md` — feature specs (§3.1 *removed — AI onboarding pending redesign*, §3.2 dual-view dashboard, §3.3 scroll-to-mark-read, §3.4 reader/save-later, §3.5 dynamic AI ops, §3.6/§3.7 agents)
@@ -22,7 +22,7 @@ flowchart LR
 ```
 
 **Primary flow (source → feed → reader):**
-1. **Sources are added via Explore**: browse the bundled catalog rails (`explore-catalog.json`), Tier-1 LLM topic search (`SearchFeedsUseCase`), paste a URL, or OPML import/export. The first OPML import creates the topic; new sources land in `SourceEntity` via `OnboardingDao.commitOnboarding` (`@Transaction`, atomic, `IGNORE` for idempotent sources) — the DB seeding primitive.
+1. **Sources are added via Explore**: browse the bundled catalog rails (`explore-catalog.json`), deterministic topic search (`SearchFeedsUseCase` — RSS Finder topic search → `HttpFeedLinkHarvester` content-sniff verification; no LLM, and the agent's web-search engine chain is not involved), paste a URL, or OPML import/export. The first OPML import creates the topic; new sources land in `SourceEntity` via `OnboardingDao.commitOnboarding` (`@Transaction`, atomic, `IGNORE` for idempotent sources) — the DB seeding primitive.
 2. `FeedViewModel.visibleTimeline` = `combine(_filter.flatMapLatest{...}, _query, _scope).stateIn(...)`. Refresh is `FeedRefreshService.refreshStreaming()` — a `channelFlow` fanning out one IO coroutine per source; the timeline is a live Room Flow.
 3. `ReaderViewModel.open(itemId)` loads + classifies (Tier-1); `summarize`/`translate` are Tier-2 on tap. All ops cache-first via `LlmCacheEntity` keyed by `SHA-256(itemId, op, modelVersion)`.
 
@@ -58,7 +58,7 @@ core-data/src/main/kotlin/com/sapphire/data/
 
 ## Development Commands
 
-Gradle 9.6.0 via wrapper. On Windows use `gradlew.bat` or `_gw.bat` (a `JAVA_HOME`/SDK shim).
+Gradle 9.7.1 via wrapper. On Windows use `gradlew.bat` or `_gw.bat` (a `JAVA_HOME`/SDK shim).
 
 ```bash
 ./gradlew assembleDebug            # build debug APK
@@ -117,7 +117,7 @@ C:\Users\Shaun\AppData\Local\Android\Sdk\platform-tools\adb.exe
 - **JDK 21** required (Android Studio JBR via `gradle/gradle-daemon-jvm.properties`; foojay auto-provisioning enabled).
 - **Android SDK 34** + build-tools 34.0.0; `minSdk = 29`, `compileSdk = targetSdk = 34`.
 - Java/Kotlin target **JVM_21**.
-- AGP **9.2.1**, Kotlin **2.2.10**, KSP **2.3.2**, Hilt **2.59.2**, Room **2.7.2**, Compose BOM **2024.09.02**. Versions centralized in `gradle/libs.versions.toml`.
+- AGP **9.3.1**, Kotlin **2.2.10**, KSP **2.3.11**, Hilt **2.59.2**, Room **2.7.2**, Compose BOM **2024.09.02**. Versions centralized in `gradle/libs.versions.toml`.
 - Repositories: Aliyun mirrors declared **before** `google()`/`mavenCentral()` in `settings.gradle.kts` (`repositoriesMode = FAIL_ON_PROJECT_REPOS`).
 
 ## Secrets

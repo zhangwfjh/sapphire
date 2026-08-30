@@ -1,38 +1,39 @@
 package com.sapphire.domain.explore
 
-import com.sapphire.domain.llm.FeedSearchResponse
-import com.sapphire.domain.llm.FeedSearchResult
-import com.sapphire.domain.llm.LlmClient
 import com.sapphire.domain.llm.LlmError
 import com.sapphire.domain.llm.LlmOutcome
-import com.sapphire.domain.llm.LlmTier
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.KSerializer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * SearchFeedsUseCase — LLM-free topic search over the [FeedFinder] engine only. URL-shaped
+ * queries short-circuit with no network; topic queries pass the RAW keyword to the finder
+ * and hand its feed hits to the harvester for verification. The web-search engine chain is
+ * not involved (agent-loop retrieval). Empty yield anywhere surfaces Empty.
+ */
 class SearchFeedsUseCaseTest {
 
     @Test
-    fun `blank query returns Empty error without calling LLM or web search`() = runTest {
-        val llm = RecordingLlm(null)
-        val web = RecordingWebSearch()
-        val useCase = SearchFeedsUseCase(llm, web)
+    fun `blank query returns Empty error without calling finder or harvester`() = runTest {
+        val finder = RecordingFeedFinder()
+        val harvester = RecordingHarvester()
+        val useCase = SearchFeedsUseCase(finder, harvester)
 
         val outcome = useCase.invoke("   ")
 
         assertTrue(outcome is LlmOutcome.Err)
         assertTrue((outcome as LlmOutcome.Err).error is LlmError.Empty)
-        assertEquals(0, llm.callCount)
-        assertEquals(0, web.calls)
+        assertEquals(0, finder.calls)
+        assertEquals(0, harvester.calls)
     }
 
     @Test
-    fun `URL query returns single result without calling LLM or web search`() = runTest {
-        val llm = RecordingLlm(null)
-        val web = RecordingWebSearch()
-        val useCase = SearchFeedsUseCase(llm, web)
+    fun `URL query returns single result without calling finder or harvester`() = runTest {
+        val finder = RecordingFeedFinder()
+        val harvester = RecordingHarvester()
+        val useCase = SearchFeedsUseCase(finder, harvester)
 
         val outcome = useCase.invoke("https://hnrss.org/frontpage")
 
@@ -41,95 +42,84 @@ class SearchFeedsUseCaseTest {
         assertEquals(1, results.size)
         assertEquals("https://hnrss.org/frontpage", results[0].url)
         assertEquals("hnrss.org/frontpage", results[0].title)
-        assertEquals(0, llm.callCount)
-        assertEquals(0, web.calls)
+        assertEquals(0, finder.calls)
+        assertEquals(0, harvester.calls)
     }
 
     @Test
     fun `URL query without scheme still detected as URL`() = runTest {
-        val llm = RecordingLlm(null)
-        val web = RecordingWebSearch()
-        val useCase = SearchFeedsUseCase(llm, web)
+        val useCase = SearchFeedsUseCase(RecordingFeedFinder(), RecordingHarvester())
 
         val outcome = useCase.invoke("example.com/feed.xml")
 
         assertTrue(outcome is LlmOutcome.Ok)
-        assertEquals(0, llm.callCount)
-        assertEquals(0, web.calls)
+        assertEquals("example.com/feed.xml", (outcome as LlmOutcome.Ok).value[0].url)
     }
 
     @Test
-    fun `topic query retrieves web hits then calls Tier-1 and returns mapped results`() = runTest {
-        val response = FeedSearchResponse(
-            results = listOf(
-                FeedSearchResult(title = "AI Blog", url = "https://example.com/ai", kind = "rss"),
-            ),
+    fun `topic query passes the raw keyword to the finder and returns verified results`() = runTest {
+        val hits = listOf(
+            WebSearchHit(title = "BBC News - China", url = "https://feeds.bbci.co.uk/news/world/asia/china/rss.xml", content = "curated"),
         )
-        val llm = RecordingLlm(response)
-        val web = RecordingWebSearch(
-            listOf(WebSearchHit(title = "AI Blog", url = "https://example.com", content = "posts about AI")),
+        val finder = RecordingFeedFinder(hits)
+        val harvested = listOf(
+            FeedSearchResult(title = "BBC News - China", url = "https://feeds.bbci.co.uk/news/world/asia/china/rss.xml", kind = "rss"),
         )
-        val useCase = SearchFeedsUseCase(llm, web)
+        val harvester = RecordingHarvester(harvested)
+        val useCase = SearchFeedsUseCase(finder, harvester)
 
-        val outcome = useCase.invoke("artificial intelligence")
+        val outcome = useCase.invoke("china")
 
+        assertEquals(listOf("china"), finder.topics)
+        assertEquals(hits, harvester.lastHits)
         assertTrue(outcome is LlmOutcome.Ok)
-        val results = (outcome as LlmOutcome.Ok).value
-        assertEquals(1, results.size)
-        assertEquals("AI Blog", results[0].title)
-        assertEquals(1, web.calls)
-        assertEquals("artificial intelligence RSS feed", web.lastQuery)
-        assertEquals(1, llm.callCount)
-        assertEquals(LlmTier.TIER1_FAST, llm.lastTier)
-        // Retrieval query is enriched, but the topic label the LLM sees stays original.
-        assertTrue(llm.lastUserPrompt.orEmpty().startsWith("Topic: artificial intelligence\n"))
+        assertEquals(harvested, (outcome as LlmOutcome.Ok).value)
     }
 
     @Test
-    fun `web hits are injected into the LLM prompt as grounding context`() = runTest {
-        val llm = RecordingLlm(FeedSearchResponse(results = emptyList()))
-        val web = RecordingWebSearch(
-            listOf(WebSearchHit(title = "AI Blog", url = "https://example.com", content = "subscribe via RSS")),
+    fun `finder returning no hits returns Empty and never harvests`() = runTest {
+        val finder = RecordingFeedFinder(emptyList())
+        val harvester = RecordingHarvester(
+            listOf(FeedSearchResult(title = "x", url = "https://x.com/feed")),
         )
-        val useCase = SearchFeedsUseCase(llm, web)
-
-        useCase.invoke("artificial intelligence")
-
-        val prompt = llm.lastUserPrompt.orEmpty()
-        assertTrue("prompt must carry the hit URL", prompt.contains("https://example.com"))
-        assertTrue("prompt must carry the hit content", prompt.contains("subscribe via RSS"))
-    }
-
-    @Test
-    fun `topic query still calls LLM when web search returns nothing`() = runTest {
-        val llm = RecordingLlm(FeedSearchResponse(results = emptyList()))
-        val web = RecordingWebSearch(emptyList())
-        val useCase = SearchFeedsUseCase(llm, web)
-
-        useCase.invoke("biohacking")
-
-        assertEquals(1, web.calls)
-        assertEquals(1, llm.callCount)
-        assertTrue(llm.lastUserPrompt.orEmpty().contains("No live web results"))
-    }
-
-    @Test
-    fun `LLM error propagates`() = runTest {
-        val llm = RecordingLlm(error = LlmError.Timeout)
-        val web = RecordingWebSearch()
-        val useCase = SearchFeedsUseCase(llm, web)
+        val useCase = SearchFeedsUseCase(finder, harvester)
 
         val outcome = useCase.invoke("biohacking")
 
         assertTrue(outcome is LlmOutcome.Err)
-        assertEquals(LlmError.Timeout, (outcome as LlmOutcome.Err).error)
+        assertTrue((outcome as LlmOutcome.Err).error is LlmError.Empty)
+        assertEquals(0, harvester.calls)
     }
 
     @Test
-    fun `empty results from LLM returns Empty error`() = runTest {
-        val llm = RecordingLlm(FeedSearchResponse(results = emptyList()))
-        val web = RecordingWebSearch()
-        val useCase = SearchFeedsUseCase(llm, web)
+    fun `empty harvest returns Empty error`() = runTest {
+        val finder = RecordingFeedFinder(
+            listOf(WebSearchHit(title = "Dir", url = "https://example.com", content = "")),
+        )
+        val useCase = SearchFeedsUseCase(finder, RecordingHarvester(emptyList()))
+
+        val outcome = useCase.invoke("obscure topic")
+
+        assertTrue(outcome is LlmOutcome.Err)
+        assertTrue((outcome as LlmOutcome.Err).error is LlmError.Empty)
+    }
+
+    @Test
+    fun `finder throwing degrades to Empty rather than propagating`() = runTest {
+        val useCase = SearchFeedsUseCase(ThrowingFeedFinder(), RecordingHarvester())
+
+        val outcome = useCase.invoke("obscure topic")
+
+        assertTrue(outcome is LlmOutcome.Err)
+        assertTrue((outcome as LlmOutcome.Err).error is LlmError.Empty)
+    }
+
+    @Test
+    fun `harvester throwing degrades to Empty rather than propagating`() = runTest {
+        val finder = RecordingFeedFinder(
+            listOf(WebSearchHit(title = "Dir", url = "https://example.com", content = "")),
+        )
+        val useCase = SearchFeedsUseCase(finder, ThrowingHarvester())
 
         val outcome = useCase.invoke("obscure topic")
 
@@ -139,58 +129,41 @@ class SearchFeedsUseCaseTest {
 
     // ---------- helpers ----------
 
-    private class RecordingLlm(
-        private val response: FeedSearchResponse? = null,
-        private val error: LlmError? = null,
-    ) : LlmClient {
-        var callCount = 0
-            private set
-        var lastTier: LlmTier? = null
-            private set
-        var lastUserPrompt: String? = null
-            private set
-
-        override suspend fun <T> completeStructured(
-            tier: LlmTier,
-            systemPrompt: String,
-            userPrompt: String,
-            outputSerializer: KSerializer<T>,
-        ): LlmOutcome<T> {
-            callCount++
-            lastTier = tier
-            lastUserPrompt = userPrompt
-            return when {
-                error != null -> LlmOutcome.Err(error)
-                else -> @Suppress("UNCHECKED_CAST") (LlmOutcome.Ok(response as T))
-            }
-        }
-
-        override fun streamText(
-            tier: LlmTier,
-            systemPrompt: String,
-            userPrompt: String,
-        ): kotlinx.coroutines.flow.Flow<LlmOutcome<String>> =
-            kotlinx.coroutines.flow.flowOf(LlmOutcome.Err(LlmError.InvalidResponse))
-
-        override suspend fun completeWithTools(
-            tier: LlmTier,
-            systemPrompt: String,
-            conversation: List<com.sapphire.domain.llm.ToolMessage>,
-            tools: List<com.sapphire.domain.llm.ToolDefinition>,
-        ): LlmOutcome<com.sapphire.domain.llm.ToolTurn> =
-            throw NotImplementedError("not used by feed search")
-    }
-
-    private class RecordingWebSearch(private val hits: List<WebSearchHit> = emptyList()) : WebSearchClient {
+    private class RecordingFeedFinder(
+        private val hits: List<WebSearchHit> = emptyList(),
+    ) : FeedFinder {
         var calls = 0
             private set
-        var lastQuery: String? = null
-            private set
+        val topics = mutableListOf<String>()
 
-        override suspend fun search(query: String): List<WebSearchHit> {
+        override suspend fun findFeeds(topic: String): List<WebSearchHit> {
             calls++
-            lastQuery = query
+            topics += topic
             return hits
         }
+    }
+
+    private class ThrowingFeedFinder : FeedFinder {
+        override suspend fun findFeeds(topic: String): List<WebSearchHit> = error("finder down")
+    }
+
+    private class RecordingHarvester(
+        private val results: List<FeedSearchResult> = emptyList(),
+    ) : FeedLinkHarvester {
+        var calls = 0
+            private set
+        var lastHits: List<WebSearchHit>? = null
+            private set
+
+        override suspend fun harvest(hits: List<WebSearchHit>): List<FeedSearchResult> {
+            calls++
+            lastHits = hits
+            return results
+        }
+    }
+
+    private class ThrowingHarvester : FeedLinkHarvester {
+        override suspend fun harvest(hits: List<WebSearchHit>): List<FeedSearchResult> =
+            error("harvest down")
     }
 }

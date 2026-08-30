@@ -53,6 +53,8 @@ import kotlinx.coroutines.SupervisorJob
 annotation class ApplicationScope
 
 
+
+
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
@@ -126,13 +128,21 @@ object DataProvidersModule {
             baidu = com.sapphire.data.explore.BaiduSearchClient(client),
         )
 
+    @Provides @Singleton
+    fun provideFeedFinder(client: OkHttpClient): com.sapphire.domain.explore.FeedFinder =
+        com.sapphire.data.explore.RssFinderFeedFinder(client)
+
+    @Provides @Singleton
+    fun provideFeedLinkHarvester(client: OkHttpClient): com.sapphire.domain.explore.FeedLinkHarvester =
+        com.sapphire.data.explore.HttpFeedLinkHarvester(client)
 
     @Provides @Singleton
     fun provideSearchFeedsUseCase(
-        llm: LlmClient,
-        webSearch: com.sapphire.domain.explore.WebSearchClient,
+        feedFinder: com.sapphire.domain.explore.FeedFinder,
+        harvester: com.sapphire.domain.explore.FeedLinkHarvester,
     ): com.sapphire.domain.explore.SearchFeedsUseCase =
-        com.sapphire.domain.explore.SearchFeedsUseCase(llm, webSearch)
+        com.sapphire.domain.explore.SearchFeedsUseCase(feedFinder, harvester)
+
 
     @Provides @Singleton
     fun provideEnhanceDirectiveService(

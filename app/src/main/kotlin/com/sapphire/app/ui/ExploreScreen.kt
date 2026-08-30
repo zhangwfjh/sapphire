@@ -87,10 +87,11 @@ import com.sapphire.app.ui.theme.SapphireMono
 import com.sapphire.domain.explore.ExploreFeed
 
 /**
- * Explore — browse curated catalog rails, search feeds via the Tier-1 LLM (or paste a
- * URL for an instant, free result), peek a feed before subscribing, then subscribe into
- * an existing or new folder. Reached from the Sources drawer's "Explore sources" row.
- * Styled dark-first per the Sapphire palette; mono labels for the research-terminal accent.
+ * Explore — browse curated catalog rails, search feeds via keyless live-web harvest
+ * (or paste a URL for an instant, free result), peek a feed before subscribing, then
+ * subscribe into an existing or new folder. Reached from the Sources drawer's "Explore
+ * sources" row. Styled dark-first per the Sapphire palette; mono labels for the
+ * research-terminal accent.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -353,7 +354,7 @@ private fun HeroSearch(
             modifier = Modifier.padding(top = 9.dp),
         )
         Text(
-            "Browse a curated newsstand, ask the AI to dig up sources on any topic, or drop in a URL.",
+            "Browse a curated newsstand, search any topic across the live web, or drop in a URL.",
             style = MaterialTheme.typography.bodyMedium,
             color = palette.OnInkMuted,
             modifier = Modifier.padding(top = 4.dp),
@@ -388,7 +389,7 @@ private fun HeroSearch(
                 tint = palette.AccentBright,
                 modifier = Modifier.size(12.dp),
             )
-            Text("AI search · any topic", style = SapphireMono.Label, color = palette.AccentBright, fontWeight = FontWeight.SemiBold)
+            Text("Live web search · any topic", style = SapphireMono.Label, color = palette.AccentBright, fontWeight = FontWeight.SemiBold)
             Text("/", style = SapphireMono.Label, color = palette.OnInkFaint)
             Text("URLs preview instantly", style = SapphireMono.Label, color = palette.OnInkFaint)
         }
