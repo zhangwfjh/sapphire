@@ -29,16 +29,17 @@ import java.util.concurrent.TimeUnit
  *
  * - Uses JSON mode (`response_format: json_object`) for structured output, then parses the
  *   message content into the requested [T] via kotlinx.serialization. This is the cheapest
- *   structured-output path that works across OpenAI, OpenRouter, DeepSeek, and similar
- *   gateways without tool-calling support divergence.
+ *   structured-output path that works across OpenAI-compatible gateways without
+ *   tool-calling support divergence.
  * - Failures are mapped to typed [LlmError]s — never thrown. Timeouts map to [LlmError.Timeout],
  *   HTTP 429 → [LlmError.RateLimited], other non-2xx → [LlmError.Http], JSON parse failure →
  *   [LlmError.InvalidResponse].
- * - [LlmConfig.NotConfigured] is returned early if the API key is blank, so the UI can render
- *   the README-config prompt instead of a confusing 401.
+ * - Config is resolved from an injected supplier on every call, so runtime edits (Settings)
+ *   take effect immediately. [LlmError.NotConfigured] is returned early if the API key or
+ *   base URL is blank, so the UI renders the README-config prompt instead of a confusing 401.
  */
 class OpenAiCompatibleLlmClient(
-    private val config: LlmConfig,
+    private val configProvider: () -> LlmConfig,
     private val json: Json,
     client: OkHttpClient,
 ) : LlmClient {
@@ -47,6 +48,15 @@ class OpenAiCompatibleLlmClient(
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS) // LLMs can be slow on first token; allow up to 90s
         .writeTimeout(20, TimeUnit.SECONDS)
+        // Some OpenAI-compatible gateways mishandle HTTP/2 streaming (buffered or de-streamed
+        // responses); HTTP/1.1 is the lowest common denominator and streams reliably.
+        .protocols(java.util.Collections.singletonList(okhttp3.Protocol.HTTP_1_1))
+        .build()
+
+    // Agent tool-calling rounds run with reasoning enabled — first token can take well
+    // past 90s — so they get a longer read budget on an otherwise identical client.
+    private val toolsClient: OkHttpClient = client.newBuilder()
+        .readTimeout(180, TimeUnit.SECONDS)
         .build()
 
     override suspend fun <T> completeStructured(
@@ -55,7 +65,8 @@ class OpenAiCompatibleLlmClient(
         userPrompt: String,
         outputSerializer: KSerializer<T>,
     ): LlmOutcome<T> = withContext(Dispatchers.IO) {
-        if (config.apiKey.isBlank()) return@withContext LlmOutcome.Err(LlmError.NotConfigured)
+        val config = configProvider()
+        if (config.apiKey.isBlank() || config.baseUrl.isBlank()) return@withContext LlmOutcome.Err(LlmError.NotConfigured)
 
         val request = ChatRequest(
             model = config.modelFor(tier),
@@ -65,8 +76,7 @@ class OpenAiCompatibleLlmClient(
             ),
             // Instruct the model to emit JSON; pair with response_format for supported providers.
             responseFormat = ResponseFormat(type = "json_object"),
-            // Disable chain-of-thought reasoning (Zhipu GLM emits 90s+ of reasoning_content
-            // before the answer otherwise). Unknown to stock OpenAI but ignored harmlessly.
+            chatTemplateKwargs = ChatTemplateKwargs(enableThinking = false),
             thinking = Thinking(type = "disabled"),
         )
         val body = json.encodeToString(ChatRequest.serializer(), request)
@@ -75,7 +85,7 @@ class OpenAiCompatibleLlmClient(
         var last: LlmOutcome<T> = LlmOutcome.Err(LlmError.Network("no attempt"))
         var attempt = 0
         while (attempt <= MAX_RETRIES) {
-            val outcome = runOnce(url, body, outputSerializer)
+            val outcome = runOnce(url, body, outputSerializer, config.apiKey)
             // Retry only transient classes; permanent errors return immediately.
             val transient = when (val err = (outcome as? LlmOutcome.Err)?.error) {
                 is LlmError.Timeout, is LlmError.RateLimited, is LlmError.Network -> true
@@ -96,7 +106,8 @@ class OpenAiCompatibleLlmClient(
         conversation: List<ToolMessage>,
         tools: List<ToolDefinition>,
     ): LlmOutcome<ToolTurn> = withContext(Dispatchers.IO) {
-        if (config.apiKey.isBlank()) return@withContext LlmOutcome.Err(LlmError.NotConfigured)
+        val config = configProvider()
+        if (config.apiKey.isBlank() || config.baseUrl.isBlank()) return@withContext LlmOutcome.Err(LlmError.NotConfigured)
 
         val messages = buildList {
             add(ChatMessage(role = "system", content = systemPrompt))
@@ -128,8 +139,9 @@ class OpenAiCompatibleLlmClient(
                     parameters = json.parseToJsonElement(td.jsonSchema),
                 ))
             },
-            toolChoice = "auto",
-            thinking = Thinking(type = "disabled"),
+            // Agent rounds keep reasoning on — multi-step tool orchestration needs it.
+            chatTemplateKwargs = ChatTemplateKwargs(enableThinking = true),
+            thinking = Thinking(type = "enabled"),
         )
         val body = json.encodeToString(ChatRequest.serializer(), request)
         val url = config.baseUrl + config.chatPath
@@ -137,7 +149,7 @@ class OpenAiCompatibleLlmClient(
         var last: LlmOutcome<ToolTurn> = LlmOutcome.Err(LlmError.Network("no attempt"))
         var attempt = 0
         while (attempt <= MAX_RETRIES) {
-            val outcome = runOnceToolTurn(url, body)
+            val outcome = runOnceToolTurn(url, body, config.apiKey)
             val transient = when (val err = (outcome as? LlmOutcome.Err)?.error) {
                 is LlmError.Timeout, is LlmError.RateLimited, is LlmError.Network -> true
                 is LlmError.Http -> err.status in 500..599
@@ -151,12 +163,12 @@ class OpenAiCompatibleLlmClient(
         last
     }
 
-    private suspend fun runOnceToolTurn(url: String, body: String): LlmOutcome<ToolTurn> {
+    private suspend fun runOnceToolTurn(url: String, body: String, apiKey: String): LlmOutcome<ToolTurn> {
         val httpResponse: Response = try {
-            client.newCall(
+            toolsClient.newCall(
                 Request.Builder()
                     .url(url)
-                    .header("Authorization", "Bearer " + config.apiKey)
+                    .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build(),
@@ -195,7 +207,8 @@ class OpenAiCompatibleLlmClient(
         systemPrompt: String,
         userPrompt: String,
     ): Flow<LlmOutcome<String>> = flow {
-        if (config.apiKey.isBlank()) {
+        val config = configProvider()
+        if (config.apiKey.isBlank() || config.baseUrl.isBlank()) {
             emit(LlmOutcome.Err(LlmError.NotConfigured))
             return@flow
         }
@@ -207,17 +220,58 @@ class OpenAiCompatibleLlmClient(
             ),
             // Plain-text streaming: no response_format (can't stream JSON readably). The model
             // emits raw content and the caller parses it (e.g. summary bullets line by line).
-            stream = true,
+            chatTemplateKwargs = ChatTemplateKwargs(enableThinking = false),
             thinking = Thinking(type = "disabled"),
         )
         val body = json.encodeToString(ChatRequest.serializer(), request)
         val url = config.baseUrl + config.chatPath
 
+        var attempt = 0
+        while (true) {
+            var sawContent = false
+            var terminal: LlmOutcome.Err? = null
+            streamOnce(url, body, config.apiKey).collect { outcome ->
+                when (outcome) {
+                    is LlmOutcome.Ok -> {
+                        sawContent = true
+                        emit(outcome)
+                    }
+                    is LlmOutcome.Err -> terminal = outcome
+                }
+            }
+            val err = terminal
+            if (err == null || sawContent || attempt >= MAX_RETRIES) {
+                err?.let { emit(it) }
+                return@flow
+            }
+            val transient = when (val e = err.error) {
+                is LlmError.Timeout, is LlmError.RateLimited, is LlmError.Network -> true
+                is LlmError.Http -> e.status in 500..599
+                else -> false
+            }
+            if (!transient) {
+                emit(err)
+                return@flow
+            }
+            // Retry only before any content reached the UI; once a partial has been
+            // emitted the stream is terminal so the caller sees a consistent state.
+            attempt++
+            delayBackoff(attempt - 1)
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * One streaming attempt as a cold flow: progressive [LlmOutcome.Ok]s carry the text
+     * accumulated so far (streaming reveal), terminated by a final Ok (complete text) or
+     * a single Err. Handles both wire shapes: SSE `data:` chunks, and a plain
+     * chat-completion JSON body that some gateways return even for `stream:true` requests.
+     */
+    private fun streamOnce(url: String, body: String, apiKey: String): Flow<LlmOutcome<String>> = flow {
         val response = try {
             client.newCall(
                 Request.Builder()
                     .url(url)
-                    .header("Authorization", "Bearer ${config.apiKey}")
+                    .header("Authorization", "Bearer $apiKey")
                     .header("Content-Type", "application/json")
                     .header("Accept", "text/event-stream")
                     .post(body.toRequestBody("application/json".toMediaType()))
@@ -252,7 +306,18 @@ class OpenAiCompatibleLlmClient(
         try {
             while (true) {
                 val line = source.readUtf8Line() ?: break
-                if (!line.startsWith("data:")) continue
+                if (!line.startsWith("data:")) {
+                    // Fallback: some gateways answer stream:true with a plain (non-SSE)
+                    // chat.completion JSON body. Accept it as the full text in one shot.
+                    val whole = runCatching { json.decodeFromString(ChatResponse.serializer(), line) }
+                        .getOrNull()?.choices?.firstOrNull()?.message?.content
+                    if (!whole.isNullOrEmpty()) {
+                        accumulated.append(whole)
+                        emit(LlmOutcome.Ok(accumulated.toString()))
+                        break
+                    }
+                    continue
+                }
                 val data = line.removePrefix("data:").trim()
                 if (data == "[DONE]") break
                 val chunk = try {
@@ -268,23 +333,24 @@ class OpenAiCompatibleLlmClient(
             }
         } catch (e: IOException) {
             emit(if (isTimeout(e)) LlmOutcome.Err(LlmError.Timeout) else LlmOutcome.Err(LlmError.Network(e.message ?: "network failure")))
-            response.close()
             return@flow
+        } finally {
+            response.close()
         }
-        response.close()
         if (accumulated.isEmpty()) emit(LlmOutcome.Err(LlmError.Empty("The summary came back empty.")))
-    }.flowOn(Dispatchers.IO)
+    }
 
     private suspend fun <T> runOnce(
         url: String,
         body: String,
         serializer: KSerializer<T>,
+        apiKey: String,
     ): LlmOutcome<T> {
         val httpResponse: Response = try {
             client.newCall(
                 Request.Builder()
                     .url(url)
-                    .header("Authorization", "Bearer ${config.apiKey}")
+                    .header("Authorization", "Bearer ${apiKey}")
                     .header("Content-Type", "application/json")
                     .post(body.toRequestBody("application/json".toMediaType()))
                     .build(),

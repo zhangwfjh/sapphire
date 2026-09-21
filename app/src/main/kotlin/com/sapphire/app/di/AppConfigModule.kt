@@ -56,7 +56,11 @@ class StoreBackedLlmConfigProvider(
         )
     }
 
-    private fun ensureTrailingSlash(url: String) = if (url.endsWith("/")) url else "$url/"
+    private fun ensureTrailingSlash(url: String) = when {
+        url.isEmpty() -> url
+        url.endsWith("/") -> url
+        else -> "$url/"
+    }
 }
 
 @Module

@@ -75,7 +75,11 @@ class SharedPrefsLlmConfigStore private constructor(
 
     override suspend fun setTier2Model(model: String) = tier2.set(model)
 
-    private fun ensureTrailingSlash(url: String) = if (url.endsWith("/")) url else "$url/"
+    private fun ensureTrailingSlash(url: String) = when {
+        url.isEmpty() -> url
+        url.endsWith("/") -> url
+        else -> "$url/"
+    }
 
     private companion object {
         const val KEY_API_KEY = "api_key"

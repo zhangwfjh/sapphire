@@ -103,12 +103,6 @@ object DataProvidersModule {
             .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
-            // Force IPv4 — apihub.agnes-ai.com resolves to IPv6 on some networks/carriers
-            // but the IPv6 route is broken (connect hangs until timeout). Filtering to A
-            .dns(object : okhttp3.Dns {
-                override fun lookup(hostname: String): List<java.net.InetAddress> =
-                    okhttp3.Dns.SYSTEM.lookup(hostname).filter { it is java.net.Inet4Address }
-            })
             .build()
     }
 
@@ -201,10 +195,10 @@ object LlmBindingsModule {
 
     @Provides @Singleton
     fun provideLlmClient(
-        config: LlmConfig,
+        provider: LlmConfigProvider,
         json: Json,
         client: OkHttpClient,
-    ): LlmClient = OpenAiCompatibleLlmClient(config, json, client)
+    ): LlmClient = OpenAiCompatibleLlmClient(provider::config, json, client)
 }
 
 @Module

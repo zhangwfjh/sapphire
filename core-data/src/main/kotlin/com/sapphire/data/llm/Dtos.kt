@@ -6,9 +6,8 @@ import kotlinx.serialization.Serializable
 /**
  * OpenAI-compatible Chat Completions request/response wire types.
  *
- * Sapphire routes through this single shape for MVP. Both OpenAI and Anthropic-compatible
- * gateways (and most third-party routers) speak this format; an Anthropic-native client
- * is a future swap behind [com.sapphire.domain.llm.LlmClient].
+ * Sapphire routes through this single shape; a provider-native client is a future
+ * swap behind [com.sapphire.domain.llm.LlmClient].
  */
 
 @Serializable
@@ -20,23 +19,29 @@ internal data class ChatRequest(
     val responseFormat: ResponseFormat? = null,
     val stream: Boolean = false,
     /**
-     * Provider-specific reasoning/CoT control. Zhipu GLM reasoning models emit a long
-     * `reasoning_content` before the answer (90s+ for taxonomy curation), which blows
-     * past HTTP read timeouts. Setting `type = "disabled"` skips CoT and returns only
-     * the final answer (5x faster). Null = provider default; omitted from JSON when null
-     * (Json.explicitNulls = false), so non-Zhipu providers are unaffected.
+     * Reasoning ("thinking") control, cross-dialect: `chat_template_kwargs.enable_thinking`
+     * is the vLLM-convention field, `thinking.type` the GLM one. Sapphire disables
+     * reasoning everywhere except agent tool-calling rounds. Each field is read by exactly
+     * one provider family and ignored by the rest; null = provider default (omitted).
      */
+    @SerialName("chat_template_kwargs")
+    val chatTemplateKwargs: ChatTemplateKwargs? = null,
     val thinking: Thinking? = null,
     val tools: List<ToolDefDto>? = null,
     @SerialName("tool_choice") val toolChoice: String? = null,
 )
 
-/** Wire shape for Zhipu's `thinking` request field. */
+/** Wire shape for vLLM's `chat_template_kwargs` reasoning switch. */
+@Serializable
+internal data class ChatTemplateKwargs(
+    @SerialName("enable_thinking") val enableThinking: Boolean,
+)
+
+/** Wire shape for GLM's `thinking` request field. */
 @Serializable
 internal data class Thinking(
     val type: String, // "disabled" | "enabled"
 )
-
 @Serializable
 internal data class ChatMessage(
     val role: String,

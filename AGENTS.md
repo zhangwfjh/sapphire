@@ -31,7 +31,7 @@ flowchart LR
 - **Read state is explicit-only**: scroll never marks read. Only reader-open (`markReadOnOpen`) and manual toggles; undo is a first-class `Channel` event.
 - **Saved items are exempt from the 30-day retention purge** (`RetentionWorker`); purge gates on `saved_later = 0`.
 - `RoomSourceRepository` synthesizes **virtual `domain:` L2 sub-folders** at view-time when ≥2 sources share a host — presentation-only, not persisted.
-- `OpenAiCompatibleLlmClient` sends GLM-specific `thinking:{type:"disabled"}` to suppress reasoning latency (harmlessly ignored by stock OpenAI).
+- LLM reasoning ("thinking") is **off everywhere except agent runs**: `completeStructured` and `streamText` send both wire dialects disabled (`chat_template_kwargs.enable_thinking:false`, `thinking:{type:"disabled"}`); `completeWithTools` (the agent loop) sends both enabled and uses a 180s read budget.
 - XML parsing uses Android's bundled `XmlPullParser` (kxml2), deliberately avoiding Rome.
 
 ## Key Directories
@@ -124,7 +124,7 @@ C:\Users\Shaun\AppData\Local\Android\Sdk\platform-tools\adb.exe
 
 `local.properties` is gitignored and holds `SAPPHIRE_LLM_API_KEY`, `SAPPHIRE_LLM_BASE_URL`, `SAPPHIRE_LLM_TIER1_MODEL`, `SAPPHIRE_LLM_TIER2_MODEL`, plus `sdk.dir`. These feed `BuildConfig` at build time.
 
-- **Treat the API key as a secret.** Never echo, log, commit, or paste it. Defaults if absent: `baseUrl = https://api.openai.com/v1/`, `tier1 = gpt-4o-mini`, `tier2 = gpt-4o`, `apiKey = ""`.
+- **Treat the API key as a secret.** Never echo, log, commit, or paste it. Nothing is baked in: all four LLM values default to empty when absent, and a blank key or base URL puts LLM ops in the `NotConfigured` state until set (local.properties at build time, or in-app Settings at runtime — the client re-resolves config per call).
 - Debug builds get `.debug` applicationId suffix (`com.sapphire.app.debug`); the key is compiled in, so **do not distribute debug builds**.
 
 ## Testing & QA
